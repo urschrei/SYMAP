@@ -15,7 +15,7 @@ const deck = $('deck');
 const sheets = $('sheets');
 const messages = $('messages');
 
-const state = { symap: null, result: null, overprint: true, zoom: 'fit' };
+const state = { symap: null, result: null, overprint: true, zoom: 'fit', paper: 'greenbar' };
 
 // ---------------------------------------------------------------- storage
 
@@ -146,11 +146,30 @@ const CELL_H = 11.25;      // 1/8 inch at 8 lines per inch
 const MARGIN_COLS = 6;     // tractor-feed strip on each side
 const TOP_LINES = 2;
 const INK = 'rgba(30, 28, 40, 0.88)';
+const CAP_HEIGHT = 0.7;    // of the line pitch
+const GLYPH_WIDTH = 0.8;   // of the character pitch
+const SPREAD = 0.7;        // ink spread around each stroke, in pixels
 
 function hash(a, b, c) {
   let h = (a * 73856093) ^ (b * 19349663) ^ (c * 83492791);
   h = (h ^ (h >>> 13)) * 1274126177;
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+// Font size and horizontal scale that give capitals the printed proportions.
+let typeCache = null;
+function typeMetrics(ctx) {
+  const family = getComputedStyle(document.body).getPropertyValue('--mono');
+  if (typeCache && typeCache.family === family) return typeCache;
+  const probe = 100;
+  ctx.font = `bold ${probe}px ${family}`;
+  const m = ctx.measureText('H');
+  const cap = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent || 0.72 * probe;
+  const ink = m.actualBoundingBoxLeft + m.actualBoundingBoxRight || 0.5 * probe;
+  const size = (CAP_HEIGHT * CELL_H) / (cap / probe);
+  const widen = Math.max(1, (GLYPH_WIDTH * CELL_W) / ((ink / probe) * size));
+  typeCache = { family, font: `bold ${size.toFixed(2)}px ${family}`, widen };
+  return typeCache;
 }
 
 function drawSheet(map) {
@@ -170,36 +189,48 @@ function drawSheet(map) {
   const ctx = canvas.getContext('2d');
   ctx.scale(px, px);
 
-  // Continuous-feed paper: green bars every half inch (4 lines at 8 lpi).
+  // Continuous-feed paper: green bars every half inch (4 lines at 8 lpi),
+  // or plain white stock as the reports reproduced their maps.
   const W = cols * CELL_W, H = rows * CELL_H;
-  ctx.fillStyle = '#fbfbf4';
+  const greenbar = state.paper === 'greenbar';
+  ctx.fillStyle = greenbar ? '#fbfbf4' : '#ffffff';
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#dfeedd';
-  for (let y = 0; y < rows; y += 8) {
-    ctx.fillRect(MARGIN_COLS * CELL_W - 4, (y + TOP_LINES) * CELL_H, (width) * CELL_W + 8, 4 * CELL_H);
-  }
-  // Tractor strips: perforation line and sprocket holes every half inch.
-  ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-  ctx.setLineDash([2, 3]);
-  for (const x of [MARGIN_COLS * CELL_W - 10, (MARGIN_COLS + width) * CELL_W + 10]) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-  }
-  ctx.setLineDash([]);
-  ctx.fillStyle = '#e9e6dc';
-  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-  for (let y = CELL_H * 2; y < H; y += CELL_H * 4) {
-    for (const x of [MARGIN_COLS * CELL_W / 2 - 2, W - MARGIN_COLS * CELL_W / 2 + 2]) {
-      ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  if (greenbar) {
+    ctx.fillStyle = '#dfeedd';
+    for (let y = 0; y < rows; y += 8) {
+      ctx.fillRect(MARGIN_COLS * CELL_W - 4, (y + TOP_LINES) * CELL_H, (width) * CELL_W + 8, 4 * CELL_H);
+    }
+    // Tractor strips: perforation line and sprocket holes every half inch.
+    ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+    ctx.setLineDash([2, 3]);
+    for (const x of [MARGIN_COLS * CELL_W - 10, (MARGIN_COLS + width) * CELL_W + 10]) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#e9e6dc';
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+    for (let y = CELL_H * 2; y < H; y += CELL_H * 4) {
+      for (const x of [MARGIN_COLS * CELL_W / 2 - 2, W - MARGIN_COLS * CELL_W / 2 + 2]) {
+        ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
     }
   }
 
   // Type: every strike is printed into the same cell; the translucent ink
   // darkens where strikes overlap. (fillText with ordinary blending measured
   // fastest: about 1.7x quicker than multiply blending or glyph stamps.)
-  ctx.font = `${CELL_H * 1.2}px ${getComputedStyle(document.body).getPropertyValue('--mono')}`;
+  // Chain-printer type is heavy and nearly fills its cell: on the manual's
+  // printouts capitals are about 0.7 of the line pitch tall and 0.8 of the
+  // character pitch wide, so the font is sized and widened to match.
+  const type = typeMetrics(ctx);
+  ctx.font = type.font;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = INK;
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = SPREAD;
+  ctx.lineJoin = 'round';
+  ctx.scale(type.widen, 1);
   lines.forEach((line, i) => {
     const y = (i + TOP_LINES + 0.55) * CELL_H;
     const layers = state.overprint ? line.strikes : [line.plain];
@@ -210,7 +241,10 @@ function drawSheet(map) {
         // A little ribbon wobble between strikes.
         const dx = state.overprint ? (hash(i, c, k) - 0.5) * 0.6 : 0;
         const dy = state.overprint ? (hash(c, i, k + 7) - 0.5) * 0.6 : 0;
-        ctx.fillText(ch, (MARGIN_COLS + c + 0.5) * CELL_W + dx, y + dy);
+        const x = ((MARGIN_COLS + c + 0.5) * CELL_W + dx) / type.widen;
+        ctx.fillText(ch, x, y + dy);
+        // Ribbon ink spreads beyond the type face.
+        ctx.strokeText(ch, x, y + dy);
       }
     });
   });
@@ -345,6 +379,7 @@ async function init() {
   $('mode-overprint').addEventListener('click', () => setMode(true));
   $('mode-plain').addEventListener('click', () => setMode(false));
   $('zoom').addEventListener('change', (e) => { state.zoom = e.target.value; render(); });
+  $('paper').addEventListener('change', (e) => { state.paper = e.target.value; render(); });
   $('download-asa').addEventListener('click', () => { const t = outputs('asa'); if (t) download('symap-asa.txt', t); });
   $('download-text').addEventListener('click', () => { const t = outputs('text'); if (t) download('symap.txt', t); });
   $('download-values').addEventListener('click', () => {
