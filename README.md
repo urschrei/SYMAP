@@ -2,14 +2,15 @@
 
 A reimplementation of SYMAP, the Synagraphic Mapping System: Howard T.
 Fisher's line-printer mapping program (Northwestern, 1963; then the Harvard
-Laboratory for Computer Graphics). It reads SYMAP-style card decks and
-prints maps made of overprinted characters.
+Laboratory for Computer Graphics and Spatial Analysis). It reads SYMAP card
+decks and prints maps made of overprinted characters, following the 1971
+program manual.
 
 This is the Rust core. It has no dependencies and is meant to be compiled to
 WebAssembly for a browser front end.
 
 ```bash
-cargo run -- examples/decks/hills.sym
+cargo run -- examples/decks/example-1-14.sym
 ```
 
 ```bash
@@ -18,78 +19,89 @@ cargo run -- --asa examples/decks/hills.sym
 
 `--asa` writes Fortran carriage control: lines starting with `+` overprint
 the line above, which is how darker tones were struck on the line printer.
+Plain output stands in single characters for overprints (`Θ` for `O`+`-`,
+`⊗` for `O`+`X`, `█` for `O`+`X`+`A`+`V`).
 
-## Map types
+`examples/decks/example-1-14.sym` is the manual's Example 1-14 transcribed
+card for card. Its second map closely matches Example 1-17 (Town
+Precincts): the precinct layout agrees by eye, and the level ranges,
+percentages and frequencies agree exactly with the original printout.
 
-| Kind       | Chosen when                                         | Each character cell gets         |
-|------------|-----------------------------------------------------|----------------------------------|
-| Contour    | default with data points                            | Shepard interpolation            |
-| Proximal   | `*TYPE PROXIMAL`                                    | value of the nearest data point  |
-| Conformant | default when `A-CONFORMOLINES` is present           | value of the enclosing zone      |
+## Decks
 
-Cells are scaled in inches, so non-square printer cells (default 10
-characters and 6 lines per inch) keep the map's proportions.
+Packages open with a header card and close with `99999` in columns 1-5; the
+deck ends with `999999`. Locations are measured down from the top border and
+across from the left border, in columns 11-20 and 21-30. Header columns
+31-40 and 41-50 (`8.` and `10.`) switch to row-and-column measurement. A
+package stays in effect for later maps until replaced; an empty package
+removes it.
 
-## Deck format
+| Package           | Status |
+|-------------------|--------|
+| `A-OUTLINE`       | any number of outlines, each closed by repeating its first vertex |
+| `A-CONFORMOLINES` | area, line and point zones; reference in columns 1-5, `A`/`L`/`P` in column 10 |
+| `B-DATA POINTS`   | yes |
+| `C-OTOLEGENDS`    | symbol, horizontal and vertical text, line and area legends with displacement |
+| `D-BARRIERS`      | parsed; interpolation ignores them (with a warning) |
+| `E-VALUES`        | value in columns 11-20; a blank card is a blank value |
+| `E1-VALUES INDEX` | yes |
+| `F-MAP`           | three title cards, then electives |
 
-Packages open with a header card and close with `99999`. The deck ends with
-`999999`. Coordinates are `down across`, measured from the top-left corner.
-Numbers may be blank-separated or in consecutive 10-column fields (`F10.x`).
-Lines beginning with `#` are comments (an extension).
+Blank-separated numbers are accepted as a fallback for hand-typed data
+cards. Lines starting with `#` between packages are comments (an extension).
 
-| Package           | Cards                                                                 | Status |
-|-------------------|-----------------------------------------------------------------------|--------|
-| `A-OUTLINE`       | one vertex per card; cells outside are left blank                     | documented |
-| `B-DATA POINTS`   | one point per card                                                    | documented |
-| `E-VALUES`        | one value per card, in data-point (or zone) order                     | documented |
-| `F-MAP`           | three title cards, then electives                                     | documented |
-| `A-CONFORMOLINES` | `zone down across`; a ring closes when it repeats its first vertex    | provisional |
-| others (`C-`, `D-`) | skipped with a warning                                              | not yet |
+## Electives
 
-Electives put their number in columns 4-5 and their values in 10-column
-fields from column 11:
+| Electives | Effect | Status |
+|-----------|--------|--------|
+| 1, 2, 13, 14, 15, 16 | size, extreme points, scale, margins, characters per inch, size safeguard | yes |
+| 3, 4, 5, 6 | levels, value range, equal-range, equal-count or proportional levels | yes |
+| 7 | symbolism (five cards) | yes |
+| 8, 22 | white contour and boundary lines off, or forced | yes |
+| 9, 24 | no frequency chart, no numeric interpretation | yes |
+| 10, 11, 12 | text, print values at data points, repeat previous electives | yes |
+| 18, 19, 20, 23 | invalid data (`M`) | yes |
+| 25, 27 | data points on conformant maps, force contour | yes |
+| 31, 32, 33 | extrapolation fraction and limits | yes |
+| 34, 35, 36 | search radius and point count | yes |
+| 31 + 36 + 37 | proximal map | yes |
+| 17, 26, 37 | tabular output, overprint alignment, independence | accepted (every character is computed independently) |
+| 21, 28, 38, 39 | tape output, dot maps, data graph, regression plane | not implemented (warning) |
 
-| Elective | Fields (columns 11-20, 21-30, ...)       | Status |
-|----------|------------------------------------------|--------|
-| 1        | map height, width (inches)               | implemented |
-| 13       | scale                                    | parsed, not applied |
-| 14       | margins: top, left, bottom, right        | implemented |
-| 15       | lines per inch, characters per inch      | implemented |
-
-Behaviour whose original elective numbers are not yet confirmed uses
-`*KEYWORD` cards instead, so they cannot clash with real electives:
-`*TYPE CONTOUR|PROXIMAL|CONFORMANT`, `*LEVELS n` (1-10, default 5),
-`*BREAKS b0 b1 ... bn`, `*MARKPOINTS` (print data points as their level
-digit), `*NOSLOPE`, `*NODIRECTION`.
-
-The package names, terminators, the three title cards, the elective column
-layout, and electives 1, 14 and 15 come from a contemporary user guide
-(NOAA, *BATHYGRAPH*, which prepares SYMAP input). The conformoline card
-layout, the default tone ramp and the legend layout are provisional until
-they can be checked against the SYMAP user's reference manual.
+Standard symbolism follows Tables 3-1 and 3-2: from `.` to `O`+`X`+`A`+`V`
+over up to ten levels, data points as their level number (`*` for the
+tenth), `L` and `H` outside the value range, `S` for superimposed points,
+`M` for invalid data, `N` where no data point is within reach. The page
+below the map gives the titles, text, numeric interpretation and frequency
+distribution in the manual's layout. Maps wider than 13 inches print in
+panels.
 
 ## Interpolation
 
-`interp::Shepard` follows Shepard (1968):
+`interp::Shepard` follows Shepard (1968): a search radius that holds about
+seven points on average, adjusted to keep four to ten; weights of `1/d`
+tapering to zero at the radius; a direction factor; and a slope correction
+limited to a fraction (0.1) of the data range. The surface passes exactly
+through the data and is held within the data extremes unless electives 32
+and 33 say otherwise.
 
-- a search radius holding about 7 points on average, adjusted to keep 4 to 10;
-- weights of `1/d` that taper to zero at the radius;
-- a direction factor that favours points not hidden behind others;
-- a slope correction along locally estimated gradients.
-
-The result passes exactly through the data. With `*NOSLOPE` it also stays
-within the data range.
+The manual says standard SYMAP computes about one character in six and
+derives the rest, unless elective 37 asks for every character to be computed
+independently. This implementation always computes every character.
 
 ## References
 
+- Goodrich, J. C. (ed.) and Howrigan, G. (assoc. ed.) (1971). *Computer
+  Mapping as an Aid in Air Pollution Studies*, Vol. 2, Report K: Computer
+  Program Manuals. Laboratory for Computer Graphics and Spatial Analysis,
+  Graduate School of Design, Harvard University. NTIS PB 204 713
+  (APTD-0738). Scan: <https://archive.org/details/micro_IA41159411_0506>
 - Shepard, D. (1968). A two-dimensional interpolation function for
   irregularly-spaced data. *Proceedings of the 1968 23rd ACM National
   Conference*, 517–524. <https://doi.org/10.1145/800186.810616>
 - Shepard, D. (1984). Computer Mapping: The SYMAP Interpolation Algorithm.
   In G. L. Gaile & C. J. Willmott (eds), *Spatial Statistics and Models*,
   Springer, 133–145. <https://doi.org/10.1007/978-94-017-3048-8_7>
-- NOAA. *BATHYGRAPH: a program package for interdepartmental use* (SYMAP
-  input conventions). <https://repository.library.noaa.gov/view/noaa/37800>
 
 ## Licence
 

@@ -1,32 +1,85 @@
-//! Grouping values into printed levels.
+//! Grouping values into levels (electives 3 to 6).
 
 use crate::error::Error;
 
-/// Class boundaries, lowest first; `levels() == breaks.len() - 1`.
+/// Where a value falls: below the range (L), in a level, or above it (H).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Level {
+    Low,
+    In(u8),
+    High,
+}
+
+impl Level {
+    /// Ordinal for comparing neighbours: Low < In(0) < ... < High.
+    pub fn rank(self) -> i32 {
+        match self {
+            Level::Low => -1,
+            Level::In(k) => k as i32,
+            Level::High => 1000,
+        }
+    }
+}
+
+/// Level boundaries, lowest first; `levels() == breaks.len() - 1`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Classes {
     pub breaks: Vec<f64>,
 }
 
 impl Classes {
-    /// `n` equal-width levels spanning `min..=max`.
-    pub fn equal(min: f64, mut max: f64, n: usize) -> Self {
+    /// `n` levels over `min..=max`.
+    ///
+    /// `intervals` is elective 6: `None` for equal ranges, `Some(&[])` for
+    /// equal numbers of `data` values per level, otherwise relative sizes.
+    pub fn new(
+        min: f64,
+        max: f64,
+        n: usize,
+        intervals: Option<&[f64]>,
+        data: &[f64],
+    ) -> Result<Self, Error> {
         assert!(n >= 1);
-        if max <= min {
-            max = min + 1.0;
+        if max < min {
+            return Err(Error::general(format!(
+                "value range minimum {min} exceeds maximum {max}"
+            )));
         }
-        let w = (max - min) / n as f64;
-        let mut breaks: Vec<f64> = (0..n).map(|k| min + w * k as f64).collect();
+        let max = if max == min { min + 1.0 } else { max };
+        let span = max - min;
+        let mut breaks = vec![min];
+        match intervals {
+            None => breaks.extend((1..n).map(|k| min + span * k as f64 / n as f64)),
+            Some([]) => {
+                let mut v: Vec<f64> = data
+                    .iter()
+                    .copied()
+                    .filter(|x| (min..=max).contains(x))
+                    .collect();
+                v.sort_by(f64::total_cmp);
+                if v.is_empty() {
+                    breaks.extend((1..n).map(|k| min + span * k as f64 / n as f64));
+                } else {
+                    // Each boundary value belongs to the higher level.
+                    breaks.extend((1..n).map(|k| v[((k * v.len()).div_ceil(n)).min(v.len() - 1)]));
+                }
+            }
+            Some(r) => {
+                if r.len() != n {
+                    return Err(Error::general(format!(
+                        "elective 6 gives {} ranges for {n} levels",
+                        r.len()
+                    )));
+                }
+                let total: f64 = r.iter().sum();
+                let mut acc = 0.0;
+                for x in &r[..n - 1] {
+                    acc += x;
+                    breaks.push(min + span * acc / total);
+                }
+            }
+        }
         breaks.push(max);
-        Self { breaks }
-    }
-
-    pub fn explicit(breaks: Vec<f64>) -> Result<Self, Error> {
-        if breaks.len() < 2 || breaks.windows(2).any(|w| w[0] >= w[1]) {
-            return Err(Error::general(
-                "class breaks must be at least two strictly increasing values",
-            ));
-        }
         Ok(Self { breaks })
     }
 
@@ -34,11 +87,25 @@ impl Classes {
         self.breaks.len() - 1
     }
 
-    /// 0-based level of `v`. Each level includes its lower bound; the top level
-    /// also includes its upper bound. Values outside the range are clamped.
-    pub fn level(&self, v: f64) -> usize {
+    pub fn min(&self) -> f64 {
+        self.breaks[0]
+    }
+
+    pub fn max(&self) -> f64 {
+        *self.breaks.last().unwrap()
+    }
+
+    /// A value on a boundary goes to the higher level; the maximum belongs to
+    /// the top level.
+    pub fn level(&self, v: f64) -> Level {
+        if v < self.min() {
+            return Level::Low;
+        }
+        if v > self.max() {
+            return Level::High;
+        }
         let n = self.levels();
-        self.breaks[1..n].iter().take_while(|&&b| v >= b).count()
+        Level::In(self.breaks[1..n].iter().take_while(|&&b| v >= b).count() as u8)
     }
 }
 
@@ -47,28 +114,48 @@ mod tests {
     use super::*;
 
     #[test]
-    fn equal_intervals() {
-        let c = Classes::equal(0.0, 10.0, 5);
-        assert_eq!(c.breaks, vec![0.0, 2.0, 4.0, 6.0, 8.0, 10.0]);
-        assert_eq!(c.level(-1.0), 0);
-        assert_eq!(c.level(1.99), 0);
-        assert_eq!(c.level(2.0), 1);
-        assert_eq!(c.level(10.0), 4);
-        assert_eq!(c.level(99.0), 4);
+    fn example_3_3_equal_ranges() {
+        let c = Classes::new(0.0, 30.0, 3, None, &[]).unwrap();
+        assert_eq!(c.breaks, vec![0.0, 10.0, 20.0, 30.0]);
+        assert_eq!(c.level(10.0), Level::In(1));
+        assert_eq!(c.level(30.0), Level::In(2));
+        assert_eq!(c.level(-0.1), Level::Low);
+        assert_eq!(c.level(30.1), Level::High);
     }
 
     #[test]
-    fn degenerate_range() {
-        let c = Classes::equal(3.0, 3.0, 4);
-        assert_eq!(c.level(3.0), 0);
+    fn example_3_4_proportions() {
+        let c = Classes::new(100.0, 500.0, 5, Some(&[25.0, 25.0, 12.5, 12.5, 25.0]), &[]).unwrap();
+        assert_eq!(c.breaks, vec![100.0, 200.0, 300.0, 350.0, 400.0, 500.0]);
     }
 
     #[test]
-    fn explicit_breaks_validated() {
-        assert!(Classes::explicit(vec![0.0, 1.0, 1.0]).is_err());
-        assert_eq!(
-            Classes::explicit(vec![0.0, 1.0, 5.0]).unwrap().level(2.0),
-            1
-        );
+    fn example_3_6_seven_levels() {
+        let c = Classes::new(
+            0.0,
+            1000.0,
+            7,
+            Some(&[150.0, 50.0, 71.5, 228.5, 250.0, 139.0, 111.0]),
+            &[],
+        )
+        .unwrap();
+        let want = [0.0, 150.0, 200.0, 271.5, 500.0, 750.0, 889.0, 1000.0];
+        for (a, b) in c.breaks.iter().zip(want) {
+            assert!((a - b).abs() < 1e-9, "{a} {b}");
+        }
+        assert_eq!(c.level(150.0), Level::In(1));
+    }
+
+    #[test]
+    fn equal_counts() {
+        let data: Vec<f64> = (1..=10).map(f64::from).collect();
+        let c = Classes::new(1.0, 10.0, 5, Some(&[]), &data).unwrap();
+        let mut counts = [0; 5];
+        for v in &data {
+            let Level::In(k) = c.level(*v) else { panic!() };
+            counts[k as usize] += 1;
+        }
+        assert_eq!(counts, [2; 5]);
+        assert!(Classes::new(0.0, 1.0, 3, Some(&[1.0]), &[]).is_err());
     }
 }

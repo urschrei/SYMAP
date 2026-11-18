@@ -1,41 +1,71 @@
-//! Mapping between data space and the line-printer character grid.
+//! Mapping between source-map coordinates and the printed character grid.
 //!
-//! Printer cells are not square: at the default 10 characters and 6 lines
-//! per inch a cell is 0.1 in wide and ~0.167 in tall. All scaling is done in
-//! inches so the printed map keeps the data's proportions.
+//! The top border is row 0 and the left border column 0; the bottom and
+//! right borders are rows `rows` and `cols`. At the standard 8 lines and 10
+//! characters per inch a 5 x 8 inch map has borders at rows 0 and 40 and
+//! columns 0 and 80, with 39 x 79 characters of content between them.
 
 use crate::error::Error;
 use crate::geom::{Extent, Point};
 
-/// Largest map we are willing to allocate, in cells.
-pub const MAX_CELLS: usize = 4_000_000;
+/// Largest map we are willing to allocate, in characters.
+pub const MAX_CELLS: usize = 8_000_000;
+
+/// Settings from electives 1, 2, 13, 14, 15 and 16.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Layout {
+    pub size: (Option<f64>, Option<f64>),
+    pub scale: Option<f64>,
+    /// Top, left, bottom, right border shifts in inches.
+    pub margins: [f64; 4],
+    pub lines_per_inch: f64,
+    pub cols_per_inch: f64,
+    pub large: bool,
+}
+
+impl Default for Layout {
+    fn default() -> Self {
+        Self {
+            size: (None, None),
+            scale: None,
+            margins: [0.0; 4],
+            lines_per_inch: 8.0,
+            cols_per_inch: 10.0,
+            large: false,
+        }
+    }
+}
+
+/// The standard size of the larger map dimension, in inches.
+pub const STANDARD_INCHES: f64 = 13.0;
+/// Maps larger than this need elective 16.
+pub const SAFEGUARD_INCHES: f64 = 72.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Frame {
+    /// Row of the bottom border.
     pub rows: usize,
+    /// Column of the right border.
     pub cols: usize,
-    pub rows_per_inch: f64,
+    pub lines_per_inch: f64,
     pub cols_per_inch: f64,
-    /// Printed inches per data unit.
-    pub inches_per_unit: f64,
-    /// Data coordinates of the top-left corner.
+    /// Output inches per source-map unit.
+    pub scale: f64,
+    /// Source-map location of the upper-left extreme point.
     pub origin: Point,
+    /// Grid position (row, column) of `origin`.
+    pub offset: (f64, f64),
 }
 
 impl Frame {
-    /// Fit `extent` into a box of `size` = (height, width) inches, keeping proportions.
-    pub fn fit(
-        extent: Extent,
-        size: (f64, f64),
-        rows_per_inch: f64,
-        cols_per_inch: f64,
-    ) -> Result<Frame, Error> {
-        let (h, w) = size;
-        if !(h > 0.0 && w > 0.0 && rows_per_inch > 0.0 && cols_per_inch > 0.0) {
+    pub fn fit(extent: Extent, layout: &Layout) -> Result<(Frame, Vec<String>), Error> {
+        let (lpi, cpi) = (layout.lines_per_inch, layout.cols_per_inch);
+        if !(lpi > 0.0 && cpi > 0.0) {
             return Err(Error::general(
-                "map size and characters per inch must be positive",
+                "elective 15: characters per inch must be positive",
             ));
         }
+        let [t, l, b, r] = layout.margins;
         let eh = if extent.height() > 0.0 {
             extent.height()
         } else {
@@ -46,46 +76,89 @@ impl Frame {
         } else {
             1.0
         };
-        let ipu = (h / eh).min(w / ew);
-        let cells =
-            |len: f64, per_inch: f64| ((len * ipu * per_inch - 1e-9).ceil() as usize).max(1);
-        let (rows, cols) = (cells(eh, rows_per_inch), cells(ew, cols_per_inch));
-        if rows.saturating_mul(cols) > MAX_CELLS {
+        let (h, w) = layout.size;
+        // Elective 1 dimensions are rounded to whole lines and columns.
+        let h = h.map(|x| (x * lpi).round() / lpi);
+        let w = w.map(|x| (x * cpi).round() / cpi);
+        let mut s = match (layout.scale, h, w) {
+            (Some(s), _, _) => s,
+            (None, Some(h), Some(w)) => ((h - t - b) / eh).min((w - l - r) / ew),
+            (None, Some(h), None) => (h - t - b) / eh,
+            (None, None, Some(w)) => (w - l - r) / ew,
+            (None, None, None) => {
+                ((STANDARD_INCHES - t - b) / eh).min((STANDARD_INCHES - l - r) / ew)
+            }
+        };
+        if !(s > 0.0 && s.is_finite()) {
+            return Err(Error::general(
+                "map size, margins and scale leave no room for the map",
+            ));
+        }
+        let mut h = h.unwrap_or(eh * s + t + b);
+        let mut w = w.unwrap_or(ew * s + l + r);
+        let mut warnings = Vec::new();
+        let (mut mt, mut ml) = (t, l);
+        if !layout.large && (h > SAFEGUARD_INCHES || w > SAFEGUARD_INCHES) {
+            let f = STANDARD_INCHES / h.max(w);
+            warnings.push(format!(
+                "a {h:.1} x {w:.1} inch map exceeds {SAFEGUARD_INCHES} inches; reduced to {:.1} x {:.1} (use elective 16 to allow it)",
+                h * f,
+                w * f
+            ));
+            h *= f;
+            w *= f;
+            s *= f;
+            mt *= f;
+            ml *= f;
+        }
+        let rows = ((h * lpi).round() as usize).max(2);
+        let cols = ((w * cpi).round() as usize).max(2);
+        if (rows + 1).saturating_mul(cols + 1) > MAX_CELLS {
             return Err(Error::general(format!(
-                "map of {rows} x {cols} characters is too large"
+                "a map of {rows} x {cols} characters is too large"
             )));
         }
-        Ok(Frame {
-            rows,
-            cols,
-            rows_per_inch,
-            cols_per_inch,
-            inches_per_unit: ipu,
-            origin: extent.min,
-        })
+        Ok((
+            Frame {
+                rows,
+                cols,
+                lines_per_inch: lpi,
+                cols_per_inch: cpi,
+                scale: s,
+                origin: extent.min,
+                offset: (mt * lpi, ml * cpi),
+            },
+            warnings,
+        ))
     }
 
-    /// Data coordinates of the centre of cell (`row`, `col`).
-    pub fn centre(&self, row: usize, col: usize) -> Point {
-        Point::new(
-            self.origin.down + (row as f64 + 0.5) / self.rows_per_inch / self.inches_per_unit,
-            self.origin.across + (col as f64 + 0.5) / self.cols_per_inch / self.inches_per_unit,
+    /// Fractional grid position (row, column) of a source-map location.
+    pub fn grid(&self, p: Point) -> (f64, f64) {
+        (
+            self.offset.0 + (p.down - self.origin.down) * self.scale * self.lines_per_inch,
+            self.offset.1 + (p.across - self.origin.across) * self.scale * self.cols_per_inch,
         )
     }
 
-    /// The cell containing `p`, if it lies on the map.
+    /// The content character (inside the border) at a location. Locations
+    /// exactly between characters go to the one below or to the right.
     pub fn cell(&self, p: Point) -> Option<(usize, usize)> {
-        let r = (p.down - self.origin.down) * self.inches_per_unit * self.rows_per_inch;
-        let c = (p.across - self.origin.across) * self.inches_per_unit * self.cols_per_inch;
-        // Points on the far edge belong to the last cell.
-        let clamp = |x: f64, n: usize| {
-            if x < 0.0 || x > n as f64 + 1e-9 {
-                None
-            } else {
-                Some((x as usize).min(n - 1))
-            }
-        };
-        Some((clamp(r, self.rows)?, clamp(c, self.cols)?))
+        let (r, c) = self.grid(p);
+        self.cell_at(r, c)
+    }
+
+    pub fn cell_at(&self, r: f64, c: f64) -> Option<(usize, usize)> {
+        let (r, c) = ((r + 0.5).floor(), (c + 0.5).floor());
+        let inside = |x: f64, n: usize| x >= 1.0 && x <= (n - 1) as f64;
+        (inside(r, self.rows) && inside(c, self.cols)).then_some((r as usize, c as usize))
+    }
+
+    /// Source-map location of the centre of character (`row`, `col`).
+    pub fn centre(&self, row: usize, col: usize) -> Point {
+        Point::new(
+            self.origin.down + (row as f64 - self.offset.0) / (self.scale * self.lines_per_inch),
+            self.origin.across + (col as f64 - self.offset.1) / (self.scale * self.cols_per_inch),
+        )
     }
 }
 
@@ -93,26 +166,66 @@ impl Frame {
 mod tests {
     use super::*;
 
-    #[test]
-    fn square_extent_prints_square() {
-        let e = Extent {
+    fn ext(h: f64, w: f64) -> Extent {
+        Extent {
             min: Point::new(0.0, 0.0),
-            max: Point::new(10.0, 10.0),
-        };
-        let f = Frame::fit(e, (10.0, 13.0), 6.0, 10.0).unwrap();
-        // 10 inches each way: 60 lines by 100 characters.
-        assert_eq!((f.rows, f.cols), (60, 100));
-        assert_eq!(f.cell(f.centre(17, 42)), Some((17, 42)));
-        assert_eq!(f.cell(Point::new(10.0, 10.0)), Some((59, 99)));
-        assert_eq!(f.cell(Point::new(-0.1, 1.0)), None);
+            max: Point::new(h, w),
+        }
     }
 
     #[test]
-    fn rejects_huge_maps() {
-        let e = Extent {
-            min: Point::new(0.0, 0.0),
-            max: Point::new(1.0, 1.0),
+    fn example_3_1_five_by_ten() {
+        let layout = Layout {
+            size: (Some(5.0), Some(10.0)),
+            ..Default::default()
         };
-        assert!(Frame::fit(e, (1000.0, 1000.0), 6.0, 10.0).is_err());
+        let (f, _) = Frame::fit(ext(5.0, 10.0), &layout).unwrap();
+        // 39 rows and 99 columns of content between the borders.
+        assert_eq!((f.rows, f.cols), (40, 100));
+        assert_eq!(f.grid(Point::new(5.0, 10.0)), (40.0, 100.0));
+        assert_eq!(f.cell(Point::new(2.5, 5.0)), Some((20, 50)));
+        assert_eq!(f.cell(Point::new(0.0, 5.0)), None, "on the border");
+        assert_eq!(f.cell(f.centre(17, 42)), Some((17, 42)));
+    }
+
+    #[test]
+    fn standard_size_and_omitted_dimension() {
+        let (f, _) = Frame::fit(ext(5.0, 10.0), &Layout::default()).unwrap();
+        assert_eq!((f.rows, f.cols), (52, 130));
+        let layout = Layout {
+            size: (Some(4.0), None),
+            ..Default::default()
+        };
+        let (f, _) = Frame::fit(ext(5.0, 10.0), &layout).unwrap();
+        assert_eq!((f.rows, f.cols), (32, 80));
+    }
+
+    #[test]
+    fn margins_shift_borders_and_scale() {
+        let layout = Layout {
+            size: (Some(6.0), Some(6.0)),
+            margins: [0.5; 4],
+            ..Default::default()
+        };
+        let (f, _) = Frame::fit(ext(10.0, 10.0), &layout).unwrap();
+        assert_eq!(f.scale, 0.5);
+        assert_eq!(f.grid(Point::new(0.0, 0.0)), (4.0, 5.0));
+        assert_eq!(f.grid(Point::new(10.0, 10.0)), (44.0, 55.0));
+    }
+
+    #[test]
+    fn safeguard() {
+        let layout = Layout {
+            size: (Some(100.0), Some(50.0)),
+            ..Default::default()
+        };
+        let (f, w) = Frame::fit(ext(1.0, 1.0), &layout).unwrap();
+        assert_eq!(w.len(), 1);
+        assert_eq!(f.rows, 104);
+        let layout = Layout {
+            large: true,
+            ..layout
+        };
+        assert!(Frame::fit(ext(1.0, 1.0), &layout).unwrap().1.is_empty());
     }
 }

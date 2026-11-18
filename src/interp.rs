@@ -11,6 +11,9 @@
 //!   shadowed by others in the same direction;
 //! * a slope correction that extrapolates each point's value along a
 //!   locally estimated gradient, damped with distance.
+//!
+//! SYMAP exposes these as electives: 31 (the extrapolation fraction, 0.1),
+//! 34 and 35 (initial and maximum search radius) and 36 (4 to 10 points).
 
 use crate::geom::Point;
 use std::f64::consts::PI;
@@ -22,6 +25,12 @@ pub struct ShepardParams {
     pub max_points: usize,
     pub direction: bool,
     pub slope: bool,
+    /// Elective 31: how far the slope term may reach, as a fraction of the data range.
+    pub fraction: f64,
+    /// Elective 34: initial search radius (otherwise from `target`).
+    pub initial_radius: Option<f64>,
+    /// Elective 35: never search beyond this distance.
+    pub max_radius: Option<f64>,
 }
 
 impl Default for ShepardParams {
@@ -32,6 +41,9 @@ impl Default for ShepardParams {
             max_points: 10,
             direction: true,
             slope: true,
+            fraction: 0.1,
+            initial_radius: None,
+            max_radius: None,
         }
     }
 }
@@ -51,12 +63,14 @@ fn by_dist(a: &(usize, f64), b: &(usize, f64)) -> std::cmp::Ordering {
 }
 
 impl Shepard {
-    /// `area` is the area of the study region, in data units squared.
+    /// `area` is the area of the study region, in source-map units squared.
     pub fn new(points: &[Point], values: &[f64], area: f64, params: ShepardParams) -> Self {
         assert_eq!(points.len(), values.len());
         assert!(!points.is_empty());
-        assert!(params.min_points >= 1 && params.max_points >= params.min_points);
-        let r0 = (params.target * area / (PI * points.len() as f64)).sqrt();
+        assert!(params.max_points >= 1 && params.max_points >= params.min_points);
+        let r0 = params
+            .initial_radius
+            .unwrap_or_else(|| (params.target * area / (PI * points.len() as f64)).sqrt());
         let mut s = Shepard {
             pts: points.to_vec(),
             z: values.to_vec(),
@@ -65,7 +79,7 @@ impl Shepard {
             grad: vec![(0.0, 0.0); points.len()],
             v: 0.0,
         };
-        if params.slope && points.len() > 1 {
+        if params.slope && params.fraction > 0.0 && points.len() > 1 {
             let grads: Vec<_> = (0..points.len()).map(|i| s.gradient(i)).collect();
             let gmax = grads.iter().map(|(a, b)| a.hypot(*b)).fold(0.0, f64::max);
             let (lo, hi) = values
@@ -74,7 +88,7 @@ impl Shepard {
                     (l.min(v), h.max(v))
                 });
             if gmax > 0.0 && hi > lo {
-                s.v = 0.1 * (hi - lo) / gmax;
+                s.v = params.fraction * (hi - lo) / gmax;
                 s.grad = grads;
             }
         }
@@ -108,6 +122,7 @@ impl Shepard {
         } else {
             self.r0
         };
+        let r = self.params.max_radius.map_or(r, |m| r.min(m));
         d.retain(|x| x.1 < r);
         (d, r)
     }
@@ -167,11 +182,16 @@ impl Shepard {
         (a / ws, b / ws)
     }
 
-    pub fn eval(&self, p: Point) -> f64 {
+    /// Interpolated value at `p`, or `None` if no data point is within the
+    /// maximum search radius.
+    pub fn eval(&self, p: Point) -> Option<f64> {
         if let Some(i) = self.pts.iter().position(|q| *q == p) {
-            return self.z[i];
+            return Some(self.z[i]);
         }
         let (nb, r) = self.neighbours(p, None);
+        if nb.is_empty() {
+            return None;
+        }
         let w = self.weights(p, &nb, r);
         let (mut num, mut den) = (0.0, 0.0);
         for (&(i, d), &wi) in nb.iter().zip(&w) {
@@ -184,12 +204,12 @@ impl Shepard {
             num += wi * zi;
             den += wi;
         }
-        if den > 0.0 && num.is_finite() {
+        Some(if den > 0.0 && num.is_finite() {
             num / den
         } else {
             // Degenerate weights: fall back to the nearest point.
-            nb.first().map_or(self.z[0], |&(i, _)| self.z[i])
-        }
+            self.z[nb[0].0]
+        })
     }
 }
 
@@ -226,7 +246,7 @@ mod tests {
             .collect();
         let s = Shepard::new(&pts, &z, 100.0, ShepardParams::default());
         for (p, v) in pts.iter().zip(&z) {
-            assert_eq!(s.eval(*p), *v);
+            assert_eq!(s.eval(*p), Some(*v));
         }
     }
 
@@ -240,7 +260,7 @@ mod tests {
             Point::new(9.9, 0.2),
             Point::new(5.0, 5.0),
         ] {
-            assert!((s.eval(q) - 3.25).abs() < 1e-12);
+            assert!((s.eval(q).unwrap() - 3.25).abs() < 1e-12);
         }
     }
 
@@ -249,13 +269,13 @@ mod tests {
         let pts = grid_points();
         let z: Vec<f64> = (0..pts.len()).map(|i| ((i * 37) % 11) as f64).collect();
         let params = ShepardParams {
-            slope: false,
+            fraction: 0.0,
             ..Default::default()
         };
         let s = Shepard::new(&pts, &z, 100.0, params);
         for k in 0..200 {
             let q = Point::new((k % 20) as f64 * 0.55, (k / 20) as f64 * 1.1);
-            let v = s.eval(q);
+            let v = s.eval(q).unwrap();
             assert!((0.0..=10.0).contains(&v), "{v}");
         }
     }
@@ -272,8 +292,20 @@ mod tests {
     fn few_points_still_interpolate() {
         let pts = [Point::new(0.0, 0.0), Point::new(0.0, 10.0)];
         let s = Shepard::new(&pts, &[0.0, 10.0], 100.0, ShepardParams::default());
-        let v = s.eval(Point::new(0.0, 5.0));
+        let v = s.eval(Point::new(0.0, 5.0)).unwrap();
         assert!((v - 5.0).abs() < 1e-9, "{v}");
+    }
+
+    #[test]
+    fn max_radius_leaves_gaps() {
+        let pts = [Point::new(0.0, 0.0), Point::new(0.0, 1.0)];
+        let params = ShepardParams {
+            max_radius: Some(2.0),
+            ..Default::default()
+        };
+        let s = Shepard::new(&pts, &[1.0, 2.0], 100.0, params);
+        assert!(s.eval(Point::new(0.0, 0.5)).is_some());
+        assert_eq!(s.eval(Point::new(9.0, 9.0)), None);
     }
 
     #[test]

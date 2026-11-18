@@ -1,0 +1,104 @@
+# Example 1-14 from 'Computer Mapping as an Aid in Air Pollution Studies',
+# Vol. 2, Report K (Harvard Laboratory for Computer Graphics, 1971), pp. 29-30.
+# Two proximal maps; the second deletes the legends and uses elective 7
+# to strike black precinct boundaries on a dashed background.
+A-OUTLINE
+                 1.0       1.6
+                  .5       4.1
+                 2.5       5.8
+                 4.3       5.2
+                 4.3       2.6
+                 3.6        .2
+                 1.0       1.6
+                 3.5       5.8
+                 2.6       7.1
+                 3.8       7.8
+                 4.6       6.8
+                 3.5       5.8
+99999
+B-DATA POINTS
+                 2.9       1.3
+                 1.5       3.4
+                 3.1       3.0
+                 2.4       5.3
+                 3.4       4.8
+                 3.7       7.0
+99999
+C-OTOLEGENDS
+    3    P        .6       6.8                -1.0
+***
+    5    P        .6       6.8       1.0      -2.0
+*****
+    1    P        .6       6.8      -1.0
+*
+    1    P        .6       6.8       2.0
+N
+    6    P        .6       6.8       5.0      -2.0
+SCALE
+     -   L       1.3       6.3
+                 1.3       7.3
+    1    P       1.3       6.3
+I
+    1    P       1.3       7.3
+I
+    1    P       1.3       6.8
+.
+    1    P       1.3       6.3      -1.0
+0
+    1    P       1.3       6.8      -1.0
+5
+    2    P       1.3       7.3      -1.0
+10
+   11    P       4.6        .2
+A = AIRPORT
+     .   A       1.8       2.0
+                 2.3       2.2
+                 2.8       2.0
+                 2.5       1.5
+                 1.8       2.0
+     A   P       3.8       5.2
+     .=  L       4.4        .2
+                 4.4        .4
+    7    P       4.4        .6
+= CANAL
+     .=  L       1.0       4.6
+                 2.5       3.5
+                 4.4       4.5
+99999
+E-VALUES
+                10.0
+                20.0
+                30.0
+                40.0
+                50.0
+                60.0
+99999
+F-MAP
+TEST MAP =3
+PROXIMAL MAP
+CLOSEST PROXIMITY TO TOWN HALL
+    1            5.0       8.0
+    2            0.0       0.0       5.0       8.0
+   31
+   36
+   37
+99999
+C-OTOLEGENDS
+99999
+F-MAP
+TEST MAP =8
+PROXIMAL MAP
+TOWN PRECINCTS
+    1            5.0       8.0
+    2            0.0       0.0       5.0       8.0
+   31
+   36
+   37
+    7
+                        -O
+                         X
+                         A
+                         V
+   11
+99999
+999999

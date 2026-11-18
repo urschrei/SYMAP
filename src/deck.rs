@@ -1,449 +1,556 @@
-//! Parsing SYMAP input decks.
+//! Parsing SYMAP input decks (1971 manual, section 2).
 //!
-//! A deck is a sequence of packages, each opened by a header card
-//! (`A-OUTLINE`, `B-DATA POINTS`, ...) and closed by a `99999` card. The
-//! whole deck ends with `999999`. Package layouts that are documented in
-//! surviving sources follow them; the rest are provisional and noted in the
-//! crate README.
+//! A deck is a sequence of packages, each opened by a header card and closed
+//! by `99999` in columns 1-5; `999999` ends the deck. A package stays in
+//! effect for every later map until a package of the same kind replaces it
+//! (an empty package removes it). Each F-MAP package draws one map.
 
 use crate::card;
+use crate::elective::{self, Entry};
 use crate::error::{Diagnostic, Error};
 use crate::geom::Point;
+use crate::symbols::Strikes;
 
 /// Which kind of map to draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MapKind {
-    /// Interpolated surface, classed into level bands (isarithmic map).
+    /// Interpolated surface (isarithmic map).
     Contour,
-    /// Each cell takes the value of its nearest data point.
+    /// Each character takes the value of its nearest data point.
     Proximal,
-    /// Each cell takes the value of the zone that contains it (choropleth).
+    /// Each character takes the value of the zone that contains it.
     Conformant,
 }
 
-/// A conformant zone: one or more rings sharing a value.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Zone {
-    pub id: i64,
-    pub rings: Vec<Vec<Point>>,
+/// How a conformant zone outline is drawn (column 10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ZoneShape {
+    Area,
+    Line,
+    Point,
 }
 
-/// A numbered F-MAP elective.
+/// One A-CONFORMOLINES outline.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Elective {
-    /// Elective 1: printed map size in inches.
-    MapSize { height: f64, width: f64 },
-    /// Elective 13: map scale (recorded, not yet applied).
-    Scale(f64),
-    /// Elective 14: margins in inches.
-    Margins {
-        top: f64,
-        left: f64,
-        bottom: f64,
-        right: f64,
+pub struct Conformoline {
+    /// 1-based reference into the values.
+    pub reference: usize,
+    pub shape: ZoneShape,
+    pub vertices: Vec<Point>,
+}
+
+/// One C-OTOLEGENDS legend.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Legend {
+    /// A single overprinted symbol, shifted by (rows, columns).
+    Symbol {
+        strikes: Strikes,
+        at: Point,
+        shift: (f64, f64),
     },
-    /// Elective 15: printer pitch, characters per inch.
-    CharsPerInch { rows: f64, cols: f64 },
-    /// Any elective this implementation does not interpret.
-    Other {
-        number: u32,
-        fields: Vec<Option<f64>>,
+    /// A character string, horizontal or reading down.
+    Text {
+        text: String,
+        vertical: bool,
+        at: Point,
+        shift: (f64, f64),
+    },
+    /// A symbol repeated along a polyline.
+    Line {
+        strikes: Strikes,
+        vertices: Vec<Point>,
+    },
+    /// A symbol filling a polygon.
+    Area {
+        strikes: Strikes,
+        vertices: Vec<Point>,
     },
 }
 
-/// Non-standard `*KEYWORD` cards in an F-MAP package.
-///
-/// Original SYMAP selected these behaviours through electives whose exact
-/// numbering is not yet confirmed, so they use a separate syntax that cannot
-/// clash with real elective cards.
+/// One D-BARRIERS barrier: vertices and strengths (-1 is impermeable).
 #[derive(Debug, Clone, PartialEq)]
-pub enum Directive {
-    Kind(MapKind),
-    Levels(usize),
-    /// Explicit class boundaries, lowest to highest (levels + 1 values).
-    Breaks(Vec<f64>),
-    MarkPoints,
-    NoSlope,
-    NoDirection,
+pub struct Barrier {
+    pub vertices: Vec<(Point, f64)>,
 }
 
-/// One requested map: an F-MAP package plus the E-VALUES in force when it was read.
+/// The packages in effect when a map is drawn.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Packages {
+    pub outlines: Vec<Vec<Point>>,
+    pub conformolines: Vec<Conformoline>,
+    pub points: Vec<Point>,
+    pub legends: Vec<Legend>,
+    pub barriers: Vec<Barrier>,
+    /// E-VALUES, one per card; `None` is a blank value field.
+    pub values: Vec<Option<f64>>,
+    /// E1-VALUES INDEX: reference number -> replacement (`None` = missing).
+    pub index: Vec<(usize, Option<usize>)>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MapSpec {
     /// Card number of the `F-MAP` header.
     pub line: usize,
     pub titles: [String; 3],
-    pub electives: Vec<(usize, Elective)>,
-    pub directives: Vec<Directive>,
-    pub values: Vec<f64>,
+    pub electives: Vec<Entry>,
+    pub packages: Packages,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Deck {
-    pub outline: Vec<Point>,
-    pub zones: Vec<Zone>,
-    pub points: Vec<Point>,
     pub maps: Vec<MapSpec>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-enum Header {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
     Outline,
     Conformolines,
     DataPoints,
+    Legends,
+    Barriers,
     Values,
+    Index,
     Map,
-    Unknown(String),
 }
 
-fn header(t: &str) -> Option<Header> {
-    let key: String = t
+fn header(card: &str) -> Option<Result<Kind, String>> {
+    let name: String = card::cols(card, 1, 22)
         .chars()
         .filter(|c| !c.is_whitespace())
         .collect::<String>()
         .to_ascii_uppercase();
-    Some(match key.as_str() {
-        "A-OUTLINE" => Header::Outline,
-        "A-CONFORMOLINES" => Header::Conformolines,
-        "B-DATAPOINTS" => Header::DataPoints,
-        "E-VALUES" => Header::Values,
-        "F-MAP" => Header::Map,
+    Some(Ok(match name.as_str() {
+        "A-OUTLINE" => Kind::Outline,
+        "A-CONFORMOLINES" => Kind::Conformolines,
+        "B-DATAPOINTS" => Kind::DataPoints,
+        "C-OTOLEGENDS" => Kind::Legends,
+        "D-BARRIERS" => Kind::Barriers,
+        "E-VALUES" => Kind::Values,
+        "E1-VALUESINDEX" => Kind::Index,
+        "F-MAP" => Kind::Map,
         _ => {
-            let b = key.as_bytes();
-            if b.len() > 2 && b[0].is_ascii_uppercase() && b[1] == b'-' && b[2].is_ascii_uppercase()
+            let b = name.as_bytes();
+            let dash = b.iter().position(|&c| c == b'-')?;
+            if (1..=2).contains(&dash)
+                && b[0].is_ascii_uppercase()
+                && b.get(dash + 1).is_some_and(u8::is_ascii_uppercase)
             {
-                Header::Unknown(t.to_string())
-            } else {
-                return None;
+                return Some(Err(card.trim().to_string()));
             }
+            return None;
         }
-    })
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum State {
-    Top,
-    Outline,
-    Zones,
-    Points,
-    Values,
-    Titles(usize),
-    Map,
-    Skip,
-}
-
-/// Accumulates vertices into rings. A vertex equal to its ring's first vertex
-/// closes the ring.
-#[derive(Default)]
-struct RingBuilder {
-    current: Vec<Point>,
-}
-
-impl RingBuilder {
-    /// Returns a finished ring when `p` closes the current one.
-    fn push(&mut self, p: Point) -> Option<Vec<Point>> {
-        if self.current.len() >= 3 && self.current[0] == p {
-            return Some(std::mem::take(&mut self.current));
-        }
-        self.current.push(p);
-        None
-    }
-
-    fn finish(&mut self) -> Option<Vec<Point>> {
-        let r = std::mem::take(&mut self.current);
-        (!r.is_empty()).then_some(r)
-    }
-}
-
-#[derive(Default)]
-struct ZoneBuilder {
-    zones: Vec<Zone>,
-    id: Option<i64>,
-    ring: RingBuilder,
-}
-
-impl ZoneBuilder {
-    fn add_ring(&mut self, id: i64, ring: Vec<Point>) {
-        match self.zones.iter_mut().find(|z| z.id == id) {
-            Some(z) => z.rings.push(ring),
-            None => self.zones.push(Zone {
-                id,
-                rings: vec![ring],
-            }),
-        }
-    }
-
-    fn push(&mut self, id: i64, p: Point) {
-        if self.id != Some(id) {
-            self.flush();
-            self.id = Some(id);
-        }
-        if let Some(r) = self.ring.push(p) {
-            self.add_ring(id, r);
-        }
-    }
-
-    fn flush(&mut self) {
-        if let (Some(id), Some(r)) = (self.id, self.ring.finish()) {
-            self.add_ring(id, r);
-        }
-        self.id = None;
-    }
-}
-
-/// Parse an elective card: number in columns 1-5 (normally 4-5), then
-/// 10-column real fields from column 11. Falls back to free format.
-fn elective_fields(line: &str) -> Option<(u32, Vec<Option<f64>>)> {
-    if let Ok(n) = card::cols(line, 1, 5).trim().parse::<u32>() {
-        if card::cols(line, 6, 10).trim().is_empty() {
-            let fields: Option<Vec<_>> = (0..7)
-                .map(|i| card::real_field(&card::cols(line, 11 + 10 * i, 20 + 10 * i)))
-                .collect();
-            if let Some(mut f) = fields {
-                while f.last() == Some(&None) {
-                    f.pop();
-                }
-                return Some((n, f));
-            }
-        }
-    }
-    let mut toks = line.split_whitespace();
-    let n = toks.next()?.parse().ok()?;
-    let f = toks
-        .map(|t| t.parse::<f64>().ok().filter(|v| v.is_finite()).map(Some))
-        .collect::<Option<Vec<_>>>()?;
-    Some((n, f))
-}
-
-fn elective(ln: usize, line: &str) -> Result<Elective, Error> {
-    let (n, f) = elective_fields(line).ok_or_else(|| Error::at(ln, "unreadable elective card"))?;
-    let get = |i: usize| f.get(i).copied().flatten();
-    let need = |i: usize, what: &str| {
-        get(i).ok_or_else(|| Error::at(ln, format!("elective {n}: missing {what}")))
-    };
-    Ok(match n {
-        1 => Elective::MapSize {
-            height: need(0, "vertical size")?,
-            width: need(1, "horizontal size")?,
-        },
-        13 => Elective::Scale(need(0, "scale")?),
-        14 => Elective::Margins {
-            top: get(0).unwrap_or(0.0),
-            left: get(1).unwrap_or(0.0),
-            bottom: get(2).unwrap_or(0.0),
-            right: get(3).unwrap_or(0.0),
-        },
-        15 => Elective::CharsPerInch {
-            rows: get(0).unwrap_or(6.0),
-            cols: get(1).unwrap_or(10.0),
-        },
-        number => Elective::Other { number, fields: f },
-    })
-}
-
-fn directive(ln: usize, t: &str) -> Result<Option<Directive>, Error> {
-    let mut toks = t[1..].split_whitespace();
-    let kw = toks.next().unwrap_or("").to_ascii_uppercase();
-    let rest: Vec<&str> = toks.collect();
-    let bad = |m: &str| Error::at(ln, format!("*{kw}: {m}"));
-    Ok(Some(match kw.as_str() {
-        "TYPE" => match rest.first().map(|s| s.to_ascii_uppercase()).as_deref() {
-            Some("CONTOUR") => Directive::Kind(MapKind::Contour),
-            Some("PROXIMAL") => Directive::Kind(MapKind::Proximal),
-            Some("CONFORMANT") => Directive::Kind(MapKind::Conformant),
-            _ => return Err(bad("expected CONTOUR, PROXIMAL or CONFORMANT")),
-        },
-        "LEVELS" => Directive::Levels(
-            rest.first()
-                .and_then(|s| s.parse().ok())
-                .ok_or_else(|| bad("expected a whole number"))?,
-        ),
-        "BREAKS" => Directive::Breaks(
-            rest.iter()
-                .map(|s| s.parse::<f64>().ok().filter(|v| v.is_finite()))
-                .collect::<Option<Vec<_>>>()
-                .ok_or_else(|| bad("expected numbers"))?,
-        ),
-        "MARKPOINTS" => Directive::MarkPoints,
-        "NOSLOPE" => Directive::NoSlope,
-        "NODIRECTION" => Directive::NoDirection,
-        _ => return Ok(None),
     }))
+}
+
+fn is_terminator(card: &str) -> bool {
+    card::cols(card, 1, 5) == "99999" && card::is_blank(&card::cols(card, 6, 80))
+}
+
+fn is_deck_end(card: &str) -> bool {
+    card.trim() == "999999"
+}
+
+/// Splits a sequence of vertices into rings closed by repeating the first vertex.
+fn rings(ln: usize, pts: Vec<(usize, Point)>, what: &str) -> Result<Vec<Vec<Point>>, Error> {
+    let mut out = Vec::new();
+    let mut cur: Vec<Point> = Vec::new();
+    let mut start = ln;
+    for (l, p) in pts {
+        if cur.is_empty() {
+            start = l;
+        }
+        if cur.len() >= 3 && cur[0] == p {
+            out.push(std::mem::take(&mut cur));
+        } else {
+            cur.push(p);
+        }
+    }
+    if !cur.is_empty() {
+        return Err(Error::at(
+            start,
+            format!("{what} starting here is not closed by repeating its first vertex"),
+        ));
+    }
+    Ok(out)
+}
+
+/// The cards of one package, with the header's measurement conversion.
+struct Package<'a> {
+    kind: Kind,
+    line: usize,
+    /// Row and column measurement: units per inch (header columns 31-50).
+    per_unit: (f64, f64),
+    cards: Vec<(usize, &'a str)>,
+}
+
+impl Package<'_> {
+    fn point(&self, (d, a): (f64, f64)) -> Point {
+        Point::new(d / self.per_unit.0, a / self.per_unit.1)
+    }
+
+    fn pair(&self, ln: usize, c: &str) -> Result<Point, Error> {
+        card::pair(c).map(|p| self.point(p)).ok_or_else(|| {
+            Error::at(
+                ln,
+                "expected a location: down in columns 11-20, across in columns 21-30",
+            )
+        })
+    }
+
+    fn data_cards(&self) -> impl Iterator<Item = (usize, &str)> {
+        self.cards
+            .iter()
+            .copied()
+            .filter(|(_, c)| !card::is_blank(c))
+    }
+}
+
+fn read_outline(p: &Package) -> Result<Vec<Vec<Point>>, Error> {
+    let pts = p
+        .data_cards()
+        .map(|(l, c)| Ok((l, p.pair(l, c)?)))
+        .collect::<Result<Vec<_>, Error>>()?;
+    rings(p.line, pts, "outline")
+}
+
+fn shape_of(c: char) -> Option<ZoneShape> {
+    match c.to_ascii_uppercase() {
+        'A' => Some(ZoneShape::Area),
+        'L' => Some(ZoneShape::Line),
+        'P' => Some(ZoneShape::Point),
+        _ => None,
+    }
+}
+
+fn read_conformolines(p: &Package) -> Result<Vec<Conformoline>, Error> {
+    let mut out: Vec<Conformoline> = Vec::new();
+    let mut last_ref = 0;
+    for (l, c) in p.data_cards() {
+        // Fixed format: reference in 1-5, shape in 10.
+        let (start, rest) = if let Some(shape) =
+            shape_of(card::col(c, 10)).filter(|_| card::is_blank(&card::cols(c, 6, 9)))
+        {
+            let r = card::int_field(c, 1, 5)
+                .ok_or_else(|| Error::at(l, "zone reference must be a whole number"))?;
+            (Some((r, shape)), c.to_string())
+        } else if card::is_blank(&card::cols(c, 1, 10)) {
+            (None, c.to_string())
+        } else {
+            // Free format: [reference] A|L|P down across, or down across.
+            let toks: Vec<&str> = c.split_whitespace().collect();
+            match toks
+                .iter()
+                .position(|t| t.len() == 1 && shape_of(t.chars().next().unwrap()).is_some())
+            {
+                Some(k) if k <= 1 => {
+                    let r =
+                        if k == 1 {
+                            Some(toks[0].parse::<i64>().map_err(|_| {
+                                Error::at(l, "zone reference must be a whole number")
+                            })?)
+                        } else {
+                            None
+                        };
+                    let shape = shape_of(toks[k].chars().next().unwrap()).unwrap();
+                    (Some((r, shape)), toks[k + 1..].join(" "))
+                }
+                _ => (None, c.to_string()),
+            }
+        };
+        let v = p.pair(l, &rest)?;
+        match start {
+            Some((r, shape)) => {
+                let reference = match r {
+                    Some(r) if r >= 1 => r as usize,
+                    Some(_) => return Err(Error::at(l, "zone reference must be at least 1")),
+                    None => last_ref + 1,
+                };
+                last_ref = reference;
+                out.push(Conformoline {
+                    reference,
+                    shape,
+                    vertices: vec![v],
+                });
+            }
+            None => match out.last_mut() {
+                Some(z) => z.vertices.push(v),
+                None => {
+                    return Err(Error::at(
+                        l,
+                        "first conformoline card needs A, L or P in column 10",
+                    ));
+                }
+            },
+        }
+    }
+    for z in &mut out {
+        if z.shape == ZoneShape::Area {
+            let n = z.vertices.len();
+            if n < 4 || z.vertices[0] != z.vertices[n - 1] {
+                return Err(Error::at(
+                    p.line,
+                    format!(
+                        "area zone {} must repeat its first vertex to close",
+                        z.reference
+                    ),
+                ));
+            }
+            z.vertices.pop();
+        }
+    }
+    Ok(out)
+}
+
+/// Continuation cards (columns 1-10 blank) after a line or area legend's first card.
+fn more_vertices(p: &Package, i: &mut usize, first: Point) -> Result<Vec<Point>, Error> {
+    let mut v = vec![first];
+    while let Some(&(l, c)) = p.cards.get(*i) {
+        if card::is_blank(c) || !card::is_blank(&card::cols(c, 1, 10)) {
+            break;
+        }
+        v.push(p.pair(l, c)?);
+        *i += 1;
+    }
+    Ok(v)
+}
+
+fn read_legends(p: &Package) -> Result<Vec<Legend>, Error> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    let cards = &p.cards;
+    while i < cards.len() {
+        let (l, c) = cards[i];
+        i += 1;
+        if card::is_blank(c) {
+            continue;
+        }
+        let at = p.pair(l, c)?;
+        let shift = || -> Result<(f64, f64), Error> {
+            let f = |k| card::field(c, k).ok_or_else(|| Error::at(l, "unreadable displacement"));
+            Ok((f(2)?.unwrap_or(0.0), f(3)?.unwrap_or(0.0)))
+        };
+        let strikes = Strikes::new(&card::cols(c, 6, 9));
+        match card::col(c, 10).to_ascii_uppercase() {
+            // Column 1 holds '-' for vertical text; the length is in columns 4-5.
+            'P' => match card::int_field(c, 2, 5) {
+                Some(Some(n)) if card::is_blank(&card::cols(c, 6, 9)) => {
+                    if !(1..=50).contains(&n) {
+                        return Err(Error::at(l, "legend length in columns 4-5 must be 1 to 50"));
+                    }
+                    let Some(&(_, t)) = cards.get(i) else {
+                        return Err(Error::at(
+                            l,
+                            "text legend needs a second card with the text",
+                        ));
+                    };
+                    i += 1;
+                    out.push(Legend::Text {
+                        text: card::cols(t, 1, n as usize).trim_end().to_string(),
+                        vertical: card::col(c, 1) == '-',
+                        at,
+                        shift: shift()?,
+                    });
+                }
+                _ => out.push(Legend::Symbol {
+                    strikes,
+                    at,
+                    shift: shift()?,
+                }),
+            },
+            'L' => out.push(Legend::Line {
+                strikes,
+                vertices: more_vertices(p, &mut i, at)?,
+            }),
+            'A' => {
+                let mut v = more_vertices(p, &mut i, at)?;
+                if v.len() < 4 || v[0] != v[v.len() - 1] {
+                    return Err(Error::at(
+                        l,
+                        "area legend must repeat its first vertex to close",
+                    ));
+                }
+                v.pop();
+                out.push(Legend::Area {
+                    strikes,
+                    vertices: v,
+                });
+            }
+            _ => return Err(Error::at(l, "legend card needs P, L or A in column 10")),
+        }
+    }
+    Ok(out)
+}
+
+fn read_barriers(p: &Package) -> Result<Vec<Barrier>, Error> {
+    let mut out = Vec::new();
+    let mut cur: Vec<(Point, f64)> = Vec::new();
+    for (l, c) in p.data_cards() {
+        let at = p.pair(l, c)?;
+        let s = card::field(c, 2).flatten().unwrap_or(0.0);
+        // Repeating the last vertex ends a barrier.
+        if cur.last().is_some_and(|&(q, _)| q == at) {
+            out.push(Barrier {
+                vertices: std::mem::take(&mut cur),
+            });
+        } else {
+            cur.push((at, s));
+        }
+    }
+    if !cur.is_empty() {
+        out.push(Barrier { vertices: cur });
+    }
+    Ok(out)
+}
+
+fn read_values(p: &Package) -> Result<Vec<Option<f64>>, Error> {
+    p.cards
+        .iter()
+        .map(|&(l, c)| {
+            if card::is_blank(c) {
+                return Ok(None);
+            }
+            match card::field(c, 0) {
+                Some(Some(v)) => Ok(Some(v)),
+                Some(None) if card::is_blank(&card::cols(c, 1, 10)) => Ok(None),
+                _ => card::free_numbers(c, 1)
+                    .map(|v| Some(v[0]))
+                    .ok_or_else(|| Error::at(l, "expected a value in columns 11-20")),
+            }
+        })
+        .collect()
+}
+
+fn read_index(p: &Package) -> Result<Vec<(usize, Option<usize>)>, Error> {
+    let mut out = Vec::new();
+    let (mut cur, mut rep) = (0usize, 0usize);
+    // A card with columns 1-5 blank (even an entirely blank one) marks a missing value.
+    for &(l, c) in &p.cards {
+        let bad = || Error::at(l, "expected reference numbers in columns 1-5 and 6-10");
+        let from = card::int_field(c, 1, 5).ok_or_else(bad)?;
+        let to = card::int_field(c, 6, 10).ok_or_else(bad)?;
+        match from {
+            None => {
+                cur += 1;
+                out.push((cur, None));
+            }
+            Some(f) if f >= 1 => {
+                cur = f as usize;
+                rep = match to {
+                    Some(t) if t >= 1 => t as usize,
+                    Some(_) => return Err(bad()),
+                    None => rep + 1,
+                };
+                out.push((cur, Some(rep)));
+            }
+            Some(_) => return Err(bad()),
+        }
+    }
+    Ok(out)
 }
 
 impl Deck {
     pub fn parse(text: &str) -> Result<Deck, Error> {
         let mut deck = Deck::default();
-        let mut state = State::Top;
-        let mut values: Vec<f64> = Vec::new();
-        let mut zones = ZoneBuilder::default();
-        let mut outline = RingBuilder::default();
-        let mut map: Option<MapSpec> = None;
-        let mut last = 0;
-
+        let mut state = Packages::default();
+        let mut open: Option<Package> = None;
+        let mut prev_electives: Vec<Entry> = Vec::new();
+        let mut ended = false;
         let warn = |deck: &mut Deck, line, m: String| {
             deck.diagnostics.push(Diagnostic { line, message: m })
         };
 
-        // Close whatever package is open.
-        let close = |state: State,
-                     deck: &mut Deck,
-                     zones: &mut ZoneBuilder,
-                     outline: &mut RingBuilder,
-                     map: &mut Option<MapSpec>,
-                     ln: usize|
-         -> Result<(), Error> {
-            match state {
-                State::Outline => {
-                    if let Some(r) = outline.finish() {
-                        if !deck.outline.is_empty() {
-                            return Err(Error::at(ln, "A-OUTLINE holds more than one ring"));
-                        }
-                        deck.outline = r;
-                    }
-                    if !deck.outline.is_empty() && deck.outline.len() < 3 {
-                        return Err(Error::at(ln, "A-OUTLINE needs at least three vertices"));
-                    }
-                }
-                State::Zones => {
-                    zones.flush();
-                    deck.zones = std::mem::take(&mut zones.zones);
-                }
-                State::Titles(_) => return Err(Error::at(ln, "F-MAP needs three title cards")),
-                State::Map => deck.maps.extend(map.take()),
-                _ => {}
-            }
-            Ok(())
-        };
-
-        for (idx, raw) in text.lines().enumerate() {
+        let lines: Vec<&str> = text.lines().collect();
+        for (idx, &c) in lines.iter().enumerate() {
             let ln = idx + 1;
-            last = ln;
-            let t = raw.trim();
-
-            if t == "999999" {
-                close(state, &mut deck, &mut zones, &mut outline, &mut map, ln)?;
-                state = State::Top;
+            if is_deck_end(c) {
+                if open.is_some() {
+                    return Err(Error::at(ln, "deck ended inside a package (missing 99999)"));
+                }
+                ended = true;
                 break;
             }
-            if let State::Titles(k) = state {
-                if t == "99999" {
-                    return Err(Error::at(ln, "F-MAP needs three title cards"));
-                }
-                if let Some(m) = map.as_mut() {
-                    m.titles[k] = raw.trim_end().chars().take(80).collect();
-                }
-                state = if k == 2 {
-                    State::Map
-                } else {
-                    State::Titles(k + 1)
-                };
-                continue;
-            }
-            if t.is_empty() || t.starts_with('#') {
-                continue;
-            }
-            if t == "99999" {
-                if state == State::Top {
-                    warn(&mut deck, ln, "terminator outside a package".into());
-                }
-                close(state, &mut deck, &mut zones, &mut outline, &mut map, ln)?;
-                state = State::Top;
-                continue;
-            }
-            if let Some(h) = header(t) {
-                if state != State::Top {
-                    warn(
-                        &mut deck,
-                        ln,
-                        "package not closed by 99999 before next header".into(),
-                    );
-                    close(state, &mut deck, &mut zones, &mut outline, &mut map, ln)?;
-                }
-                state = match h {
-                    Header::Outline => State::Outline,
-                    Header::Conformolines => State::Zones,
-                    Header::DataPoints => {
-                        deck.points.clear();
-                        State::Points
+            match open.as_mut() {
+                None => {
+                    if card::is_blank(c) || c.trim_start().starts_with('#') {
+                        continue;
                     }
-                    Header::Values => {
-                        values.clear();
-                        State::Values
-                    }
-                    Header::Map => {
-                        map = Some(MapSpec {
-                            line: ln,
-                            titles: Default::default(),
-                            electives: Vec::new(),
-                            directives: Vec::new(),
-                            values: values.clone(),
-                        });
-                        State::Titles(0)
-                    }
-                    Header::Unknown(name) => {
-                        warn(
-                            &mut deck,
-                            ln,
-                            format!("package {name} is not supported; skipped"),
-                        );
-                        State::Skip
-                    }
-                };
-                continue;
-            }
-
-            let nums = |n: usize, what: &str| {
-                card::numbers(raw, n).ok_or_else(|| Error::at(ln, format!("expected {what}")))
-            };
-            match state {
-                State::Top => {
-                    return Err(Error::at(
-                        ln,
-                        format!("expected a package header, found {t:?}"),
-                    ));
-                }
-                State::Skip => {}
-                State::Outline => {
-                    let v = nums(2, "two coordinates (down, across)")?;
-                    if let Some(r) = outline.push(Point::new(v[0], v[1])) {
-                        if !deck.outline.is_empty() {
-                            return Err(Error::at(ln, "A-OUTLINE holds more than one ring"));
+                    match header(c) {
+                        Some(Ok(kind)) => {
+                            let per = |k| card::field(c, k).flatten().filter(|v| *v > 0.0);
+                            let per_unit = match (per(2), per(3)) {
+                                (Some(r), Some(k)) => (r, k),
+                                _ => (1.0, 1.0),
+                            };
+                            open = Some(Package {
+                                kind,
+                                line: ln,
+                                per_unit,
+                                cards: Vec::new(),
+                            });
                         }
-                        deck.outline = r;
-                    }
-                }
-                State::Zones => {
-                    let v = nums(3, "zone number and two coordinates")?;
-                    if v[0].fract() != 0.0 {
-                        return Err(Error::at(ln, "zone number must be a whole number"));
-                    }
-                    zones.push(v[0] as i64, Point::new(v[1], v[2]));
-                }
-                State::Points => {
-                    let v = nums(2, "two coordinates (down, across)")?;
-                    deck.points.push(Point::new(v[0], v[1]));
-                }
-                State::Values => values.push(nums(1, "a data value")?[0]),
-                State::Map => {
-                    let m = map.as_mut().expect("map open");
-                    if t.starts_with('*') {
-                        match directive(ln, t)? {
-                            Some(d) => m.directives.push(d),
-                            None => warn(&mut deck, ln, format!("unknown directive {t:?} ignored")),
+                        Some(Err(name)) => {
+                            return Err(Error::at(ln, format!("unknown package {name:?}")));
                         }
-                    } else {
-                        m.electives.push((ln, elective(ln, raw)?));
+                        None => {
+                            return Err(Error::at(
+                                ln,
+                                format!("expected a package header, found {:?}", c.trim()),
+                            ));
+                        }
                     }
                 }
-                State::Titles(_) => unreachable!(),
+                Some(p) => {
+                    if !is_terminator(c) {
+                        p.cards.push((ln, c));
+                        continue;
+                    }
+                    let p = open.take().unwrap();
+                    match p.kind {
+                        Kind::Outline => state.outlines = read_outline(&p)?,
+                        Kind::Conformolines => state.conformolines = read_conformolines(&p)?,
+                        Kind::DataPoints => {
+                            state.points = p
+                                .data_cards()
+                                .map(|(l, c)| p.pair(l, c))
+                                .collect::<Result<_, _>>()?
+                        }
+                        Kind::Legends => state.legends = read_legends(&p)?,
+                        Kind::Barriers => state.barriers = read_barriers(&p)?,
+                        Kind::Values => state.values = read_values(&p)?,
+                        Kind::Index => state.index = read_index(&p)?,
+                        Kind::Map => {
+                            if p.cards.len() < 3 {
+                                return Err(Error::at(p.line, "F-MAP needs three title cards"));
+                            }
+                            let titles = std::array::from_fn(|k| {
+                                card::cols(p.cards[k].1, 1, 72).trim_end().to_string()
+                            });
+                            let electives = elective::resolve_repeat(
+                                &prev_electives,
+                                elective::parse(&p.cards[3..])?,
+                            );
+                            prev_electives = electives.clone();
+                            deck.maps.push(MapSpec {
+                                line: p.line,
+                                titles,
+                                electives,
+                                packages: state.clone(),
+                            });
+                        }
+                    }
+                }
             }
         }
-
-        if state != State::Top {
-            warn(&mut deck, last, "deck ended inside a package".into());
-            close(state, &mut deck, &mut zones, &mut outline, &mut map, last)?;
+        if let Some(p) = open {
+            return Err(Error::at(p.line, "package not closed by 99999"));
+        }
+        if !ended {
+            warn(
+                &mut deck,
+                lines.len(),
+                "deck does not end with 999999".into(),
+            );
         }
         Ok(deck)
     }
@@ -453,64 +560,129 @@ impl Deck {
 mod tests {
     use super::*;
 
-    #[test]
-    fn fixed_and_free_electives() {
-        let fixed = "    1      7.5       12.0";
-        assert_eq!(
-            elective(1, fixed).unwrap(),
-            Elective::MapSize {
-                height: 7.5,
-                width: 12.0
-            }
-        );
-        assert_eq!(
-            elective(1, "15 8 10").unwrap(),
-            Elective::CharsPerInch {
-                rows: 8.0,
-                cols: 10.0
-            }
-        );
-        assert!(elective(1, "  1").is_err());
+    fn f10(v: &[f64]) -> String {
+        v.iter().map(|x| format!("{x:>10}")).collect()
     }
 
     #[test]
-    fn zones_split_on_id_change_and_closure() {
-        let text = "A-CONFORMOLINES\n\
-                    1 0 0\n1 0 1\n1 1 1\n1 0 0\n\
-                    1 5 5\n1 5 6\n1 6 6\n\
-                    2 0 0\n2 0 1\n2 1 1\n99999\n999999\n";
-        let d = Deck::parse(text).unwrap();
-        assert_eq!(d.zones.len(), 2);
-        assert_eq!(d.zones[0].rings.len(), 2);
-        assert_eq!(d.zones[0].rings[0].len(), 3);
+    fn outlines_split_on_closure() {
+        let mut d = String::from("A-OUTLINE\n");
+        for p in [
+            (1.0, 1.6),
+            (0.5, 4.1),
+            (4.3, 2.6),
+            (1.0, 1.6),
+            (3.5, 5.8),
+            (2.6, 7.1),
+            (4.6, 6.8),
+            (3.5, 5.8),
+        ] {
+            d += &format!("{:10}{}\n", "", f10(&[p.0, p.1]));
+        }
+        d += "99999\n999999\n";
+        let deck = Deck::parse(&d).unwrap();
+        assert!(deck.maps.is_empty());
+        // No map, but parse succeeded; check via a map.
+        let d2 = d.replace("999999\n", "F-MAP\nA\nB\nC\n99999\n999999\n");
+        let m = &Deck::parse(&d2).unwrap().maps[0];
+        assert_eq!(m.packages.outlines.len(), 2);
+        assert_eq!(m.packages.outlines[1].len(), 3);
     }
 
     #[test]
-    fn map_binds_current_values_and_titles() {
-        let text = "E-VALUES\n1\n2\n99999\nF-MAP\nT1\n\nT3\n*LEVELS 3\n99999\n\
-                    E-VALUES\n5\n99999\nF-MAP\nA\nB\nC\n99999\n999999\n";
-        let d = Deck::parse(text).unwrap();
-        assert_eq!(d.maps.len(), 2);
-        assert_eq!(d.maps[0].values, vec![1.0, 2.0]);
-        assert_eq!(
-            d.maps[0].titles,
-            ["T1".to_string(), String::new(), "T3".to_string()]
+    fn row_and_column_measurement() {
+        let d = format!(
+            "B-DATA POINTS{:17}{:>10}{:>10}\n{:10}{}\n99999\nF-MAP\n\n\n\n99999\n999999\n",
+            "",
+            "8.",
+            "10.",
+            "",
+            f10(&[16.0, 25.0])
         );
-        assert_eq!(d.maps[0].directives, vec![Directive::Levels(3)]);
-        assert_eq!(d.maps[1].values, vec![5.0]);
+        let m = &Deck::parse(&d).unwrap().maps[0];
+        assert_eq!(m.packages.points, vec![Point::new(2.0, 2.5)]);
+    }
+
+    #[test]
+    fn conformolines_fixed_and_free() {
+        let d = format!(
+            "A-CONFORMOLINES\n{:>5}    A{}\n{:10}{}\n{:10}{}\n{:10}{}\n         P{}\n2 L 5 5\n6 6\n99999\nF-MAP\n\n\n\n99999\n999999\n",
+            3,
+            f10(&[0.0, 0.0]),
+            "",
+            f10(&[0.0, 1.0]),
+            "",
+            f10(&[1.0, 1.0]),
+            "",
+            f10(&[0.0, 0.0]),
+            f10(&[9.0, 9.0])
+        );
+        let z = &Deck::parse(&d).unwrap().maps[0].packages.conformolines;
+        assert_eq!(z.len(), 3);
+        assert_eq!(
+            (z[0].reference, z[0].shape, z[0].vertices.len()),
+            (3, ZoneShape::Area, 3)
+        );
+        // Blank reference: previous plus one.
+        assert_eq!((z[1].reference, z[1].shape), (4, ZoneShape::Point));
+        assert_eq!(
+            (z[2].reference, z[2].shape, z[2].vertices.len()),
+            (2, ZoneShape::Line, 2)
+        );
+    }
+
+    #[test]
+    fn packages_persist_and_empty_package_deletes() {
+        let d = "C-OTOLEGENDS\n    1    P       1.0       1.0\nN\n99999\n\
+                 F-MAP\nONE\n\n\n99999\nC-OTOLEGENDS\n99999\nF-MAP\nTWO\n\n\n99999\n999999\n";
+        let deck = Deck::parse(d).unwrap();
+        assert_eq!(deck.maps[0].packages.legends.len(), 1);
+        assert!(deck.maps[1].packages.legends.is_empty());
+    }
+
+    #[test]
+    fn legends() {
+        let d = "C-OTOLEGENDS\n\
+                 \x20   5    P        .6       6.8       1.0      -2.0\n\
+                 SCALE\n\
+                 \x20    R/  L      2.31      4.08\n\
+                 \x20             2.35      7.92\n\
+                 \x20    A   P       3.8       5.2\n\
+                 -   3    P       1.0       1.0\n\
+                 ABC\n\
+                 99999\nF-MAP\n\n\n\n99999\n999999\n";
+        let l = &Deck::parse(d).unwrap().maps[0].packages.legends;
+        assert_eq!(l.len(), 4);
+        assert_eq!(
+            l[0],
+            Legend::Text {
+                text: "SCALE".into(),
+                vertical: false,
+                at: Point::new(0.6, 6.8),
+                shift: (1.0, -2.0)
+            }
+        );
+        assert!(
+            matches!(&l[1], Legend::Line { strikes, vertices } if *strikes == Strikes::new("R/") && vertices.len() == 2)
+        );
+        assert!(matches!(&l[2], Legend::Symbol { strikes, .. } if *strikes == Strikes::new("A")));
+        assert!(matches!(&l[3], Legend::Text { vertical: true, .. }));
+    }
+
+    #[test]
+    fn values_blank_cards_and_index() {
+        let d = "E-VALUES\n          10.0\n\n7\n99999\nE1-VALUES INDEX\n    1    2\n    2\n\n99999\nF-MAP\n\n\n\n99999\n999999\n";
+        let p = &Deck::parse(d).unwrap().maps[0].packages;
+        assert_eq!(p.values, vec![Some(10.0), None, Some(7.0)]);
+        assert_eq!(p.index, vec![(1, Some(2)), (2, Some(3)), (3, None)]);
     }
 
     #[test]
     fn errors_carry_line_numbers() {
-        let e = Deck::parse("B-DATA POINTS\n1 2\nfoo\n").unwrap_err();
+        let e = Deck::parse("B-DATA POINTS\n1 2\nfoo\n99999\n").unwrap_err();
         assert_eq!(e.line, Some(3));
-        let e = Deck::parse("hello\n").unwrap_err();
-        assert_eq!(e.line, Some(1));
-    }
-
-    #[test]
-    fn unknown_packages_are_skipped_with_warning() {
-        let d = Deck::parse("D-BARRIERS\n1 2 3\n99999\n999999\n").unwrap();
-        assert_eq!(d.diagnostics.len(), 1);
+        assert_eq!(Deck::parse("hello\n").unwrap_err().line, Some(1));
+        assert!(Deck::parse("Q-NONSENSE\n99999\n").is_err());
+        assert!(Deck::parse("F-MAP\nA\n99999\n").is_err());
     }
 }

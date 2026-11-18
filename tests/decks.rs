@@ -1,4 +1,4 @@
-use symap::{Cell, MapKind, run};
+use symap::{Level, MapKind, Strikes, run};
 
 fn deck(name: &str) -> String {
     std::fs::read_to_string(format!(
@@ -8,81 +8,132 @@ fn deck(name: &str) -> String {
     .unwrap()
 }
 
-#[test]
-fn hills_deck_renders_contour_and_proximal() {
-    let r = run(&deck("hills.sym")).unwrap();
-    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
-    assert_eq!(r.maps.len(), 2);
-    let (c, p) = (&r.maps[0], &r.maps[1]);
-    assert_eq!(c.kind, MapKind::Contour);
-    assert_eq!(p.kind, MapKind::Proximal);
-    assert_eq!(c.classes.levels(), 6);
-    // 6.0 x 10.0 inch box at 6 lines / 10 chars per inch.
-    assert!(c.rows <= 36 && c.cols <= 100);
-    // Every level is used, and the outline leaves corners blank.
-    assert!(c.counts.iter().all(|&n| n > 0));
-    assert_eq!(c.cell(0, 0), Cell::Blank);
-    // 40 data points marked (some may share a cell).
-    let marks = c
-        .cells
-        .iter()
-        .filter(|x| matches!(x, Cell::Mark(_)))
-        .count();
-    assert!((30..=40).contains(&marks), "{marks}");
-    assert!(p.cells.iter().all(|x| !matches!(x, Cell::Mark(_))));
+/// A deck of four points on a square, with extra F-MAP cards.
+fn square(values: [&str; 4], electives: &str) -> String {
+    let pts = ["0 0", "0 10", "10 0", "10 10"].join("\n");
+    format!(
+        "B-DATA POINTS\n{pts}\n99999\nE-VALUES\n{}\n99999\nF-MAP\nT1\nT2\nT3\n    1       2.0       2.0\n    2      -1.0      -1.0      11.0      11.0\n{electives}99999\n999999\n",
+        values.join("\n")
+    )
 }
 
 #[test]
-fn districts_deck_fills_zones() {
-    let r = run(&deck("districts.sym")).unwrap();
-    let m = &r.maps[0];
-    assert_eq!(m.kind, MapKind::Conformant);
-    assert!(m.cells.iter().all(|c| *c != Cell::Blank));
-    // Six equal districts: frequencies are multiples of one sixth.
-    let total: usize = m.counts.iter().sum();
-    for &n in &m.counts {
-        assert_eq!((n * 6) % total, 0);
+fn manual_example_1_14() {
+    let r = run(&deck("example-1-14.sym")).unwrap();
+    assert!(r.diagnostics.is_empty(), "{:?}", r.diagnostics);
+    let (a, b) = (&r.maps[0], &r.maps[1]);
+    assert_eq!((a.kind, b.kind), (MapKind::Proximal, MapKind::Proximal));
+    // Elective 1: 5 x 8 inches at 8 lines and 10 columns per inch.
+    assert_eq!((a.frame.rows, a.frame.cols), (40, 80));
+    // As printed in Example 1-17: five equal levels, 1 1 1 1 2 points.
+    assert_eq!(a.classes.breaks, vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0]);
+    assert_eq!(a.frequency.levels, vec![1, 1, 1, 1, 2]);
+    let text = a.to_text();
+    assert!(text.contains("A = AIRPORT") && text.contains("I----.----I"));
+    // The second map: legends deleted, dashed background, black boundaries, values printed.
+    let text = b.to_text();
+    assert!(!text.contains("AIRPORT"));
+    assert_eq!(b.at(1, 1), Strikes::new("-"));
+    assert!(b.grid.contains(&Strikes::new("OXAV")));
+    for v in ["10.00", "20.00", "30.00", "40.00", "50.00", "60.00"] {
+        assert!(text.contains(v), "{v}");
     }
 }
 
 #[test]
-fn text_and_asa_outputs_agree_in_shape() {
+fn hills_contour_and_repeated_electives() {
     let r = run(&deck("hills.sym")).unwrap();
+    let (c, p) = (&r.maps[0], &r.maps[1]);
+    assert_eq!((c.kind, p.kind), (MapKind::Contour, MapKind::Proximal));
+    // Elective 12 carried electives 1 and 3 into the second map.
+    assert_eq!(p.classes.levels(), 6);
+    assert_eq!((p.frame.rows, p.frame.cols), (c.frame.rows, c.frame.cols));
+    // The surface stays within the data (electives 32 and 33 default to its extremes).
+    assert_eq!(c.frequency.low + c.frequency.high, 0);
+    assert!(c.levels.iter().flatten().all(|l| matches!(l, Level::In(_))));
+    // White contour lines: blank characters inside the study area.
+    let w = c.width();
+    let lined = (0..c.grid.len())
+        .filter(|&i| c.levels[i].is_some() && c.grid[i].is_blank())
+        .count();
+    assert!(lined > 50, "{lined}");
+    assert!(c.levels[w + 1].is_none(), "corner is outside the outline");
+}
+
+#[test]
+fn districts_conformant() {
+    let r = run(&deck("districts.sym")).unwrap();
     let m = &r.maps[0];
+    assert_eq!(m.kind, MapKind::Conformant);
+    assert_eq!(m.frequency.levels.iter().sum::<usize>(), 6);
+}
+
+#[test]
+fn value_range_electives_give_low_and_high() {
+    let r = run(&square(
+        ["0", "5", "10", "20"],
+        "    4       2.0\n    5      15.0\n    8\n",
+    ))
+    .unwrap();
+    let m = &r.maps[0];
+    assert_eq!((m.frequency.low, m.frequency.high), (1, 1));
     let text = m.to_text();
-    let asa = m.to_asa();
-    let advances = asa.lines().filter(|l| !l.starts_with('+')).count();
-    assert_eq!(advances, text.lines().count());
+    assert!(text.contains("BELOW") && text.contains("ABOVE"));
+    assert!(m.grid.contains(&Strikes::new("L.")) && m.grid.contains(&Strikes::new("HHH/")));
+}
+
+#[test]
+fn equal_count_levels() {
+    let r = run(&square(["1", "2", "3", "100"], "    3       2.\n    6\n")).unwrap();
+    assert_eq!(r.maps[0].frequency.levels, vec![2, 2]);
+}
+
+#[test]
+fn invalid_and_superimposed_points() {
+    let d = "B-DATA POINTS\n0 0\n0 10\n10 0\n10 10\n10 10\n99999\nE-VALUES\n1\n\n3\n4\n4\n99999\n\
+             F-MAP\nT\n\n\n    1       2.0       2.0\n    2      -1.0      -1.0      11.0      11.0\n   18\n99999\n999999\n";
+    let m = &run(d).unwrap().maps[0];
+    assert!(
+        m.grid.contains(&Strikes::new("M")),
+        "blank value is invalid under elective 18"
+    );
+    assert!(
+        m.grid.contains(&Strikes::new("S")),
+        "two points in one character"
+    );
+    assert_eq!(m.frequency.levels.iter().sum::<usize>(), 4);
+}
+
+#[test]
+fn wide_maps_print_in_panels() {
+    let m = &run(&square(["1", "2", "3", "4"], "    1       2.0      30.0\n"))
+        .unwrap()
+        .maps[0];
+    assert_eq!(m.frame.cols, 300);
+    assert_eq!(m.panels().len(), 3);
+}
+
+#[test]
+fn text_and_asa_agree() {
+    let m = &run(&deck("hills.sym")).unwrap().maps[0];
+    let (text, asa) = (m.to_text(), m.to_asa());
+    assert_eq!(
+        asa.lines().filter(|l| !l.starts_with('+')).count(),
+        text.lines().count()
+    );
     assert!(asa.starts_with('1'));
     assert!(
         asa.lines().any(|l| l.starts_with('+')),
-        "dark levels should overprint"
+        "dark levels overprint"
     );
-    assert!(text.contains("FREQUENCY %"));
 }
 
 #[test]
-fn value_count_mismatch_is_reported_at_the_map() {
-    let d = "B-DATA POINTS\n0 0\n1 1\n99999\nE-VALUES\n5\n99999\nF-MAP\nT\n\n\n99999\n999999\n";
-    let e = run(d).unwrap_err();
+fn errors() {
+    let short = "B-DATA POINTS\n0 0\n1 1\n99999\nE-VALUES\n5\n99999\nF-MAP\nT\n\n\n99999\n999999\n";
+    let e = run(short).unwrap_err();
     assert_eq!(e.line, Some(8));
-    assert!(e.message.contains("2 data points but 1 values"));
-}
-
-#[test]
-fn explicit_breaks_and_unimplemented_electives() {
-    let d = "B-DATA POINTS\n0 0\n0 10\n10 0\n10 10\n99999\nE-VALUES\n1\n2\n3\n4\n99999\n\
-             F-MAP\nT\n\n\n   13       5.0\n   27\n*BREAKS 0 2.5 5\n*TYPE PROXIMAL\n99999\n999999\n";
-    let r = run(d).unwrap();
-    let m = &r.maps[0];
-    assert_eq!(m.classes.breaks, vec![0.0, 2.5, 5.0]);
-    assert_eq!(m.warnings.len(), 2);
-    // Top-left quadrant is nearest the value-1 point: level 1.
-    assert_eq!(m.cell(0, 0), Cell::Level(0));
-    assert_eq!(m.cell(m.rows - 1, m.cols - 1), Cell::Level(1));
-}
-
-#[test]
-fn deck_without_map_is_an_error() {
+    assert!(e.message.contains("E-VALUES has only 1"));
     assert!(run("B-DATA POINTS\n0 0\n99999\n999999\n").is_err());
+    assert!(run(&square(["1", "2", "3", "4"], "    3      12.\n")).is_err());
 }
