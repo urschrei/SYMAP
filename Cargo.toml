@@ -1,0 +1,18 @@
+[package]
+name = "symap"
+description = "A reimplementation of the SYMAP line-printer mapping system"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "BlueOak-1.0.0"
+publish = false
+
+[dependencies]
+
+[lib]
+name = "symap"
+path = "src/lib.rs"
+
+[[bin]]
+name = "symap"
+path = "src/main.rs"
