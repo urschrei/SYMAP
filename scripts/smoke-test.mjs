@@ -36,6 +36,13 @@ for (const file of examples) {
   check(sheets > 0 && problems.length === 0, `${file}: ${sheets} sheet(s)${problems.length ? `, errors: ${problems}` : ''}`);
 }
 
+const upright = await page.$eval('#sheets canvas', (c) => [c.width, c.height]);
+await page.selectOption('#turn', '-1');
+await page.waitForTimeout(300);
+const sideways = await page.$eval('#sheets canvas', (c) => [c.width, c.height]);
+check(sideways[0] === upright[1] && sideways[1] === upright[0], 'a sheet turns sideways');
+await page.selectOption('#turn', '0');
+
 await page.fill('#deck', 'B-DATA POINTS\n1 2\nnot a card\n99999\n');
 await page.waitForSelector('#messages li.error button.line', { timeout: 10000 });
 await page.click('#messages li.error button.line');

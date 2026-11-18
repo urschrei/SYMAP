@@ -16,7 +16,7 @@ const deck = $('deck');
 const sheets = $('sheets');
 const messages = $('messages');
 
-const state = { symap: null, result: null, overprint: true, zoom: 'fit', paper: 'greenbar' };
+const state = { symap: null, result: null, overprint: true, zoom: 'fit', paper: 'greenbar', turn: 0 };
 
 // ---------------------------------------------------------------- storage
 
@@ -259,7 +259,25 @@ function drawSheet(map, lines) {
       }
     });
   });
-  return canvas;
+  return turned(canvas, state.turn, rows * CELL_H * scale);
+}
+
+// A sheet turned a quarter-turn for sideways printing: -1 to the left (the
+// foot of the page runs up the right edge, as the Laboratory's report maps
+// were reproduced), 1 to the right.
+function turned(canvas, turn, cssHeight) {
+  if (!turn) return canvas;
+  const out = document.createElement('canvas');
+  out.width = canvas.height;
+  out.height = canvas.width;
+  out.style.width = `${cssHeight.toFixed(1)}px`;
+  out.setAttribute('role', 'img');
+  out.setAttribute('aria-label', `${canvas.getAttribute('aria-label')}, turned ${turn < 0 ? 'left' : 'right'}`);
+  const ctx = out.getContext('2d');
+  ctx.translate(out.width / 2, out.height / 2);
+  ctx.rotate((turn * Math.PI) / 2);
+  ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+  return out;
 }
 
 function render() {
@@ -391,6 +409,7 @@ async function init() {
   $('mode-plain').addEventListener('click', () => setMode(false));
   $('zoom').addEventListener('change', (e) => { state.zoom = e.target.value; render(); });
   $('paper').addEventListener('change', (e) => { state.paper = e.target.value; render(); });
+  $('turn').addEventListener('change', (e) => { state.turn = Number(e.target.value); render(); });
   $('download-asa').addEventListener('click', () => { const t = outputs('asa'); if (t) download('symap-asa.txt', t); });
   $('download-text').addEventListener('click', () => { const t = outputs('text'); if (t) download('symap.txt', t); });
   $('download-values').addEventListener('click', () => {
