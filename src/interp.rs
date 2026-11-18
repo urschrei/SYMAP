@@ -340,6 +340,27 @@ mod tests {
     }
 
     #[test]
+    fn shepard_1984_figure_1_colinear_profile() {
+        // Spatial Statistics and Models, pp. 139-140: A = 7 at -5, B = 0 at 0,
+        // C = 6 at 2. Unclamped, the surface exceeds 7 left of A and falls
+        // below 0 left of B (SYMAP then clamps these to flat plateaus), and it
+        // keeps rising to the right of C.
+        let pts = [
+            Point::new(0.0, -5.0),
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 2.0),
+        ];
+        let s = Shepard::new(&pts, &[7.0, 0.0, 6.0], 0.0, ShepardParams::default());
+        let at = |x: f64| s.eval(Point::new(0.0, x)).unwrap();
+        assert_eq!((at(-5.0), at(0.0), at(2.0)), (7.0, 0.0, 6.0));
+        assert!(at(-5.5) > 7.0, "{}", at(-5.5));
+        assert!(at(-0.3) < 0.0, "{}", at(-0.3));
+        assert!(at(2.5) > 6.0, "{}", at(2.5));
+        // Between B and C the surface climbs steadily.
+        assert!((1..20).all(|k| at(k as f64 * 0.1) < at((k + 1) as f64 * 0.1)));
+    }
+
+    #[test]
     fn max_radius_leaves_gaps() {
         let pts = [Point::new(0.0, 0.0), Point::new(0.0, 1.0)];
         let params = ShepardParams {

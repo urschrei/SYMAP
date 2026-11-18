@@ -94,7 +94,7 @@ panels.
 ## Interpolation
 
 `interp::Shepard` follows Shepard (1968) as implemented in SYMAP and
-described in his 1970 report on SYMAP's interpolation:
+described in his 1970 report and 1984 chapter on SYMAP's interpolation:
 
 - the initial search radius holds about seven points on average, based on
   the rectangle the data points occupy; the radius then adjusts to keep four
@@ -112,8 +112,11 @@ Values are computed at grid points, every third column and every second
 line, and the characters between them are interpolated linearly; elective 37
 computes every character. A grid point within half a character of data
 points takes their (average) value, and a grid point with no data within
-reach makes the characters derived from it print as no data. The report's
-worked example (two points, value 341 between them) is a unit test.
+reach makes the characters derived from it print as no data. (The 1984
+chapter gives 1½ characters for that tolerance; the two make no difference
+on the manual's examples.) The 1970 report's worked example (two points,
+value 341 between them) and the 1984 chapter's co-linear profile (plateaus
+beyond the extreme points, a rise past the last one) are unit tests.
 
 ## References
 
