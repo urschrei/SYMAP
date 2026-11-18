@@ -6,8 +6,8 @@ Laboratory for Computer Graphics and Spatial Analysis). It reads SYMAP card
 decks and prints maps made of overprinted characters, following the 1971
 program manual.
 
-This is the Rust core. It has no dependencies and is meant to be compiled to
-WebAssembly for a browser front end.
+The Rust core has no dependencies. It runs from the command line or, compiled
+to WebAssembly, in the browser at <https://urschrei.github.io/SYMAP/>.
 
 ```bash
 cargo run -- examples/decks/example-1-14.sym
@@ -40,6 +40,24 @@ differences balanced between higher and lower. The original also fills outlines 
 wider, from the integer part of the left edge to one past the integer part
 of the right edge, but Example 1-17 shows the opposite on one island, so the
 rule is not yet settled.
+
+## In the browser
+
+The library compiles to a dependency-free WebAssembly module (`src/wasm.rs`:
+plain C-ABI exports, results passed as JSON), and `web/` is a static front
+end for it: an 80-column card editor with field guides, example decks, and a
+printout that strikes each overprint layer onto green-bar paper.
+
+```bash
+./scripts/build-web.sh
+```
+
+```bash
+python3 -m http.server --directory target/site
+```
+
+The `Site` workflow tests, lints and builds the site on every push and pull
+request, and publishes `target/site` to GitHub Pages from `main`.
 
 ## Decks
 
