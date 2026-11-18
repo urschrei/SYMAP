@@ -32,6 +32,16 @@ are in which side of a boundary the white line takes. The original usually
 blanks the higher-level character, as this implementation does, but on some
 boundaries it blanks the lower one, and no rule tested yet explains both.
 
+`examples/decks/example-1-3.sym` (row-and-column measurement) produces the
+contour map of Example 1-5. Its numeric interpretation and frequencies match
+the printout exactly. Where both maps print a level symbol, 93% of
+characters are on the same level and 98% within one. The original's surface
+is one level higher south of the −4 data point, where this implementation
+extrapolates further downhill. The original also fills outlines slightly
+wider, from the integer part of the left edge to one past the integer part
+of the right edge, but Example 1-17 shows the opposite on one island, so the
+rule is not yet settled.
+
 ## Decks
 
 Packages open with a header card and close with `99999` in columns 1-5; the
@@ -63,7 +73,7 @@ cards. Lines starting with `#` between packages are comments (an extension).
 | 3, 4, 5, 6 | levels, value range, equal-range, equal-count or proportional levels | yes |
 | 7 | symbolism (five cards) | yes |
 | 8, 22 | white contour and boundary lines off, or forced | yes |
-| 9, 24 | no frequency chart, no numeric interpretation | yes |
+| 9, 24 | no histogram bars, no numeric interpretation | yes |
 | 10, 11, 12 | text, print values at data points, repeat previous electives | yes |
 | 18, 19, 20, 23 | invalid data (`M`) | yes |
 | 25, 27 | data points on conformant maps, force contour | yes |

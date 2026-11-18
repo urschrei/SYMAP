@@ -32,7 +32,7 @@ pub enum Elective {
     Symbolism(Box<Symbolism>),
     /// 8: no white contour or boundary lines.
     NoContourLines,
-    /// 9: no frequency distribution chart.
+    /// 9: no histogram bars under the frequency distribution.
     NoHistogram,
     /// 10: text printed below the map.
     Text(Vec<String>),

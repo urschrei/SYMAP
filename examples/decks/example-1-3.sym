@@ -1,0 +1,47 @@
+# Example 1-3 from 'Computer Mapping as an Aid in Air Pollution Studies',
+# Vol. 2, Report K (Harvard Laboratory for Computer Graphics, 1971), p. 9.
+# A contour map with locations measured in printer rows and columns
+# (the 8. and 10. on each header card). Its output is Example 1-5.
+A-OUTLINE                             8.       10.
+                 9.0      16.0
+                 4.0      41.0
+                21.0      59.0
+                36.0      52.0
+                35.0      27.0
+                30.0       2.0
+                 9.0      16.0
+                30.0      58.0
+                23.0      71.0
+                32.0      78.0
+                39.0      68.0
+                30.0      58.0
+99999
+B-DATA POINTS                         8.       10.
+                24.0      13.0
+                13.0      34.0
+                26.0      30.0
+                20.0      53.0
+                28.0      48.0
+                30.0      70.0
+99999
+C-OTOLEGENDS                          8.       10.
+   11    P      37.0       2.0
+A = AIRPORT
+     A   P      31.0      52.0
+99999
+E-VALUES
+                12.0
+               -14.0
+                43.0
+                38.0
+                -4.0
+                 0.0
+99999
+F-MAP
+TEST MAP #1
+CONTOUR MAP - % CHANGE IN POPULATION FROM 1960 - 1970
+ROW AND COLUMN MEASUREMENT
+    1            5.0       8.0
+    2            0.0       0.0       5.0       8.0
+99999
+999999

@@ -30,7 +30,7 @@ pub struct Options {
     pub intervals: Option<Vec<f64>>,
     pub symbolism: Option<Symbolism>,
     pub lines: Lines,
-    pub histogram: bool,
+    pub bars: bool,
     pub text: Vec<String>,
     pub print_values: bool,
     pub invalid_blank: bool,
@@ -60,7 +60,7 @@ impl Default for Options {
             intervals: None,
             symbolism: None,
             lines: Lines::Standard,
-            histogram: true,
+            bars: true,
             text: Vec::new(),
             print_values: false,
             invalid_blank: false,
@@ -96,7 +96,7 @@ impl Options {
                 Elective::Intervals(v) => o.intervals = Some(v.clone()),
                 Elective::Symbolism(s) => o.symbolism = Some((**s).clone()),
                 Elective::NoContourLines => o.lines = Lines::None,
-                Elective::NoHistogram => o.histogram = false,
+                Elective::NoHistogram => o.bars = false,
                 Elective::Text(t) => o.text = t.clone(),
                 Elective::PrintValues => o.print_values = true,
                 Elective::Repeat | Elective::NoTabular | Elective::OverprintAlignment => {}
@@ -166,7 +166,7 @@ pub struct PrintedMap {
     pub data_range: (f64, f64),
     pub frequency: Frequency,
     pub numeric: bool,
-    pub histogram: bool,
+    pub bars: bool,
     pub warnings: Vec<String>,
 }
 
@@ -620,7 +620,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         data_range,
         frequency,
         numeric: o.numeric,
-        histogram: o.histogram,
+        bars: o.bars,
         warnings,
     })
 }

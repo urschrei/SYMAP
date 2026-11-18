@@ -233,14 +233,41 @@ impl PrintedMap {
         }
         out.push(rule);
         let f = &self.frequency;
-        out.push(labelled("FREQ.", &|l| {
-            match l {
-                Level::Low => f.low,
-                Level::In(k) => f.levels[k as usize],
-                Level::High => f.high,
+        let count = |l: Level| match l {
+            Level::Low => f.low,
+            Level::In(k) => f.levels[k as usize],
+            Level::High => f.high,
+        };
+        out.push(labelled("FREQ.", &|l| count(l).to_string()));
+        // Histogram bars (suppressed by elective 9): one row per data point,
+        // a small box of the level's symbols under each level (Example 1-5).
+        if self.bars {
+            let most = cols.iter().map(|&l| count(l)).max().unwrap_or(0);
+            for k in 1..=most {
+                let mut cells: Vec<Strikes> = format!("{k:>w$} ", w = LABEL - 1)
+                    .chars()
+                    .map(Strikes::single)
+                    .collect();
+                for &l in &cols {
+                    let (general, point) = match l {
+                        Level::Low => (s.low, s.low_point),
+                        Level::In(k) => (s.general[k as usize], s.point[k as usize]),
+                        Level::High => (s.high, s.high_point),
+                    };
+                    for j in 0..COL {
+                        let box_cell =
+                            (BLOCK / 2 - 3..=BLOCK / 2 + 3).contains(&j) && count(l) >= k;
+                        cells.push(match j {
+                            _ if !box_cell => Strikes::BLANK,
+                            _ if j == BLOCK / 2 - 3 || j == BLOCK / 2 + 3 => Strikes::single('I'),
+                            _ if j == BLOCK / 2 => point,
+                            _ => general,
+                        });
+                    }
+                }
+                out.push(Line::from_strikes(&cells));
             }
-            .to_string()
-        }));
+        }
         out
     }
 
@@ -263,7 +290,7 @@ impl PrintedMap {
         if self.numeric {
             out.extend(self.numeric_interpretation());
         }
-        if self.histogram {
+        {
             out.extend(self.histogram());
         }
         out

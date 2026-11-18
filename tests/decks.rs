@@ -137,3 +137,27 @@ fn errors() {
     assert!(run("B-DATA POINTS\n0 0\n99999\n999999\n").is_err());
     assert!(run(&square(["1", "2", "3", "4"], "    3      12.\n")).is_err());
 }
+
+#[test]
+fn manual_example_1_3_contour() {
+    // Row-and-column measurement; Example 1-5 is its printed output.
+    let r = run(&deck("example-1-3.sym")).unwrap();
+    let m = &r.maps[0];
+    assert_eq!(m.kind, MapKind::Contour);
+    assert_eq!((m.frame.rows, m.frame.cols), (40, 80));
+    // As printed on p. 13: extremes, level ranges and frequencies.
+    assert_eq!(m.data_range, (-14.0, 43.0));
+    let want = [-14.0, -2.6, 8.8, 20.2, 31.6, 43.0];
+    for (a, b) in m.classes.breaks.iter().zip(want) {
+        assert!((a - b).abs() < 1e-9, "{a} {b}");
+    }
+    assert_eq!(m.frequency.levels, vec![2, 1, 1, 0, 2]);
+    // Histogram bars: two rows, as in the original.
+    let text = m.to_text();
+    assert!(text.contains("1   I..1..I    I++2++I    IOO3OOI               I██5██I"));
+    assert!(text.contains("2   I..1..I                                     I██5██I"));
+    // Elective 9 removes only the bars.
+    let no_bars = deck("example-1-3.sym").replace("    2            0.0", "    9\n    2            0.0");
+    let text = run(&no_bars).unwrap().maps[0].to_text();
+    assert!(text.contains("FREQ.") && !text.contains("I..1..I"));
+}
