@@ -27,10 +27,17 @@ card for card, checked against the full-resolution scan.
 
 Checked character by character against the manual's printouts (Examples
 1-16 and 1-17), the fills agree: every region boundary falls where the
-equidistance lines between data points put it. The remaining differences
-are in which side of a boundary the white line takes. The original usually
-blanks the higher-level character, as this implementation does, but on some
-boundaries it blanks the lower one, and no rule tested yet explains both.
+equidistance lines between data points put it. On these proximal maps the
+remaining differences are in which side of a boundary the white line takes:
+the original usually blanks the higher-level character, as this
+implementation does, but not always.
+
+`examples/decks/example-1-20.sym` is the conformant example; its map
+matches the printed Example 1-22 in 99.4% of characters. There the white
+lines follow the zone edges themselves: each edge shared by two zones is
+traced to the nearest character on every line it crosses (every column, for
+a shallow edge), whether or not the zones are on the same level, while
+outer edges stay filled. Line legends are drawn the same way.
 
 `examples/decks/example-1-3.sym` (row-and-column measurement) produces the
 contour map of Example 1-5. Its numeric interpretation and frequencies match

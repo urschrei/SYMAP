@@ -227,26 +227,47 @@ fn resolve_values(
 
 /// Character positions along a polyline, in grid coordinates.
 fn trace(frame: &Frame, vertices: &[Point]) -> Vec<(usize, usize)> {
-    let mut out = Vec::new();
     let g: Vec<(f64, f64)> = vertices.iter().map(|p| frame.grid(*p)).collect();
-    if g.len() == 1 {
-        out.extend(frame.cell_at(g[0].0, g[0].1));
+    let mut out: Vec<(usize, usize)> = Vec::new();
+    let mut push = |r: f64, c: f64| {
+        if let Some(cell) = frame.cell_at(r, c) {
+            if !out.contains(&cell) {
+                out.push(cell);
+            }
+        }
+    };
+    for &(r, c) in &g {
+        push(r, c);
     }
     for w in g.windows(2) {
-        let (a, b) = (w[0], w[1]);
-        let steps = ((b.0 - a.0).abs().max((b.1 - a.1).abs()) * 4.0)
-            .ceil()
-            .max(1.0) as usize;
-        for k in 0..=steps {
-            let t = k as f64 / steps as f64;
-            if let Some(c) = frame.cell_at(a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t) {
-                if out.last() != Some(&c) {
-                    out.push(c);
-                }
-            }
+        for (r, c) in raster(w[0], w[1]) {
+            push(r, c);
         }
     }
     out
+}
+
+/// The characters a segment passes through, as SYMAP draws lines: the
+/// nearest character on each printed line crossed (on each column, for a
+/// shallow segment). Grid coordinates; results may lie off the map.
+fn raster((r0, c0): (f64, f64), (r1, c1): (f64, f64)) -> Vec<(f64, f64)> {
+    let steep = (r1 - r0).abs() > (c1 - c0).abs();
+    let (a0, a1) = if steep { (r0, r1) } else { (c0, c1) };
+    let (lo, hi) = (a0.min(a1).ceil() as i64, a0.max(a1).floor() as i64);
+    (lo..=hi)
+        .map(|a| {
+            let t = if a1 != a0 {
+                (a as f64 - a0) / (a1 - a0)
+            } else {
+                0.0
+            };
+            if steep {
+                (a as f64, ((c0 + t * (c1 - c0)) + 0.5).floor())
+            } else {
+                (((r0 + t * (r1 - r0)) + 0.5).floor(), a as f64)
+            }
+        })
+        .collect()
 }
 
 /// Draw one map.
@@ -362,6 +383,8 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         Value(Level),
     }
     let mut fill = vec![Fill::Background; (frame.rows + 1) * width];
+    // Which conformant zone (value reference) fills each character.
+    let mut zone_of: Vec<Option<usize>> = vec![None; (frame.rows + 1) * width];
     let inside =
         |p: Point| pk.outlines.is_empty() || pk.outlines.iter().any(|r| geom::in_ring(p, r));
     let valid_pts: Vec<(Point, f64)> = pk
@@ -494,6 +517,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                                     && geom::in_ring(frame.centre(r, c), &z.vertices)
                                 {
                                     fill[idx(r, c)] = f;
+                                    zone_of[idx(r, c)] = Some(z.reference);
                                 }
                             }
                         }
@@ -501,6 +525,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                     ZoneShape::Line | ZoneShape::Point => {
                         for (r, c) in trace(&frame, &z.vertices) {
                             fill[idx(r, c)] = f;
+                            zone_of[idx(r, c)] = Some(z.reference);
                         }
                     }
                 }
@@ -529,7 +554,46 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             Fill::Value(Level::In(k)) => symbolism.general[*k as usize],
         })
         .collect();
-    if o.lines != Lines::None {
+    if o.lines != Lines::None && kind == MapKind::Conformant {
+        // Conformant boundaries are drawn where they run: each zone edge is
+        // traced to the nearest character on every line it crosses (or every
+        // column, for shallow edges), and a traced character becomes a line
+        // where it separates two different zones. Outer edges stay filled.
+        // (Matches Example 1-22 of the 1971 manual, including lines between
+        // zones on the same level.)
+        let zone = |r: i64, c: i64| -> Option<usize> {
+            (r >= 1 && c >= 1 && r < frame.rows as i64 && c < frame.cols as i64)
+                .then(|| zone_of[idx(r as usize, c as usize)])
+                .flatten()
+        };
+        for z in pk
+            .conformolines
+            .iter()
+            .filter(|z| z.shape == ZoneShape::Area)
+        {
+            let n = z.vertices.len();
+            for k in 0..n {
+                let (p0, p1) = (
+                    frame.grid(z.vertices[k]),
+                    frame.grid(z.vertices[(k + 1) % n]),
+                );
+                let steep = (p1.0 - p0.0).abs() > (p1.1 - p0.1).abs();
+                for (r, c) in raster(p0, p1) {
+                    let (r, c) = (r as i64, c as i64);
+                    let (x, y) = if steep {
+                        (zone(r, c - 1), zone(r, c + 1))
+                    } else {
+                        (zone(r - 1, c), zone(r + 1, c))
+                    };
+                    if let (Some(x), Some(y)) = (x, y) {
+                        if x != y {
+                            grid[idx(r as usize, c as usize)] = symbolism.contour;
+                        }
+                    }
+                }
+            }
+        }
+    } else if o.lines != Lines::None {
         let rank = |r: usize, c: usize| levels[idx(r, c)].map(Level::rank);
         for r in 1..frame.rows {
             for c in 1..frame.cols {

@@ -1,0 +1,91 @@
+# Example 1-20 from 'Computer Mapping as an Aid in Air Pollution Studies',
+# Vol. 2, Report K (Harvard Laboratory for Computer Graphics, 1971), pp. 38-39.
+# A conformant map of six zones; its output is Example 1-22. Zone 1's third
+# vertex is 2.2 where zone 2 has 2.3: so in the original, as the program's
+# own listing (Example 1-21) confirms.
+A-CONFORMOLINES
+    1    A       1.0       1.7
+                  .8       2.5
+                 2.2       2.5
+                 3.6       2.4
+                 3.7        .3
+                 1.0       1.7
+    2    A        .8       2.5
+                  .4       4.2
+                 1.3       4.8
+                 2.8       4.5
+                 2.3       2.5
+                  .8       2.5
+    3    A       2.3       2.5
+                 2.9       4.5
+                 4.2       4.3
+                 4.3       2.8
+                 3.6       2.4
+                 2.3       2.5
+    4    A       1.3       4.8
+                 2.5       6.0
+                 3.2       5.7
+                 2.9       4.5
+                 1.3       4.8
+    5    A       2.9       4.5
+                 3.2       5.7
+                 4.3       5.3
+                 4.2       4.3
+                 2.9       4.5
+    6    A       3.7       6.0
+                 2.8       7.2
+                 3.8       8.0
+                 4.7       6.9
+                 3.7       6.0
+99999
+C-OTOLEGENDS
+    3    P        .6       6.8                -1.0
+***
+    5    P        .6       6.8       1.0      -2.0
+*****
+    1    P        .6       6.8      -1.0
+*
+    1    P        .6       6.8       2.0
+N
+    6    P        .6       6.8       4.0      -2.0
+SCALE:
+    1    P        .6       6.8       6.0
+5
+   11    P        .6       6.8       7.0      -5.0
+I----+----I
+    1    P        .6       6.8       6.0      -5.0
+0
+    2    P        .6       6.8       6.0       5.0
+10
+   11    P       4.6        .2
+A = AIRPORT
+         A       1.8       2.0
+                 2.3       2.2
+                 2.8       2.0
+                 2.5       1.5
+                 1.8       2.0
+     A   P       3.8       5.2
+     +=  L       4.4        .2
+                 4.4        .4
+    7    P       4.4        .6
+= CANAL
+     +=  L       1.0       4.6
+                 2.5       3.5
+                 4.4       4.5
+99999
+E-VALUES
+                40.0
+                12.0
+               100.0
+                30.0
+                96.0
+                73.0
+99999
+F-MAP
+TEST MAP #4
+CONFORMANT MAP - TAX RATE
+
+    1            5.0       8.0
+    2            0.0       0.0       5.0       8.0
+99999
+999999

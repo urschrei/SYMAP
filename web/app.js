@@ -3,6 +3,7 @@ import { createRunner } from './symap.js';
 const EXAMPLES = [
   { file: 'example-1-14.sym', name: 'Manual Example 1-14: proximal maps' },
   { file: 'example-1-3.sym', name: 'Manual Example 1-3: contour map' },
+  { file: 'example-1-20.sym', name: 'Manual Example 1-20: conformant map' },
   { file: 'hills.sym', name: 'Two hills: contour and proximal' },
   { file: 'districts.sym', name: 'Six districts: conformant map' },
 ];

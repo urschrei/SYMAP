@@ -164,3 +164,30 @@ fn manual_example_1_3_contour() {
     let text = run(&no_bars).unwrap().maps[0].to_text();
     assert!(text.contains("FREQ.") && !text.contains("I..1..I"));
 }
+
+#[test]
+fn manual_example_1_20_conformant_boundaries() {
+    // Cells read from the printed map, Example 1-22 (manual p. 42).
+    let r = run(&deck("example-1-20.sym")).unwrap();
+    let m = &r.maps[0];
+    assert_eq!(m.kind, MapKind::Conformant);
+    let at = |r: usize, c: usize| m.at(r, c);
+    let plus = Strikes::new("+");
+    let dot = Strikes::new(".");
+    let solid = Strikes::new("OXAV");
+    // The zone 1|2 edge runs along column 25: the line sits on the edge.
+    for row in [12, 16] {
+        assert_eq!(
+            (at(row, 24), at(row, 25), at(row, 26)),
+            (plus, Strikes::BLANK, dot),
+            "row {row}"
+        );
+    }
+    // A shallow edge (zones 4|5) blanks the characters it passes along.
+    assert_eq!(at(25, 51), solid);
+    assert!((52..=56).all(|c| at(25, c).is_blank()));
+    // Zone 4's outer edge is not a boundary between zones: still filled.
+    assert_eq!(at(25, 57), plus);
+    // Zones 3 and 5 share a level but are still separated by a line.
+    assert!(at(25, 45).is_blank() && at(25, 44) == solid && at(25, 46) == solid);
+}
