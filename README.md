@@ -34,10 +34,13 @@ boundaries it blanks the lower one, and no rule tested yet explains both.
 
 `examples/decks/example-1-3.sym` (row-and-column measurement) produces the
 contour map of Example 1-5. Its numeric interpretation and frequencies match
-the printout exactly. Where both maps print a level symbol, 93% of
-characters are on the same level and 98% within one. The original's surface
-is one level higher south of the −4 data point, where this implementation
-extrapolates further downhill. The original also fills outlines slightly
+the printout exactly. Where both maps print a level symbol, 94% of
+characters are on the same level and 99% within one. The original's surface
+is one level higher south of the −4 data point, where this implementation's
+slope correction carries it further downhill. Weakening the slope term
+improves the match steadily (96% with none), which suggests SYMAP applied it
+more selectively than Shepard's formula, but the standard fraction of 0.1
+is kept as the manual specifies. The original also fills outlines slightly
 wider, from the integer part of the left edge to one past the integer part
 of the right edge, but Example 1-17 shows the opposite on one island, so the
 rule is not yet settled.
@@ -80,7 +83,8 @@ cards. Lines starting with `#` between packages are comments (an extension).
 | 31, 32, 33 | extrapolation fraction and limits | yes |
 | 34, 35, 36 | search radius and point count | yes |
 | 31 + 36 + 37 | proximal map | yes |
-| 17, 26, 37 | tabular output, overprint alignment, independence | accepted (every character is computed independently) |
+| 37 | compute every character independently | yes |
+| 17, 26 | tabular output, overprint alignment | accepted, no effect |
 | 21, 28, 38, 39 | tape output, dot maps, data graph, regression plane | not implemented (warning) |
 
 Standard symbolism follows Tables 3-1 and 3-2: from `.` to `O`+`X`+`A`+`V`
@@ -96,13 +100,15 @@ panels.
 `interp::Shepard` follows Shepard (1968): a search radius that holds about
 seven points on average, adjusted to keep four to ten; weights of `1/d`
 tapering to zero at the radius; a direction factor; and a slope correction
-limited to a fraction (0.1) of the data range. The surface passes exactly
-through the data and is held within the data extremes unless electives 32
-and 33 say otherwise.
+damped with distance. The surface passes exactly through the data. Wherever
+it is computed, it may go beyond the highest or lowest of the points used
+there by at most the elective 31 fraction (0.1) of the data range, and it is
+held within the data extremes unless electives 32 and 33 say otherwise.
 
-The manual says standard SYMAP computes about one character in six and
-derives the rest, unless elective 37 asks for every character to be computed
-independently. This implementation always computes every character.
+As the manual describes, values are computed for about one character in six
+(every second line and third column) and the rest are interpolated from them;
+elective 37 computes every character independently. The exact sampling
+pattern of the original is not documented.
 
 ## References
 

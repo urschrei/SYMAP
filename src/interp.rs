@@ -56,6 +56,8 @@ pub struct Shepard {
     grad: Vec<(f64, f64)>,
     /// Slope damping distance; zero disables the slope term.
     v: f64,
+    /// Total range of the data values.
+    range: f64,
 }
 
 fn by_dist(a: &(usize, f64), b: &(usize, f64)) -> std::cmp::Ordering {
@@ -78,17 +80,19 @@ impl Shepard {
             params,
             grad: vec![(0.0, 0.0); points.len()],
             v: 0.0,
+            range: 0.0,
         };
+        let (lo, hi) = values
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), &v| {
+                (l.min(v), h.max(v))
+            });
+        s.range = hi - lo;
         if params.slope && params.fraction > 0.0 && points.len() > 1 {
             let grads: Vec<_> = (0..points.len()).map(|i| s.gradient(i)).collect();
             let gmax = grads.iter().map(|(a, b)| a.hypot(*b)).fold(0.0, f64::max);
-            let (lo, hi) = values
-                .iter()
-                .fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), &v| {
-                    (l.min(v), h.max(v))
-                });
-            if gmax > 0.0 && hi > lo {
-                s.v = params.fraction * (hi - lo) / gmax;
+            if gmax > 0.0 && s.range > 0.0 {
+                s.v = params.fraction * s.range / gmax;
                 s.grad = grads;
             }
         }
@@ -204,12 +208,21 @@ impl Shepard {
             num += wi * zi;
             den += wi;
         }
-        Some(if den > 0.0 && num.is_finite() {
+        let v = if den > 0.0 && num.is_finite() {
             num / den
         } else {
             // Degenerate weights: fall back to the nearest point.
             self.z[nb[0].0]
-        })
+        };
+        // Extrapolate beyond the local extremes (the highest and lowest of the
+        // points used here) by at most the elective 31 fraction of the range.
+        let (zlo, zhi) = nb
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), &(i, _)| {
+                (l.min(self.z[i]), h.max(self.z[i]))
+            });
+        let reach = self.params.fraction * self.range;
+        Some(v.clamp(zlo - reach, zhi + reach))
     }
 }
 
@@ -294,6 +307,20 @@ mod tests {
         let s = Shepard::new(&pts, &[0.0, 10.0], 100.0, ShepardParams::default());
         let v = s.eval(Point::new(0.0, 5.0)).unwrap();
         assert!((v - 5.0).abs() < 1e-9, "{v}");
+    }
+
+    #[test]
+    fn extrapolation_is_limited_near_local_extremes() {
+        // A steep ramp: slope correction would overshoot beyond the end points.
+        let pts: Vec<Point> = (0..8).map(|i| Point::new(0.0, i as f64)).collect();
+        let z: Vec<f64> = (0..8).map(|i| (i * i) as f64).collect();
+        let s = Shepard::new(&pts, &z, 64.0, ShepardParams::default());
+        let reach = 0.1 * 49.0;
+        for k in 0..70 {
+            let p = Point::new(0.3, k as f64 * 0.1);
+            let v = s.eval(p).unwrap();
+            assert!(v >= -reach - 1e-9 && v <= 49.0 + reach + 1e-9, "{v}");
+        }
     }
 
     #[test]

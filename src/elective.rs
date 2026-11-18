@@ -83,7 +83,7 @@ pub enum Elective {
         min: Option<f64>,
         max: Option<f64>,
     },
-    /// 37: compute every character independently.
+    /// 37: compute every character independently (standard: one in six).
     Independence,
     /// 21, 28, 38, 39 and unknown numbers.
     Unsupported {

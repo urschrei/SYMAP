@@ -405,11 +405,44 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             let lo = o.extrapolation_min.unwrap_or(data_range.0);
             let hi = o.extrapolation_max.unwrap_or(data_range.1);
             let s = Shepard::new(&pts, &zs, area, params);
+            // Standard SYMAP computes about one character in six (every second
+            // line, every third column) and derives the rest; elective 37
+            // computes every character independently.
+            let (sr, sc) = if o.independence { (1, 1) } else { (2, 3) };
+            let anchor = |i: usize, step: usize, n: usize| -> (usize, usize) {
+                let a = i / step * step;
+                (a, (a + step).min(n))
+            };
+            let samples: std::collections::HashMap<(usize, usize), Option<f64>> = (0..=frame.rows)
+                .filter(|r| r % sr == 0 || *r == frame.rows)
+                .flat_map(|r| {
+                    (0..=frame.cols)
+                        .filter(|c| c % sc == 0 || *c == frame.cols)
+                        .map(move |c| (r, c))
+                })
+                .map(|(r, c)| ((r, c), s.eval(frame.centre(r, c))))
+                .collect();
+            let value = |r: usize, c: usize| -> Option<f64> {
+                let ((r0, r1), (c0, c1)) = (anchor(r, sr, frame.rows), anchor(c, sc, frame.cols));
+                let g = |r, c| samples[&(r, c)];
+                let (a, b, cc, d) = (g(r0, c0)?, g(r0, c1)?, g(r1, c0)?, g(r1, c1)?);
+                let t = if r1 > r0 {
+                    (r - r0) as f64 / (r1 - r0) as f64
+                } else {
+                    0.0
+                };
+                let u = if c1 > c0 {
+                    (c - c0) as f64 / (c1 - c0) as f64
+                } else {
+                    0.0
+                };
+                Some((a * (1.0 - u) + b * u) * (1.0 - t) + (cc * (1.0 - u) + d * u) * t)
+            };
             for r in 1..frame.rows {
                 for c in 1..frame.cols {
                     let p = frame.centre(r, c);
                     if inside(p) {
-                        fill[idx(r, c)] = match s.eval(p) {
+                        fill[idx(r, c)] = match value(r, c).or_else(|| s.eval(p)) {
                             Some(v) => Fill::Value(classes.level(v.clamp(lo, hi.max(lo)))),
                             None => Fill::NoData,
                         };
