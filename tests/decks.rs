@@ -29,7 +29,7 @@ fn manual_example_1_14() {
     assert_eq!(a.classes.breaks, vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0]);
     assert_eq!(a.frequency.levels, vec![1, 1, 1, 1, 2]);
     let text = a.to_text();
-    assert!(text.contains("A = AIRPORT") && text.contains("I----.----I"));
+    assert!(text.contains("A = AIRPORT") && text.contains("I----+----I"));
     // The second map: legends deleted, dashed background, black boundaries, values printed.
     let text = b.to_text();
     assert!(!text.contains("AIRPORT"));

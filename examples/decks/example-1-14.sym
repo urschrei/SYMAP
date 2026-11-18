@@ -2,6 +2,9 @@
 # Vol. 2, Report K (Harvard Laboratory for Computer Graphics, 1971), pp. 29-30.
 # Two proximal maps; the second deletes the legends and uses elective 7
 # to strike black precinct boundaries on a dashed background.
+# The scale-bar text cards are given as the map (Example 1-16) prints them:
+# 'I' at the ends and '+' at the midpoint. The listing printer shows ')'
+# and '.' for these cards, so the two printers' character sets differ.
 A-OUTLINE
                  1.0       1.6
                   .5       4.1
@@ -34,7 +37,7 @@ C-OTOLEGENDS
     1    P        .6       6.8       2.0
 N
     6    P        .6       6.8       5.0      -2.0
-SCALE
+SCALE:
      -   L       1.3       6.3
                  1.3       7.3
     1    P       1.3       6.3
@@ -42,7 +45,7 @@ I
     1    P       1.3       7.3
 I
     1    P       1.3       6.8
-.
++
     1    P       1.3       6.3      -1.0
 0
     1    P       1.3       6.8      -1.0
@@ -51,7 +54,7 @@ I
 10
    11    P       4.6        .2
 A = AIRPORT
-     .   A       1.8       2.0
+         A       1.8       2.0
                  2.3       2.2
                  2.8       2.0
                  2.5       1.5

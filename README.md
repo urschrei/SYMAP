@@ -23,9 +23,14 @@ Plain output stands in single characters for overprints (`Θ` for `O`+`-`,
 `⊗` for `O`+`X`, `█` for `O`+`X`+`A`+`V`).
 
 `examples/decks/example-1-14.sym` is the manual's Example 1-14 transcribed
-card for card. Its second map closely matches Example 1-17 (Town
-Precincts): the precinct layout agrees by eye, and the level ranges,
-percentages and frequencies agree exactly with the original printout.
+card for card, checked against the full-resolution scan.
+
+Checked character by character against the manual's printouts (Examples
+1-16 and 1-17), the fills agree: every region boundary falls where the
+equidistance lines between data points put it. The remaining differences
+are in which side of a boundary the white line takes. The original usually
+blanks the higher-level character, as this implementation does, but on some
+boundaries it blanks the lower one, and no rule tested yet explains both.
 
 ## Decks
 
