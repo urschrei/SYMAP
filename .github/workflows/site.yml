@@ -30,7 +30,14 @@ jobs:
           cargo clippy --lib --target wasm32-unknown-unknown --locked -- -D warnings
       - name: Build the site
         run: ./scripts/build-web.sh
-      - uses: actions/upload-pages-artifact@v3
+      - name: Browser smoke test
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory target/site &
+          sleep 1
+          node scripts/smoke-test.mjs http://127.0.0.1:8765/
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: target/site
 
@@ -46,4 +53,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

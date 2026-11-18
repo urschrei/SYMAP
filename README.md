@@ -77,7 +77,9 @@ python3 -m http.server --directory target/site
 ```
 
 The `Site` workflow tests, lints and builds the site on every push and pull
-request, and publishes `target/site` to GitHub Pages from `main`.
+request, runs a browser smoke test (`scripts/smoke-test.mjs`: every example
+renders, errors link to their cards), and publishes `target/site` to GitHub
+Pages from `main`.
 
 ## Decks
 
