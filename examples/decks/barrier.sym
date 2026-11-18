@@ -1,6 +1,7 @@
-# A river with towns on both banks: an impermeable D-BARRIERS line along
-# the river keeps the high values on the west bank from spilling east.
-# The second map removes the barrier with an empty package.
+# A river with towns on both banks (made-up data). An impermeable
+# D-BARRIERS line along the river stops the high values on the west bank
+# from being interpolated across it. The second map removes the barrier
+# with an empty package, for comparison.
 B-DATA POINTS
                  1.0       1.0
                  2.5       0.8

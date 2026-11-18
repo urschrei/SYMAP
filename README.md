@@ -1,13 +1,16 @@
 # symap
 
-A reimplementation of SYMAP, the Synagraphic Mapping System: Howard T.
-Fisher's line-printer mapping program (Northwestern, 1963; then the Harvard
-Laboratory for Computer Graphics and Spatial Analysis). It reads SYMAP card
-decks and prints maps made of overprinted characters, following the 1971
-program manual.
+A reimplementation of SYMAP, the Synagraphic Mapping System. SYMAP was
+Howard T. Fisher's line-printer mapping program, written at Northwestern in
+1963 and developed at the Harvard Laboratory for Computer Graphics and
+Spatial Analysis. It reads SYMAP card decks and prints maps made of
+overprinted characters, following the 1971 program manual.
 
-The Rust core has no dependencies. It runs from the command line or, compiled
-to WebAssembly, in the browser at <https://urschrei.github.io/SYMAP/>.
+The core is written in Rust with no dependencies. It runs from the command
+line, or compiled to WebAssembly in the browser at
+<https://urschrei.github.io/SYMAP/>.
+
+## Running it
 
 ```bash
 cargo run -- examples/decks/example-1-14.sym
@@ -17,166 +20,58 @@ cargo run -- examples/decks/example-1-14.sym
 cargo run -- --asa examples/decks/hills.sym
 ```
 
-Each map's printout starts, as the original's did, with the map scale and a
-table of its data points (or zones), giving each one's printed row and
-column, value and level; for contour maps it also gives the standard search
-radius. `--values` prints the values computed for maps that use elective 21,
-as CSV.
+Plain output prints one character per position, with single characters
+standing in for overprints (`Θ` for `O`+`-`, `⊗` for `O`+`X`, `█` for
+`O`+`X`+`A`+`V`). `--asa` writes Fortran carriage control instead: a line
+starting with `+` overprints the line above, which is how the line printer
+struck darker tones. `--values` writes the values computed for maps that use
+elective 21, as CSV.
 
-`--asa` writes Fortran carriage control: lines starting with `+` overprint
-the line above, which is how darker tones were struck on the line printer.
-Plain output stands in single characters for overprints (`Θ` for `O`+`-`,
-`⊗` for `O`+`X`, `█` for `O`+`X`+`A`+`V`).
+The browser version has a card editor with field guides and the example
+decks. It draws each overprint layer onto green-bar or white paper, upright
+or sideways, and can download the output as text, ASA or CSV.
 
-`examples/decks/example-1-14.sym` is the manual's Example 1-14 transcribed
-card for card, checked against the full-resolution scan.
+## What it covers
 
-Checked character by character against the manual's printouts (Examples
-1-16 and 1-17), the fills agree: every region boundary falls where the
-equidistance lines between data points put it. On these proximal maps the
-remaining differences are in which side of a boundary the white line takes:
-the original usually blanks the higher-level character, as this
-implementation does, but not always.
+- Contour, proximal and conformant maps, with every package in the 1971
+  manual: outlines, conformolines, data points, legends, barriers, values
+  and a values index.
+- Every elective in the 1971 manual (1 to 28 and 31 to 37; the manual has
+  no 29 or 30). Electives 38 and 39 (Version 6's data graph and regression
+  plane) are not implemented.
+- Shepard's interpolation as SYMAP implemented it, including barriers.
+- The printed page: the tables before the map, the bordered map (in
+  13-inch panels when wider), titles, numeric interpretation and the
+  frequency distribution, laid out as in the manual's examples.
 
-`examples/decks/example-1-20.sym` is the conformant example; its map
-matches the printed Example 1-22 in 99.4% of characters. There the white
-lines follow the zone edges themselves: each edge shared by two zones is
-traced to the nearest character on every line it crosses (every column, for
-a shallow edge), whether or not the zones are on the same level, while
-outer edges stay filled. Line legends are drawn the same way.
+The output has been compared with the manual's printouts, character by
+character. Agreement ranges from 96% (Example 1-5, a contour map) to 99.4%
+(Example 1-22, a conformant map).
 
-`examples/decks/example-1-3.sym` (row-and-column measurement) produces the
-contour map of Example 1-5. Its numeric interpretation and frequencies match
-the printout exactly. Where both maps print a level symbol, 96% of
-characters are on the same level and 99% within one, with the remaining
-differences balanced between higher and lower. The original also fills outlines slightly
-wider, from the integer part of the left edge to one past the integer part
-of the right edge, but Example 1-17 shows the opposite on one island, so the
-rule is not yet settled.
+## Examples
 
-The original also printed its standard initial search radius: 3.9271 for
-Example 1-3 (in Example 1-4) and 3.9958 for the Example 1-14 data points (in
-Example 1-7). Both are reproduced exactly by pi r^2 = 24A/N, where A is the
-area of the rectangle the data points occupy and N their number. Both decks
-have six points, so how the radius depends on N is inferred: the documents
-say the circle holds seven points on average, which this does not match.
-When four to ten points fall within it, the radius stands as the final
-radius; with this, Example 1-5 agrees at 96% on the same level.
+| Deck | Map |
+|------|-----|
+| `example-1-3.sym` | The manual's Example 1-3: a contour map measured in rows and columns |
+| `example-1-14.sym` | The manual's Example 1-14: two proximal maps with legends |
+| `example-1-20.sym` | The manual's Example 1-20: a conformant map of six zones |
+| `hills.sym` | Contour and proximal maps of 40 spot heights |
+| `districts.sym` | A conformant map of six districts |
+| `barrier.sym` | A river as an impermeable barrier, with and without it |
+| `furniture.sym` | A lettered title, north arrow and scale inset drawn with legends |
 
-## In the browser
+The manual's decks are transcribed card for card and checked against the
+scans. The other decks use made-up data.
 
-The library compiles to a dependency-free WebAssembly module (`src/wasm.rs`:
-plain C-ABI exports, results passed as JSON), and `web/` is a static front
-end for it: an 80-column card editor with field guides, example decks, and a
-printout that strikes each overprint layer onto green-bar or white paper.
-Type is sized as on the manual's printouts (capitals about 0.7 of the line
-pitch tall and 0.8 of the character pitch wide, with ink spread), so level
-fills read as tones. Each map starts a sheet of its own after its tables.
+## Documentation
 
-Titles, north arrows and scale bars on SYMAP maps were drawn by the deck,
-not the program. `examples/decks/furniture.sym` draws them with
-C-OTOLEGENDS in the manner of the Laboratory's later report maps: white
-lettering cut through a dark area legend, and a cleared, ruled inset with
-an arrow and a ticked scale bar.
-
-```bash
-./scripts/build-web.sh
-```
-
-```bash
-python3 -m http.server --directory target/site
-```
-
-The `Site` workflow tests, lints and builds the site on every push and pull
-request, runs a browser smoke test (`scripts/smoke-test.mjs`: every example
-renders, errors link to their cards), and publishes `target/site` to GitHub
-Pages from `main`.
-
-## Decks
-
-Packages open with a header card and close with `99999` in columns 1-5; the
-deck ends with `999999`. Locations are measured down from the top border and
-across from the left border, in columns 11-20 and 21-30. Header columns
-31-40 and 41-50 (`8.` and `10.`) switch to row-and-column measurement. A
-package stays in effect for later maps until replaced; an empty package
-removes it.
-
-| Package           | Status |
-|-------------------|--------|
-| `A-OUTLINE`       | any number of outlines, each closed by repeating its first vertex |
-| `A-CONFORMOLINES` | area, line and point zones; reference in columns 1-5, `A`/`L`/`P` in column 10 |
-| `B-DATA POINTS`   | yes |
-| `C-OTOLEGENDS`    | symbol, horizontal and vertical text, line and area legends with displacement |
-| `D-BARRIERS`      | permeable and impermeable barriers, strength varying along each barrier |
-| `E-VALUES`        | value in columns 11-20; a blank card is a blank value |
-| `E1-VALUES INDEX` | yes |
-| `F-MAP`           | three title cards, then electives |
-
-Blank-separated numbers are accepted as a fallback for hand-typed data
-cards. Lines starting with `#` between packages are comments (an extension).
-
-## Electives
-
-| Electives | Effect | Status |
-|-----------|--------|--------|
-| 1, 2, 13, 14, 15, 16 | size, extreme points, scale, margins, characters per inch, size safeguard | yes |
-| 3, 4, 5, 6 | levels, value range, equal-range, equal-count or proportional levels | yes |
-| 7 | symbolism (five cards) | yes |
-| 8, 22 | white contour and boundary lines off, or forced | yes |
-| 9, 24 | no histogram bars, no numeric interpretation | yes |
-| 10, 11, 12 | text, print values at data points, repeat previous electives | yes |
-| 18, 19, 20, 23 | invalid data (`M`) | yes |
-| 25, 27 | data points on conformant maps, force contour | yes |
-| 31, 32, 33 | extrapolation fraction and limits | yes |
-| 34, 35, 36 | search radius and point count | yes |
-| 31 + 36 + 37 | proximal map | yes |
-| 37 | compute every character independently | yes |
-| 17 | no table of data points or zones before the map | yes |
-| 21 | keep each character's computed value (`--values`, or the site's Values download) | yes |
-| 28 | dot conformant maps: by level, as a share of the range, or one dot per amount | yes |
-| 26 | overprint alignment (a printer adjustment) | accepted, no effect |
-| 38, 39 | Version 6 data graph and regression plane | not implemented (warning) |
-
-Standard symbolism follows Tables 3-1 and 3-2: from `.` to `O`+`X`+`A`+`V`
-over up to ten levels, data points as their level number (`*` for the
-tenth), `L` and `H` outside the value range, `S` for superimposed points,
-`M` for invalid data, `N` where no data point is within reach. The page
-below the map gives the titles, text, numeric interpretation and frequency
-distribution in the manual's layout. Maps wider than 13 inches print in
-panels.
-
-## Interpolation
-
-`interp::Shepard` follows Shepard (1968) as implemented in SYMAP and
-described in his 1970 report and 1984 chapter on SYMAP's interpolation:
-
-- the initial search radius satisfies pi r^2 = 24A/N for data points
-  occupying a rectangle of area A (reproducing SYMAP's printed radii); it
-  stands when four to ten points fall within it, and otherwise becomes the
-  distance to the point after the tenth, or after the fourth (no taper when
-  every point is used);
-- weights of `1/d` taper to zero at the final radius, with a direction
-  factor for points not shadowed by others;
-- each data point carries a slope, from neighbours at least 1.5 characters
-  away, applied with a damping `a/(a+d)`; `a` is chosen so the slope term
-  never exceeds the elective 31 fraction (0.1) of the data range;
-- values are held within the data extremes unless electives 32 and 33 say
-  otherwise.
-- barriers lengthen distances: a data point seen across a barrier an odd
-  number of times is moved away by the barrier's strength (added in
-  quadrature, interpolated between vertices), and an impermeable barrier
-  (strength -1) removes it. `examples/decks/barrier.sym` maps a river both
-  ways.
-
-Values are computed at grid points, every third column and every second
-line, and the characters between them are interpolated linearly; elective 37
-computes every character. A grid point within half a character of data
-points takes their (average) value, and a grid point with no data within
-reach makes the characters derived from it print as no data. (The 1984
-chapter gives 1½ characters for that tolerance; the two make no difference
-on the manual's examples.) The 1970 report's worked example (two points,
-value 341 between them) and the 1984 chapter's co-linear profile (plateaus
-beyond the extreme points, a rise past the last one) are unit tests.
+- [Writing decks](docs/decks.md): packages, electives and symbolism.
+- [Interpolation](docs/interpolation.md): how values are computed, and how
+  the search radius was recovered from the manual's printouts.
+- [Comparison with the manual](docs/fidelity.md): how the output was
+  checked, the results, and the questions that remain open.
+- [The browser version](docs/browser.md): building the site, the
+  WebAssembly interface and the printout's rendering.
 
 ## References
 

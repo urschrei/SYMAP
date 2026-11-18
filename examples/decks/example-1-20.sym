@@ -1,8 +1,8 @@
 # Example 1-20 from 'Computer Mapping as an Aid in Air Pollution Studies',
 # Vol. 2, Report K (Harvard Laboratory for Computer Graphics, 1971), pp. 38-39.
 # A conformant map of six zones; its output is Example 1-22. Zone 1's third
-# vertex is 2.2 where zone 2 has 2.3: so in the original, as the program's
-# own listing (Example 1-21) confirms.
+# vertex is 2.2 where zone 2 has 2.3. This is as in the original: the
+# program's own listing (Example 1-21) shows the same values.
 A-CONFORMOLINES
     1    A       1.0       1.7
                   .8       2.5

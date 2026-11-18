@@ -1,7 +1,7 @@
-# Map furniture drawn with C-OTOLEGENDS: the title lettered in white on
-# a dark panel, and an inset with a north arrow and a ticked scale bar,
-# in the manner of the Laboratory's later report maps. The data are
-# those of hills.sym.
+# Map furniture drawn with C-OTOLEGENDS: a title lettered in white on a dark
+# area legend, and a cleared, ruled inset with a north arrow and a ticked
+# scale bar, as on the Laboratory's later report maps. The data are those
+# of hills.sym.
 A-OUTLINE
                 5.00     10.00
                 0.00     40.00
