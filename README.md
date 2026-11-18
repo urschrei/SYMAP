@@ -90,3 +90,7 @@ within the data range.
   Springer, 133–145. <https://doi.org/10.1007/978-94-017-3048-8_7>
 - NOAA. *BATHYGRAPH: a program package for interdepartmental use* (SYMAP
   input conventions). <https://repository.library.noaa.gov/view/noaa/37800>
+
+## Licence
+
+[Blue Oak Model License 1.0.0](LICENSE.md).
