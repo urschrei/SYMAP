@@ -105,9 +105,8 @@ impl PrintedMap {
     pub fn panels(&self) -> Vec<std::ops::RangeInclusive<usize>> {
         let per = ((PANEL_INCHES * self.frame.cols_per_inch).round() as usize).max(2);
         let cols = self.frame.cols;
-        if cols < per + 1 {
-            return vec![0..=cols];
-        }
+        // Each panel shares its edge column with the next; a map up to 13
+        // inches wide is a single panel.
         let mut out = Vec::new();
         let mut start = 0;
         while start < cols {

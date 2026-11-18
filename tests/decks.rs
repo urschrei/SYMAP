@@ -110,7 +110,9 @@ fn wide_maps_print_in_panels() {
         .unwrap()
         .maps[0];
     assert_eq!(m.frame.cols, 300);
-    assert_eq!(m.panels().len(), 3);
+    assert_eq!(m.panels(), vec![0..=130, 130..=260, 260..=300]);
+    let narrow = &run(&deck("hills.sym")).unwrap().maps[0];
+    assert_eq!(narrow.panels(), vec![0..=narrow.frame.cols]);
 }
 
 #[test]
