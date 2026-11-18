@@ -38,6 +38,56 @@
           aria-label="SYMAP card deck, one card per line"></textarea>
       </div>
       <p class="status" id="status" aria-live="polite">&nbsp;</p>
+      <details class="reference">
+        <summary>Card reference</summary>
+        <div class="reference-body">
+          <p>Each line is an 80-column card. <kbd>Tab</kbd> moves to the next field (right-justifying a number you have just typed), <kbd>Shift</kbd>+<kbd>Tab</kbd> to the previous one, <kbd>Esc</kbd> leaves the editor. Locations are measured down from the top border and across from the left border.</p>
+          <h3>Packages</h3>
+          <p>A header card opens each package, <code>99999</code> in columns 1–5 closes it, and <code>999999</code> ends the deck. A package stays in effect for later maps until replaced; an empty package removes it.</p>
+          <table>
+            <thead><tr><th>Package</th><th>Cards</th></tr></thead>
+            <tbody>
+              <tr><td><code>A-OUTLINE</code></td><td>One vertex per card: down 11–20, across 21–30. Repeat the first vertex to close an outline; several outlines are allowed.</td></tr>
+              <tr><td><code>A-CONFORMOLINES</code></td><td>First card of each zone: value reference 1–5 (blank: next), <code>A</code>, <code>L</code> or <code>P</code> in 10, first vertex 11–30. Further vertices with 1–10 blank; repeat the first to close an area.</td></tr>
+              <tr><td><code>B-DATA POINTS</code></td><td>One point per card: down 11–20, across 21–30.</td></tr>
+              <tr><td><code>C-OTOLEGENDS</code></td><td>Symbol: strikes 6–9, <code>P</code> in 10, location 11–30, shift (lines, columns) 31–50. Text: length 4–5 (<code>-</code> in 1 to read down), <code>P</code>, location, shift; the text on the next card. Line or area: strikes 6–9, <code>L</code> or <code>A</code>, then one vertex per card.</td></tr>
+              <tr><td><code>D-BARRIERS</code></td><td>One vertex per card: down 11–20, across 21–30, strength 31–40 (<code>-1.</code> impermeable). Repeat the last vertex to end a barrier.</td></tr>
+              <tr><td><code>E-VALUES</code></td><td>One value per card in 11–20, in data point (or zone) order. A blank card is a blank value.</td></tr>
+              <tr><td><code>E1-VALUES INDEX</code></td><td>Reference 1–5, replacement 6–10 (blank: previous plus one).</td></tr>
+              <tr><td><code>F-MAP</code></td><td>Three title cards, then electives.</td></tr>
+            </tbody>
+          </table>
+          <p>Columns 31–40 and 41–50 of a header card (<code>8.</code> and <code>10.</code>) switch that package to row-and-column measurement.</p>
+          <h3>Electives</h3>
+          <p>Number in columns 4–5; values in 11–20, 21–30, …</p>
+          <table>
+            <thead><tr><th>No.</th><th>Effect</th><th>Values</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>Map size in inches</td><td>height, width</td></tr>
+              <tr><td>2</td><td>Extreme points of the source map shown</td><td>min down, min across, max down, max across</td></tr>
+              <tr><td>3</td><td>Number of levels (1–10; standard 5)</td><td>levels</td></tr>
+              <tr><td>4, 5</td><td>Value range minimum, maximum</td><td>value</td></tr>
+              <tr><td>6</td><td>Level ranges: blank for equal numbers of points, else relative sizes (seven or more continue on a second card)</td><td>sizes</td></tr>
+              <tr><td>7</td><td>Symbolism: four more cards, one per overprint pass; columns 1–10 levels, 11–20 data points, 21–29 low, high, background, lines, no data, superimposed, invalid</td><td>—</td></tr>
+              <tr><td>8, 22</td><td>No white contour lines; or keep them where space is tight</td><td>—</td></tr>
+              <tr><td>9, 24</td><td>No histogram bars; no numeric interpretation</td><td>—</td></tr>
+              <tr><td>10</td><td>Text below the map: up to 30 cards, ended by <code>9999</code></td><td>—</td></tr>
+              <tr><td>11</td><td>Print each data value at its point</td><td>—</td></tr>
+              <tr><td>12</td><td>Repeat the previous map's electives</td><td>—</td></tr>
+              <tr><td>13</td><td>Scale: inches per source-map unit</td><td>scale</td></tr>
+              <tr><td>14</td><td>Margins (border shifts) in inches</td><td>top, left, bottom, right</td></tr>
+              <tr><td>15</td><td>Lines and characters per inch (standard 8, 10)</td><td>lines, columns</td></tr>
+              <tr><td>16</td><td>Allow maps over 72 inches</td><td>—</td></tr>
+              <tr><td>18, 19, 20, 23</td><td>Invalid data: blank and −0; at or above; at or below; no <code>M</code> symbol</td><td>value</td></tr>
+              <tr><td>25, 27</td><td>No data points on a conformant map; contour even with conformolines</td><td>—</td></tr>
+              <tr><td>31, 32, 33</td><td>Extrapolation fraction (standard 0.1); absolute minimum; maximum</td><td>value</td></tr>
+              <tr><td>34, 35, 36</td><td>Initial and maximum search radius; minimum and maximum points (4, 10)</td><td>value(s)</td></tr>
+              <tr><td>37</td><td>Compute every character (standard: one in six)</td><td>—</td></tr>
+              <tr><td>31 + 36 + 37</td><td>Proximal map (all three, no values)</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
     </section>
 
     <section class="pane printout" aria-labelledby="printout-heading">

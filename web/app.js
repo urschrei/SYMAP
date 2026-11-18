@@ -66,6 +66,54 @@ const FIELDS = [
   [71, 80, 'columns 71–80: field 7'],
 ];
 
+// Columns where card fields start (1-based): elective number (4-5), legend
+// symbol (6-9), shape or legend type (10), then 10-column numeric fields.
+const STOPS = [4, 6, 10, 11, 21, 31, 41, 51, 61, 71, 81];
+
+/** Replace deck text in [start, end) keeping the editor's undo history. */
+function replaceText(start, end, text) {
+  deck.setSelectionRange(start, end);
+  if (!document.execCommand || !document.execCommand('insertText', false, text)) {
+    deck.setRangeText(text, start, end, 'end');
+    deck.dispatchEvent(new Event('input'));
+  }
+}
+
+/**
+ * Tab: right-justify a number just typed into a numeric field, then move to
+ * the next field, padding with spaces. Shift+Tab: back to the previous field.
+ * Returns false when the key should keep its default meaning.
+ */
+function tabField(back) {
+  if (deck.selectionStart !== deck.selectionEnd) return false;
+  const pos = deck.selectionStart;
+  const lineStart = deck.value.lastIndexOf('\n', pos - 1) + 1;
+  const lineEnd = (() => { const i = deck.value.indexOf('\n', pos); return i < 0 ? deck.value.length : i; })();
+  const line = deck.value.slice(lineStart, lineEnd);
+  const col = pos - lineStart + 1;
+  if (back) {
+    const prev = [...STOPS].reverse().find((s) => s < col) ?? 1;
+    deck.setSelectionRange(lineStart + prev - 1, lineStart + prev - 1);
+    updateStatus();
+    return true;
+  }
+  const next = STOPS.find((s) => s > col);
+  if (!next) return false;
+  const fieldStart = [...STOPS].reverse().find((s) => s <= col) ?? 1;
+  const typed = line.slice(fieldStart - 1, col - 1);
+  const rest = line.slice(col - 1);
+  if (fieldStart >= 11 && next - fieldStart === 10 && /^\s*-?(\d+\.?\d*|\.\d+)\s*$/.test(typed) && rest.trim() === '') {
+    // A number in a 10-column field: right-justify it to the field's end.
+    replaceText(lineStart + fieldStart - 1, lineStart + col - 1, typed.trim().padStart(10));
+  } else if (rest.trim() === '' || col > line.length) {
+    replaceText(pos, pos, ' '.repeat(next - col));
+  } else {
+    deck.setSelectionRange(lineStart + next - 1, lineStart + next - 1);
+  }
+  updateStatus();
+  return true;
+}
+
 function updateStatus() {
   const pos = deck.selectionStart;
   const before = deck.value.slice(0, pos);
@@ -278,6 +326,12 @@ async function init() {
   deck.addEventListener('scroll', syncRuler);
   deck.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); run(); }
+    else if (e.key === 'Tab' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      // Escape moves focus out of the editor; Tab and Shift+Tab move between fields.
+      if (tabField(e.shiftKey)) e.preventDefault();
+    } else if (e.key === 'Escape') {
+      deck.blur();
+    }
   });
   $('run').addEventListener('click', run);
 
