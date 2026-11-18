@@ -236,6 +236,8 @@ fn tables_before_the_map_match_the_manual() {
     let text = m.to_text();
     assert!(text.starts_with("MAP SCALE =     1.0000 INCHES ON OUTPUT MAP/UNITS ON SOURCE MAP\n"));
     assert!(text.contains("    6)                30        70         6         0.0         2\n"));
+    // Example 1-4 prints the standard search radius.
+    assert!(text.contains("STANDARD SEARCH RADIUS IS    3.92710\n"));
     let z = &run(&deck("example-1-20.sym")).unwrap().maps[0];
     let zones: Vec<(i64, i64, usize)> = z
         .table

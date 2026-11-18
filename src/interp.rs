@@ -2,9 +2,9 @@
 //!
 //! Follows Shepard (1968), doi:10.1145/800186.810616:
 //!
-//! * search radius `r` chosen so that on average `target` (7) points fall
-//!   inside it, then widened or narrowed so that between `min_points` (4) and
-//!   `max_points` (10) points contribute;
+//! * an initial search radius `r` from the area the data points occupy, then
+//!   widened or narrowed so that between `min_points` (4) and `max_points`
+//!   (10) points contribute;
 //! * a distance weight `s(d)` equal to `1/d` near the point and tapering
 //!   smoothly to zero at `r`;
 //! * a direction factor that increases the weight of points that are not
@@ -23,14 +23,20 @@ use std::f64::consts::PI;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShepardParams {
-    pub target: f64,
+    /// The initial radius satisfies pi r^2 = `radius_factor` x A / N, with A
+    /// the area of the data points' bounding rectangle and N their number.
+    /// The documents describe "an average of seven points" per circle, but
+    /// SYMAP's printed radii for two 6-point decks (3.9271 and 3.9958, manual
+    /// Examples 1-4 and 1-7) are reproduced exactly by 24 (pi r^2 = 4A at
+    /// N = 6). How the factor behaves at other N is inferred, not observed.
+    pub radius_factor: f64,
     pub min_points: usize,
     pub max_points: usize,
     pub direction: bool,
     pub slope: bool,
     /// Elective 31: how far the slope term may reach, as a fraction of the data range.
     pub fraction: f64,
-    /// Elective 34: initial search radius (otherwise from `target`).
+    /// Elective 34: initial search radius (otherwise from `radius_factor`).
     pub initial_radius: Option<f64>,
     /// Elective 35: never search beyond this distance.
     pub max_radius: Option<f64>,
@@ -42,7 +48,7 @@ pub struct ShepardParams {
 impl Default for ShepardParams {
     fn default() -> Self {
         Self {
-            target: 7.0,
+            radius_factor: 24.0,
             min_points: 4,
             max_points: 10,
             direction: true,
@@ -97,7 +103,7 @@ impl Shepard {
         assert!(params.max_points >= 1 && params.max_points >= params.min_points);
         let r0 = params
             .initial_radius
-            .unwrap_or_else(|| (params.target * area / (PI * points.len() as f64)).sqrt());
+            .unwrap_or_else(|| (params.radius_factor * area / (PI * points.len() as f64)).sqrt());
         let mut s = Shepard {
             pts: points.to_vec(),
             z: values.to_vec(),
@@ -192,9 +198,10 @@ impl Shepard {
                 None => f64::INFINITY,
             }
         } else {
-            // The final radius is the distance to the next data point, so no
-            // selected point gets zero weight (Shepard 1970, note 6).
-            d.get(within).map_or(f64::INFINITY, |x| x.1)
+            // Four to ten points within the initial radius: it stands
+            // (Shepard 1968). Only an expanded radius is set to the distance of
+            // the next data point (Shepard 1970, note 6).
+            self.r0
         };
         let r = self.params.max_radius.map_or(r, |m| r.min(m));
         d.retain(|x| x.1 < r);
@@ -313,6 +320,25 @@ mod tests {
                     .map(move |j| Point::new(i as f64 * 2.0 + (j % 2) as f64 * 0.3, j as f64 * 2.0))
             })
             .collect()
+    }
+
+    #[test]
+    fn standard_radius_matches_example_1_7() {
+        // Example 1-7 prints 3.9958 for the Example 1-14 data points, whose
+        // bounding rectangle is 2.2 by 5.7.
+        let pts: Vec<Point> = [
+            (2.9, 1.3),
+            (1.5, 3.4),
+            (3.1, 3.0),
+            (2.4, 5.3),
+            (3.4, 4.8),
+            (3.7, 7.0),
+        ]
+        .iter()
+        .map(|&(d, a)| Point::new(d, a))
+        .collect();
+        let s = Shepard::new(&pts, &[0.0; 6], 2.2 * 5.7, ShepardParams::default());
+        assert!((s.initial_radius() - 3.9958).abs() < 5e-5);
     }
 
     #[test]

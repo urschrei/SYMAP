@@ -47,19 +47,21 @@ outer edges stay filled. Line legends are drawn the same way.
 
 `examples/decks/example-1-3.sym` (row-and-column measurement) produces the
 contour map of Example 1-5. Its numeric interpretation and frequencies match
-the printout exactly. Where both maps print a level symbol, 95% of
+the printout exactly. Where both maps print a level symbol, 96% of
 characters are on the same level and 99% within one, with the remaining
 differences balanced between higher and lower. The original also fills outlines slightly
 wider, from the integer part of the left edge to one past the integer part
 of the right edge, but Example 1-17 shows the opposite on one island, so the
 rule is not yet settled.
 
-The original also printed its standard initial search radius: 3.09271 for
-Example 1-3 and 3.29958 for Example 1-6 (whose data points are those of
-Example 1-14). This implementation, which bases the radius on the rectangle
-the data points occupy, gives 2.12; no simple measure of the points or the
-outline reproduces both printed values, so the formula is still open. Using
-SYMAP's printed radius (elective 34) raises Example 1-5's agreement to 97%.
+The original also printed its standard initial search radius: 3.9271 for
+Example 1-3 (in Example 1-4) and 3.9958 for the Example 1-14 data points (in
+Example 1-7). Both are reproduced exactly by pi r^2 = 24A/N, where A is the
+area of the rectangle the data points occupy and N their number. Both decks
+have six points, so how the radius depends on N is inferred: the documents
+say the circle holds seven points on average, which this does not match.
+When four to ten points fall within it, the radius stands as the final
+radius; with this, Example 1-5 agrees at 96% on the same level.
 
 ## In the browser
 
@@ -139,10 +141,11 @@ panels.
 `interp::Shepard` follows Shepard (1968) as implemented in SYMAP and
 described in his 1970 report and 1984 chapter on SYMAP's interpolation:
 
-- the initial search radius holds about seven points on average, based on
-  the rectangle the data points occupy; the radius then adjusts to keep four
-  to ten points, and the final radius is the distance to the next data
-  point (no taper when every point is used);
+- the initial search radius satisfies pi r^2 = 24A/N for data points
+  occupying a rectangle of area A (reproducing SYMAP's printed radii); it
+  stands when four to ten points fall within it, and otherwise becomes the
+  distance to the point after the tenth, or after the fourth (no taper when
+  every point is used);
 - weights of `1/d` taper to zero at the final radius, with a direction
   factor for points not shadowed by others;
 - each data point carries a slope, from neighbours at least 1.5 characters
