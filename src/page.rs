@@ -52,14 +52,13 @@ impl Line {
 /// Characters per panel: 13 inches at the map's pitch.
 const PANEL_INCHES: f64 = 13.0;
 
-/// Border mark at position `i`: the inch number on each inch, `+` on each
-/// half inch, else `fill`.
-fn border_mark(i: usize, per_inch: f64, fill: char) -> char {
-    let x = i as f64 / per_inch;
-    let near = |v: f64| (v - v.round()).abs() * per_inch < 0.5;
-    if i > 0 && near(x) {
-        char::from_digit((x.round() as u32) % 10, 10).unwrap()
-    } else if i > 0 && near(x * 2.0) {
+/// Border mark at position `i`: every tenth character carries the tens
+/// digit and every fifth a `+` (Example 1-17 counts rows this way too, so the
+/// marks are character counts, not inches).
+fn border_mark(i: usize, fill: char) -> char {
+    if i > 0 && i % 10 == 0 {
+        char::from_digit(((i / 10) % 10) as u32, 10).unwrap()
+    } else if i > 0 && i % 5 == 0 {
         '+'
     } else {
         fill
@@ -90,9 +89,9 @@ impl PrintedMap {
                         if corner {
                             Strikes::single('*')
                         } else if r == 0 || r == rows {
-                            Strikes::single(border_mark(c, self.frame.cols_per_inch, '-'))
+                            Strikes::single(border_mark(c, '-'))
                         } else if c == 0 || c == cols {
-                            Strikes::single(border_mark(r, self.frame.lines_per_inch, 'I'))
+                            Strikes::single(border_mark(r, 'I'))
                         } else {
                             self.at(r, c)
                         }
@@ -255,6 +254,10 @@ impl PrintedMap {
             }
             out.extend(rows.iter().map(|r| Line::from_strikes(&r[cols.clone()])));
         }
+        // The program's name follows the map (the original also printed the
+        // job time here, which has no meaning in this implementation).
+        out.push(Line::text(" SYMAP"));
+        out.push(Line::blank());
         out.extend(self.titles.iter().map(|t| Line::text(t.clone())));
         out.extend(self.text.iter().map(|t| Line::text(t.clone())));
         if self.numeric {
@@ -299,10 +302,10 @@ mod tests {
 
     #[test]
     fn border_marks() {
-        let top: String = (0..=25).map(|i| border_mark(i, 10.0, '-')).collect();
+        let top: String = (0..=25).map(|i| border_mark(i, '-')).collect();
         assert_eq!(top, "-----+----1----+----2----+");
-        let side: String = (0..=17).map(|i| border_mark(i, 8.0, 'I')).collect();
-        assert_eq!(side, "IIII+III1III+III2I");
+        let side: String = (0..=21).map(|i| border_mark(i, 'I')).collect();
+        assert_eq!(side, "IIIII+IIII1IIII+IIII2I");
     }
 
     #[test]
