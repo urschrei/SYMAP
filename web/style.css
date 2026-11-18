@@ -1,0 +1,167 @@
+:root {
+  --bg: #f4f1ea;
+  --surface: #fbfaf6;
+  --ink: #1d1b22;
+  --muted: #625e68;
+  --line: #d8d2c4;
+  --accent: #2f6b4f;
+  --accent-ink: #ffffff;
+  --card: #fbf6e6;
+  --card-guide: rgba(165, 120, 60, 0.22);
+  --card-edge: rgba(180, 60, 40, 0.45);
+  --beyond: rgba(120, 100, 80, 0.08);
+  --error: #a3322a;
+  --warn: #8a5a00;
+  --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17161b;
+    --surface: #1f1e24;
+    --ink: #ece9e2;
+    --muted: #a29eaa;
+    --line: #34323b;
+    --accent: #6fbf95;
+    --accent-ink: #10221a;
+    --card: #23211c;
+    --card-guide: rgba(220, 180, 110, 0.18);
+    --card-edge: rgba(240, 120, 90, 0.5);
+    --beyond: rgba(255, 255, 255, 0.04);
+    --error: #f08a7e;
+    --warn: #e6b450;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 var(--sans);
+}
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* Masthead */
+.masthead {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+  gap: 8px 24px; padding: 20px 24px 12px; border-bottom: 1px solid var(--line);
+}
+.brand h1 {
+  margin: 0; font: 600 28px/1 var(--mono); letter-spacing: 0.35em;
+}
+.brand p { margin: 6px 0 0; color: var(--muted); max-width: 60ch; }
+.masthead nav { display: flex; gap: 16px; }
+.masthead a { color: var(--accent); text-decoration: none; }
+.masthead a:hover { text-decoration: underline; }
+
+/* Layout */
+.workbench {
+  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 16px; padding: 16px 24px;
+}
+@media (max-width: 1000px) {
+  .workbench { grid-template-columns: minmax(0, 1fr); }
+}
+
+.pane {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  display: flex; flex-direction: column; min-width: 0;
+}
+.pane-head {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line);
+}
+.pane-head h2 {
+  margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted);
+}
+.tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+button, select {
+  font: inherit; font-size: 13px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer;
+}
+button:hover, select:hover { border-color: var(--muted); }
+button:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+#run { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.segmented { display: inline-flex; }
+.segmented button { border-radius: 0; }
+.segmented button:first-child { border-radius: 6px 0 0 6px; }
+.segmented button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.segmented button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+/* Card editor */
+.editor { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 420px; }
+.ruler {
+  overflow: hidden; background: var(--card); border-bottom: 1px solid var(--line);
+  padding: 4px 0 2px;
+}
+.ruler pre, #deck {
+  font: 13px/1.45 var(--mono); tab-size: 8;
+}
+.ruler pre { margin: 0; padding: 0 12px; color: var(--muted); white-space: pre; will-change: transform; }
+#deck {
+  flex: 1; width: 100%; min-height: 380px; resize: vertical; border: 0; margin: 0;
+  padding: 6px 12px; color: var(--ink); white-space: pre; overflow: auto;
+  background-color: var(--card);
+  /* Field guides after columns 5, 10, 20, ... and the card edge after 80. */
+  background-image:
+    linear-gradient(to right, transparent calc(80ch), var(--card-edge) calc(80ch), var(--card-edge) calc(80ch + 1px), var(--beyond) calc(80ch + 1px)),
+    linear-gradient(to right, transparent calc(5ch), var(--card-guide) calc(5ch), var(--card-guide) calc(5ch + 1px), transparent calc(5ch + 1px)),
+    repeating-linear-gradient(to right, transparent 0, transparent calc(10ch - 1px), var(--card-guide) calc(10ch - 1px), var(--card-guide) 10ch);
+  background-origin: content-box;
+  background-attachment: local;
+  background-repeat: no-repeat, no-repeat, repeat-x;
+  background-size: 200ch 100%, 200ch 100%, 80ch 100%;
+}
+.status {
+  margin: 0; padding: 6px 12px; border-top: 1px solid var(--line);
+  font: 12px/1.4 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Messages */
+.messages { list-style: none; margin: 0; padding: 0; }
+.messages:empty { display: none; }
+.messages li {
+  padding: 6px 12px; border-bottom: 1px solid var(--line); font-size: 13px;
+}
+.messages li.error { color: var(--error); }
+.messages li.warning { color: var(--warn); }
+.messages button.line {
+  font: 12px var(--mono); padding: 1px 6px; margin-right: 6px; color: inherit; background: transparent;
+  border-color: currentColor;
+}
+
+/* Printout */
+.sheets {
+  padding: 16px; overflow: auto; flex: 1; min-height: 420px;
+  display: flex; flex-direction: column; align-items: center; gap: 18px;
+  background: var(--bg);
+}
+.sheets canvas {
+  display: block; max-width: none; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 6px 18px rgba(0, 0, 0, 0.10);
+}
+.sheets.fit canvas { max-width: 100%; height: auto; }
+.sheets .empty { color: var(--muted); font-size: 14px; margin: auto; }
+
+.colophon {
+  padding: 4px 24px 24px; color: var(--muted); font-size: 13px; max-width: 110ch;
+}
+.colophon code { font-family: var(--mono); }
+
+@media (max-width: 600px) {
+  .masthead, .workbench { padding-left: 16px; padding-right: 16px; }
+  .colophon { padding-left: 16px; padding-right: 16px; }
+}

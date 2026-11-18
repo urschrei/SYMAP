@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SYMAP</title>
+  <meta name="description" content="SYMAP, the 1960s Harvard line-printer mapping program, reimplemented in Rust and running in your browser.">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand">
+      <h1>SYMAP</h1>
+      <p>The Synagraphic Mapping System: Harvard’s 1960s line-printer mapping program, rebuilt to run in your browser.</p>
+    </div>
+    <nav>
+      <a href="https://github.com/urschrei/SYMAP">Source</a>
+      <a href="https://archive.org/details/micro_IA41159411_0506">1971 manual</a>
+    </nav>
+  </header>
+
+  <main class="workbench">
+    <section class="pane deck" aria-labelledby="deck-heading">
+      <div class="pane-head">
+        <h2 id="deck-heading">Card deck</h2>
+        <div class="tools">
+          <label class="select">
+            <span class="visually-hidden">Example deck</span>
+            <select id="examples"></select>
+          </label>
+          <button id="run" type="button" title="Run (Ctrl+Enter)">Run</button>
+        </div>
+      </div>
+      <div class="editor">
+        <div class="ruler" aria-hidden="true"><pre id="ruler"></pre></div>
+        <textarea id="deck" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"
+          aria-label="SYMAP card deck, one card per line"></textarea>
+      </div>
+      <p class="status" id="status" aria-live="polite">&nbsp;</p>
+    </section>
+
+    <section class="pane printout" aria-labelledby="printout-heading">
+      <div class="pane-head">
+        <h2 id="printout-heading">Printout</h2>
+        <div class="tools">
+          <div class="segmented" role="group" aria-label="Rendering">
+            <button type="button" id="mode-overprint" aria-pressed="true">Overprint</button>
+            <button type="button" id="mode-plain" aria-pressed="false">Plain</button>
+          </div>
+          <label class="select">
+            <span class="visually-hidden">Zoom</span>
+            <select id="zoom">
+              <option value="fit" selected>Fit</option>
+              <option value="0.75">75%</option>
+              <option value="1">100%</option>
+              <option value="1.5">150%</option>
+              <option value="2">200%</option>
+            </select>
+          </label>
+          <button type="button" id="share" title="Copy a link containing this deck">Copy link</button>
+          <button type="button" id="download-asa" title="Fortran carriage-control output, with overprint lines">ASA</button>
+          <button type="button" id="download-text" title="Plain text, one character per position">Text</button>
+        </div>
+      </div>
+      <ul class="messages" id="messages" aria-live="polite"></ul>
+      <div class="sheets" id="sheets"></div>
+    </section>
+  </main>
+
+  <footer class="colophon">
+    <p>Card formats, electives and symbolism follow <cite>Computer Mapping as an Aid in Air Pollution Studies</cite>, Report K (Harvard Laboratory for Computer Graphics, 1971); interpolation follows Shepard (1968, 1970, 1984). Decks are 80-column cards: packages open with a header card and close with <code>99999</code>; <code>999999</code> ends the deck.</p>
+  </footer>
+</body>
+</html>

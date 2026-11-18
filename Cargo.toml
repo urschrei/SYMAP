@@ -12,7 +12,17 @@ publish = false
 [lib]
 name = "symap"
 path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
 
 [[bin]]
 name = "symap"
 path = "src/main.rs"
+
+# Small, self-contained WebAssembly for the browser front end.
+[profile.wasm]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

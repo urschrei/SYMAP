@@ -23,9 +23,12 @@ pub mod error;
 pub mod frame;
 pub mod geom;
 pub mod interp;
+pub mod json;
 pub mod map;
 pub mod page;
 pub mod symbols;
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
 
 pub use classify::{Classes, Level};
 pub use deck::{Deck, MapKind, MapSpec};
