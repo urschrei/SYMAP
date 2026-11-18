@@ -157,7 +157,8 @@ fn manual_example_1_3_contour() {
     assert!(text.contains("1   I..1..I    I++2++I    IOO3OOI               I██5██I"));
     assert!(text.contains("2   I..1..I                                     I██5██I"));
     // Elective 9 removes only the bars.
-    let no_bars = deck("example-1-3.sym").replace("    2            0.0", "    9\n    2            0.0");
+    let no_bars =
+        deck("example-1-3.sym").replace("    2            0.0", "    9\n    2            0.0");
     let text = run(&no_bars).unwrap().maps[0].to_text();
     assert!(text.contains("FREQ.") && !text.contains("I..1..I"));
 }
