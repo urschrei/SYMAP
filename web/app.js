@@ -6,6 +6,7 @@ const EXAMPLES = [
   { file: 'example-1-20.sym', name: 'Manual Example 1-20: conformant map' },
   { file: 'hills.sym', name: 'Two hills: contour and proximal' },
   { file: 'districts.sym', name: 'Six districts: conformant map' },
+  { file: 'barrier.sym', name: 'Two banks: a river as a barrier' },
 ];
 
 const STORE_KEY = 'symap.deck';

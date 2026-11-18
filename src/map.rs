@@ -288,10 +288,6 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             "a contour or proximal map needs a B-DATA POINTS package".into(),
         ));
     }
-    if kind == MapKind::Contour && !pk.barriers.is_empty() {
-        warnings
-            .push("D-BARRIERS is not implemented yet; interpolation ignores the barriers".into());
-    }
 
     // Values for the items being mapped.
     let point_refs: Vec<usize> = (1..=pk.points.len()).collect();
@@ -429,7 +425,9 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             }
             let lo = o.extrapolation_min.unwrap_or(data_range.0);
             let hi = o.extrapolation_max.unwrap_or(data_range.1);
-            let s = Shepard::new(&pts, &zs, area, params);
+            let barriers: Vec<Vec<(Point, f64)>> =
+                pk.barriers.iter().map(|b| b.vertices.clone()).collect();
+            let s = Shepard::with_barriers(&pts, &zs, area, params, &barriers);
             // A location within half a character of data points takes their
             // (average) value; elsewhere the surface is interpolated.
             let grid_pts: Vec<((f64, f64), f64)> =

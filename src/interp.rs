@@ -65,6 +65,13 @@ pub struct Shepard {
     v: f64,
     /// Total range of the data values.
     range: f64,
+    /// D-BARRIERS: polylines with a strength at each vertex (-1 impermeable).
+    barriers: Vec<Vec<(Point, f64)>>,
+}
+
+/// Twice the signed area of triangle (a, b, c), in (across, down) coordinates.
+fn orient(a: Point, b: Point, c: Point) -> f64 {
+    (b.across - a.across) * (c.down - a.down) - (b.down - a.down) * (c.across - a.across)
 }
 
 fn by_dist(a: &(usize, f64), b: &(usize, f64)) -> std::cmp::Ordering {
@@ -74,6 +81,17 @@ fn by_dist(a: &(usize, f64), b: &(usize, f64)) -> std::cmp::Ordering {
 impl Shepard {
     /// `area` is the area of the study region, in source-map units squared.
     pub fn new(points: &[Point], values: &[f64], area: f64, params: ShepardParams) -> Self {
+        Self::with_barriers(points, values, area, params, &[])
+    }
+
+    /// As `new`, with interpolation barriers (Shepard 1970, section 4).
+    pub fn with_barriers(
+        points: &[Point],
+        values: &[f64],
+        area: f64,
+        params: ShepardParams,
+        barriers: &[Vec<(Point, f64)>],
+    ) -> Self {
         assert_eq!(points.len(), values.len());
         assert!(!points.is_empty());
         assert!(params.max_points >= 1 && params.max_points >= params.min_points);
@@ -88,6 +106,7 @@ impl Shepard {
             grad: vec![(0.0, 0.0); points.len()],
             v: 0.0,
             range: 0.0,
+            barriers: barriers.to_vec(),
         };
         let (lo, hi) = values
             .iter()
@@ -106,14 +125,50 @@ impl Shepard {
         s
     }
 
+    /// The effective distance from `p` to `q`: the squares of the strengths of
+    /// all barriers crossed an odd number of times are added to the squared
+    /// distance (Shepard 1970, 1.3.1). `None` across an impermeable barrier.
+    fn effective(&self, p: Point, q: Point) -> Option<f64> {
+        let d = p.dist(q);
+        if self.barriers.is_empty() {
+            return Some(d);
+        }
+        let mut extra = 0.0;
+        for barrier in &self.barriers {
+            let (mut crossings, mut strength, mut blocked) = (0, 0.0_f64, false);
+            for w in barrier.windows(2) {
+                let ((a, sa), (b, sb)) = (w[0], w[1]);
+                let (o1, o2) = (orient(p, q, a), orient(p, q, b));
+                let (o3, o4) = (orient(a, b, p), orient(a, b, q));
+                if o1 * o2 < 0.0 && o3 * o4 < 0.0 {
+                    crossings += 1;
+                    if sa < 0.0 || sb < 0.0 {
+                        blocked = true;
+                    } else {
+                        // Strength varies linearly between vertices.
+                        let t = o1 / (o1 - o2);
+                        strength = strength.max(sa + t * (sb - sa));
+                    }
+                }
+            }
+            if crossings % 2 == 1 {
+                if blocked {
+                    return None;
+                }
+                extra += strength * strength;
+            }
+        }
+        Some((d * d + extra).sqrt())
+    }
+
     /// Contributing points around `p` (excluding `skip` and anything coincident
-    /// with it), and the radius used.
+    /// with it) with their effective distances, and the radius used.
     fn neighbours(&self, p: Point, skip: Option<usize>) -> (Vec<(usize, f64)>, f64) {
         let mut d: Vec<(usize, f64)> = self
             .pts
             .iter()
             .enumerate()
-            .map(|(i, q)| (i, p.dist(*q)))
+            .filter_map(|(i, q)| Some((i, self.effective(p, *q)?)))
             .filter(|&(i, di)| skip.is_none_or(|s| i != s && di > 0.0))
             .collect();
         let (lo, hi) = (self.params.min_points, self.params.max_points);
@@ -158,13 +213,15 @@ impl Shepard {
         let ssum: f64 = s.iter().sum();
         nb.iter()
             .zip(&s)
-            .map(|(&(i, di), &si)| {
+            .map(|(&(i, _), &si)| {
                 let a = self.pts[i];
+                let di = p.dist(a);
                 let t: f64 = nb
                     .iter()
                     .zip(&s)
-                    .map(|(&(j, dj), &sj)| {
+                    .map(|(&(j, _), &sj)| {
                         let b = self.pts[j];
+                        let dj = p.dist(b);
                         let cos = ((p.across - a.across) * (p.across - b.across)
                             + (p.down - a.down) * (p.down - b.down))
                             / (di * dj);
@@ -187,8 +244,9 @@ impl Shepard {
         }
         let w = self.weights(p, &nb, r);
         let (mut a, mut b, mut ws) = (0.0, 0.0, 0.0);
-        for (&(j, d), &wj) in nb.iter().zip(&w) {
+        for (&(j, _), &wj) in nb.iter().zip(&w) {
             let q = self.pts[j];
+            let d = p.dist(q);
             let dz = (self.z[j] - self.z[i]) / (d * d);
             a += wj * dz * (q.across - p.across);
             b += wj * dz * (q.down - p.down);
@@ -358,6 +416,62 @@ mod tests {
         assert!(at(2.5) > 6.0, "{}", at(2.5));
         // Between B and C the surface climbs steadily.
         assert!((1..20).all(|k| at(k as f64 * 0.1) < at((k + 1) as f64 * 0.1)));
+    }
+
+    #[test]
+    fn impermeable_barrier_separates_surfaces() {
+        // Shepard 1970, Example 4-4: an impermeable dividing line. The side with
+        // one data point is flat at that point's value.
+        let pts = [
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 6.0),
+            Point::new(0.0, 10.0),
+        ];
+        let z = [0.0, 50.0, 100.0];
+        let wall = vec![
+            (Point::new(-50.0, 3.0), -1.0),
+            (Point::new(50.0, 3.0), -1.0),
+        ];
+        let s = Shepard::with_barriers(&pts, &z, 10.0, ShepardParams::default(), &[wall]);
+        for x in [0.5, 1.5, 2.5, 2.9] {
+            assert_eq!(s.eval(Point::new(0.0, x)), Some(0.0), "x = {x}");
+        }
+        let right = s.eval(Point::new(0.0, 3.1)).unwrap();
+        assert!(right > 40.0, "{right}");
+    }
+
+    #[test]
+    fn permeable_barriers_scale_with_strength() {
+        let pts = [Point::new(0.0, 0.0), Point::new(0.0, 6.0)];
+        let z = [0.0, 100.0];
+        let at = |strength: f64| {
+            let wall = vec![
+                (Point::new(-50.0, 3.0), strength),
+                (Point::new(50.0, 3.0), strength),
+            ];
+            Shepard::with_barriers(&pts, &z, 10.0, ShepardParams::default(), &[wall])
+                .eval(Point::new(0.0, 2.0))
+                .unwrap()
+        };
+        let none = Shepard::new(&pts, &z, 10.0, ShepardParams::default())
+            .eval(Point::new(0.0, 2.0))
+            .unwrap();
+        assert_eq!(at(0.0), none);
+        assert!(at(1.0) < none && at(5.0) < at(1.0) && at(5.0) > 0.0);
+        // Crossing twice (a loop the line enters and leaves) has no effect.
+        let pts2 = [Point::new(0.0, 0.0), Point::new(0.0, 6.0)];
+        let loop_ = vec![
+            (Point::new(-1.0, 2.0), -1.0),
+            (Point::new(-1.0, 4.0), -1.0),
+            (Point::new(1.0, 4.0), -1.0),
+            (Point::new(1.0, 2.0), -1.0),
+            (Point::new(-1.0, 2.0), -1.0),
+        ];
+        let s = Shepard::with_barriers(&pts2, &z, 10.0, ShepardParams::default(), &[loop_]);
+        assert_eq!(
+            s.eval(Point::new(0.0, 1.0)),
+            Shepard::new(&pts2, &z, 10.0, ShepardParams::default()).eval(Point::new(0.0, 1.0))
+        );
     }
 
     #[test]

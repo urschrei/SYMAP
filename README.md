@@ -81,7 +81,7 @@ removes it.
 | `A-CONFORMOLINES` | area, line and point zones; reference in columns 1-5, `A`/`L`/`P` in column 10 |
 | `B-DATA POINTS`   | yes |
 | `C-OTOLEGENDS`    | symbol, horizontal and vertical text, line and area legends with displacement |
-| `D-BARRIERS`      | parsed; interpolation ignores them (with a warning) |
+| `D-BARRIERS`      | permeable and impermeable barriers, strength varying along each barrier |
 | `E-VALUES`        | value in columns 11-20; a blank card is a blank value |
 | `E1-VALUES INDEX` | yes |
 | `F-MAP`           | three title cards, then electives |
@@ -132,6 +132,11 @@ described in his 1970 report and 1984 chapter on SYMAP's interpolation:
   never exceeds the elective 31 fraction (0.1) of the data range;
 - values are held within the data extremes unless electives 32 and 33 say
   otherwise.
+- barriers lengthen distances: a data point seen across a barrier an odd
+  number of times is moved away by the barrier's strength (added in
+  quadrature, interpolated between vertices), and an impermeable barrier
+  (strength -1) removes it. `examples/decks/barrier.sym` maps a river both
+  ways.
 
 Values are computed at grid points, every third column and every second
 line, and the characters between them are interpolated linearly; elective 37

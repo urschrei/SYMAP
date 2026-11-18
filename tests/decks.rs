@@ -191,3 +191,24 @@ fn manual_example_1_20_conformant_boundaries() {
     // Zones 3 and 5 share a level but are still separated by a line.
     assert!(at(25, 45).is_blank() && at(25, 44) == solid && at(25, 46) == solid);
 }
+
+#[test]
+fn barriers_stop_interpolation() {
+    let r = run(&deck("barrier.sym")).unwrap();
+    assert!(
+        r.maps.iter().all(|m| m.warnings.is_empty()),
+        "{:?}",
+        r.maps[0].warnings
+    );
+    let (with, without) = (&r.maps[0], &r.maps[1]);
+    // Across the river on line 20: with the barrier the surface jumps from the
+    // top level straight to the bottom; without it, it passes through between.
+    let levels = |m: &symap::PrintedMap| {
+        let mut v: Vec<Level> = (30..50).filter_map(|c| m.level(20, c)).collect();
+        v.sort();
+        v.dedup();
+        v
+    };
+    assert_eq!(levels(with), vec![Level::In(0), Level::In(4)]);
+    assert!(levels(without).len() >= 4, "{:?}", levels(without));
+}
