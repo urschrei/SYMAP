@@ -319,3 +319,14 @@ fn elective_28_dot_maps() {
     let (_, low2, high2) = dots("   28       1.0");
     assert!(low2 < high2);
 }
+
+#[test]
+fn legends_draw_map_furniture() {
+    let m = &run(&deck("furniture.sym")).unwrap().maps[0];
+    let text = m.to_text();
+    assert!(text.contains("SCALE IN KILOMETRES"));
+    assert!(text.contains("I==========I=========I"));
+    // The map starts a page of its own, after the tables.
+    assert_eq!(text.matches('\x0c').count(), 1);
+    assert!(text.contains(" SYMAP\n\nTIME =    0.0\n\n\n\nTWO HILLS\n"));
+}

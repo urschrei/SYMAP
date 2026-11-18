@@ -68,7 +68,16 @@ radius; with this, Example 1-5 agrees at 96% on the same level.
 The library compiles to a dependency-free WebAssembly module (`src/wasm.rs`:
 plain C-ABI exports, results passed as JSON), and `web/` is a static front
 end for it: an 80-column card editor with field guides, example decks, and a
-printout that strikes each overprint layer onto green-bar paper.
+printout that strikes each overprint layer onto green-bar or white paper.
+Type is sized as on the manual's printouts (capitals about 0.7 of the line
+pitch tall and 0.8 of the character pitch wide, with ink spread), so level
+fills read as tones. Each map starts a sheet of its own after its tables.
+
+Titles, north arrows and scale bars on SYMAP maps were drawn by the deck,
+not the program. `examples/decks/furniture.sym` draws them with
+C-OTOLEGENDS in the manner of the Laboratory's later report maps: white
+lettering cut through a dark area legend, and a cleared, ruled inset with
+an arrow and a ticked scale bar.
 
 ```bash
 ./scripts/build-web.sh
