@@ -59,9 +59,16 @@ character. Agreement ranges from 96% (Example 1-5, a contour map) to 99.4%
 | `districts.sym` | A conformant map of six districts |
 | `barrier.sym` | A river as an impermeable barrier, with and without it |
 | `furniture.sym` | A lettered title, north arrow and scale inset drawn with legends |
+| `london-boroughs.sym` | Population density of the London boroughs, Census 2021, with the Thames |
+| `london-no2.sym` | Annual mean nitrogen dioxide at 71 London monitoring sites, 2025 |
+| `london-house-prices.sym` | Central London median house prices, with the Thames as a barrier and without |
+| `london-zones.sym` | Fare zone of the nearest of 574 London rail stations |
+| `dublin-density.sym` | Population density of Dublin City's electoral divisions, Census 2022, with the Liffey |
 
 The manual's decks are transcribed card for card and checked against the
-scans. The other decks use made-up data.
+scans. `hills`, `districts`, `barrier` and `furniture` use made-up data. The
+London and Dublin decks use published open data; each deck's header names
+its sources, licences and simplifications.
 
 ## Documentation
 

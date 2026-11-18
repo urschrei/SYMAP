@@ -8,6 +8,11 @@ const EXAMPLES = [
   { file: 'furniture.sym', name: 'Map furniture: lettering, north arrow, scale' },
   { file: 'districts.sym', name: 'Six districts: conformant map' },
   { file: 'barrier.sym', name: 'Two banks: a river as a barrier' },
+  { file: 'london-boroughs.sym', name: 'London boroughs: population density, Census 2021' },
+  { file: 'london-no2.sym', name: 'London: nitrogen dioxide, 2025 (contour)' },
+  { file: 'london-house-prices.sym', name: 'Central London house prices: the Thames as a barrier' },
+  { file: 'london-zones.sym', name: 'London fare zones: nearest station (proximal)' },
+  { file: 'dublin-density.sym', name: 'Dublin City: population density, Census 2022' },
 ];
 
 const STORE_KEY = 'symap.deck';

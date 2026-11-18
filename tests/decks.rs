@@ -330,3 +330,19 @@ fn legends_draw_map_furniture() {
     assert_eq!(text.matches('\x0c').count(), 1);
     assert!(text.contains(" SYMAP\n\nTIME =    0.0\n\n\n\nTWO HILLS\n"));
 }
+
+#[test]
+fn every_example_deck_runs() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/decks");
+    let mut n = 0;
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e == "sym") {
+            let text = std::fs::read_to_string(&path).unwrap();
+            let run = run(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            assert!(!run.maps.is_empty(), "{}", path.display());
+            n += 1;
+        }
+    }
+    assert!(n >= 12, "found {n} decks");
+}
