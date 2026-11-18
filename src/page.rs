@@ -11,6 +11,8 @@ use crate::symbols::Strikes;
 pub struct Line {
     pub plain: String,
     pub strikes: Vec<String>,
+    /// Starts a new page (carriage control `1`).
+    pub eject: bool,
 }
 
 impl Line {
@@ -20,6 +22,7 @@ impl Line {
         Line {
             plain: s.clone(),
             strikes: vec![s],
+            eject: false,
         }
     }
 
@@ -45,6 +48,7 @@ impl Line {
         Line {
             plain: plain.trim_end().to_string(),
             strikes,
+            eject: false,
         }
     }
 }
@@ -344,17 +348,28 @@ impl PrintedMap {
         } else {
             Vec::new()
         };
+        // The map starts a page of its own, after the tables.
+        let first = out.len();
         for (i, cols) in self.panels().into_iter().enumerate() {
             if i > 0 {
                 out.push(Line::blank());
             }
             out.extend(rows.iter().map(|r| Line::from_strikes(&r[cols.clone()])));
         }
-        // The program's name follows the map (the original also printed the
-        // job time here, which has no meaning in this implementation).
+        if first > 0 && first < out.len() {
+            out[first].eject = true;
+        }
+        // The program's name and the job time follow the map, then the
+        // titles double-spaced (Examples 1-5 and 1-16). The time is printed
+        // as the manual's small jobs show it.
         out.push(Line::text(" SYMAP"));
         out.push(Line::blank());
-        out.extend(self.titles.iter().map(|t| Line::text(t.clone())));
+        out.push(Line::text(format!("TIME ={:>7.1}", 0.0)));
+        out.extend([Line::blank(), Line::blank()]);
+        for t in &self.titles {
+            out.push(Line::blank());
+            out.push(Line::text(t.clone()));
+        }
         out.extend(self.text.iter().map(|t| Line::text(t.clone())));
         if self.numeric {
             out.extend(self.numeric_interpretation());
@@ -383,7 +398,16 @@ impl PrintedMap {
 
     /// Plain text, one character per print position.
     pub fn to_text(&self) -> String {
-        self.page().into_iter().map(|l| l.plain + "\n").collect()
+        self.page()
+            .into_iter()
+            .map(|l| {
+                if l.eject {
+                    format!("\x0c{}\n", l.plain)
+                } else {
+                    l.plain + "\n"
+                }
+            })
+            .collect()
     }
 
     /// Fortran carriage control: column 1 is `1` (new page), ` ` (next line)
@@ -395,9 +419,9 @@ impl PrintedMap {
                 if k > 0 && strike.trim().is_empty() {
                     continue;
                 }
-                s.push(match (i, k) {
-                    (0, 0) => '1',
-                    (_, 0) => ' ',
+                s.push(match k {
+                    0 if i == 0 || l.eject => '1',
+                    0 => ' ',
                     _ => '+',
                 });
                 s.push_str(strike);

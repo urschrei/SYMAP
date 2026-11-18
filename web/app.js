@@ -172,9 +172,19 @@ function typeMetrics(ctx) {
   return typeCache;
 }
 
-function drawSheet(map) {
-  const lines = map.lines;
-  const width = Math.max(...lines.map((l) => Math.max(l.plain.length, ...l.strikes.map((s) => s.length))), 80);
+// A map's printout split at its page ejects (the tables, then the map).
+function pages(map) {
+  const out = [];
+  map.lines.forEach((l, i) => {
+    if (i === 0 || l.eject) out.push([]);
+    out[out.length - 1].push(l);
+  });
+  return out;
+}
+
+function drawSheet(map, lines) {
+  // Every sheet of a map is as wide as its widest line, like the paper.
+  const width = Math.max(...map.lines.map((l) => Math.max(l.plain.length, ...l.strikes.map((s) => s.length))), 80);
   const cols = width + 2 * MARGIN_COLS;
   const rows = lines.length + 2 * TOP_LINES;
   const scale = state.zoom === 'fit' ? 1.5 : Number(state.zoom);
@@ -264,10 +274,10 @@ function render() {
   }
   // One sheet per frame, so long runs never block the page for long.
   const token = (render.token = (render.token || 0) + 1);
-  const maps = [...r.maps];
+  const queue = r.maps.flatMap((m) => pages(m).map((lines) => [m, lines]));
   const next = () => {
-    if (token !== render.token || !maps.length) return;
-    sheets.append(drawSheet(maps.shift()));
+    if (token !== render.token || !queue.length) return;
+    sheets.append(drawSheet(...queue.shift()));
     requestAnimationFrame(next);
   };
   next();
@@ -329,7 +339,7 @@ function download(name, text) {
 function outputs(kind) {
   const r = state.result;
   if (!r?.ok) return null;
-  return r.maps.map((m) => (kind === 'asa' ? m.asa : m.lines.map((l) => l.plain).join('\n') + '\n')).join(kind === 'asa' ? '' : '\f\n');
+  return r.maps.map((m) => (kind === 'asa' ? m.asa : m.lines.map((l) => (l.eject ? '\f' : '') + l.plain).join('\n') + '\n')).join(kind === 'asa' ? '' : '\f\n');
 }
 
 async function loadExample(file) {

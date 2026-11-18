@@ -79,6 +79,9 @@ fn map(out: &mut String, m: &PrintedMap) {
         string(o, &l.plain);
         o.push_str(",\"strikes\":");
         list(o, &l.strikes, |o, s| string(o, s));
+        if l.eject {
+            o.push_str(",\"eject\":true");
+        }
         o.push('}');
     });
     if let Some(csv) = m.values_csv() {
