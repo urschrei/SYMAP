@@ -13,7 +13,10 @@ impl Point {
     }
 
     pub fn dist(self, o: Point) -> f64 {
-        (self.down - o.down).hypot(self.across - o.across)
+        // sqrt is a single WebAssembly instruction; hypot is a slow software
+        // routine there, and this is the innermost loop of interpolation.
+        let (dd, da) = (self.down - o.down, self.across - o.across);
+        (dd * dd + da * da).sqrt()
     }
 }
 

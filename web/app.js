@@ -1,4 +1,4 @@
-import { loadSymap } from './symap.js';
+import { createRunner } from './symap.js';
 
 const EXAMPLES = [
   { file: 'example-1-14.sym', name: 'Manual Example 1-14: proximal maps' },
@@ -143,13 +143,13 @@ function drawSheet(map) {
     }
   }
 
-  // Type: every strike is printed into the same cell, darkening overlaps.
-  // Glyphs nearly fill the 1/10 x 1/8 inch cell, as on a chain printer.
+  // Type: every strike is printed into the same cell; the translucent ink
+  // darkens where strikes overlap. (fillText with ordinary blending measured
+  // fastest: about 1.7x quicker than multiply blending or glyph stamps.)
   ctx.font = `${CELL_H * 1.2}px ${getComputedStyle(document.body).getPropertyValue('--mono')}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = INK;
-  ctx.globalCompositeOperation = 'multiply';
   lines.forEach((line, i) => {
     const y = (i + TOP_LINES + 0.55) * CELL_H;
     const layers = state.overprint ? line.strikes : [line.plain];
@@ -178,7 +178,15 @@ function render() {
     sheets.append(p);
     return;
   }
-  for (const m of r.maps) sheets.append(drawSheet(m));
+  // One sheet per frame, so long runs never block the page for long.
+  const token = (render.token = (render.token || 0) + 1);
+  const maps = [...r.maps];
+  const next = () => {
+    if (token !== render.token || !maps.length) return;
+    sheets.append(drawSheet(maps.shift()));
+    requestAnimationFrame(next);
+  };
+  next();
 }
 
 function showMessages() {
@@ -213,10 +221,12 @@ function showMessages() {
   });
 }
 
-function run() {
+async function run() {
   if (!state.symap) return;
   store.set(STORE_KEY, deck.value);
-  state.result = state.symap.run(deck.value);
+  const result = await state.symap.run(deck.value);
+  if (!result) return; // superseded by a newer edit
+  state.result = result;
   showMessages();
   render();
 }
@@ -244,7 +254,7 @@ async function loadExample(file) {
   deck.scrollLeft = 0;
   deck.setSelectionRange(0, 0);
   syncRuler();
-  run();
+  await run();
 }
 
 function flash(button, text) {
@@ -289,14 +299,14 @@ async function init() {
   window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
 
   render();
-  state.symap = await loadSymap('symap.wasm');
+  state.symap = await createRunner('symap.wasm');
 
   const fromHash = /^#deck=(.+)$/.exec(location.hash);
   if (fromHash) {
-    try { deck.value = await decompress(fromHash[1]); run(); return; } catch { /* fall through */ }
+    try { deck.value = await decompress(fromHash[1]); await run(); return; } catch { /* fall through */ }
   }
   const saved = store.get(STORE_KEY);
-  if (saved) { deck.value = saved; run(); } else { await loadExample(EXAMPLES[0].file); }
+  if (saved) { deck.value = saved; await run(); } else { await loadExample(EXAMPLES[0].file); }
   updateStatus();
 }
 
