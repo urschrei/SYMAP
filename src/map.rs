@@ -373,11 +373,11 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
     match kind {
         MapKind::Contour => {
             let (pts, zs): (Vec<Point>, Vec<f64>) = valid_pts.iter().copied().unzip();
-            let area = if pk.outlines.is_empty() {
+            // The initial radius is based on "the area occupied by the data
+            // points" (Shepard 1970, note 21): their bounding rectangle.
+            let area = {
                 let e = Extent::of(&pts).unwrap();
                 (e.height() * e.width()).max(f64::MIN_POSITIVE)
-            } else {
-                pk.outlines.iter().map(|r| geom::area(r)).sum()
             };
             let (pmin, pmax) = o.point_count.unwrap_or((None, None));
             let params = ShepardParams {
@@ -390,6 +390,8 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                 },
                 initial_radius: o.initial_radius,
                 max_radius: o.max_radius,
+                // 1.5 characters, in source-map units.
+                slope_min_distance: 1.5 / (frame.scale * frame.cols_per_inch),
                 ..Default::default()
             };
             if params.max_points < 1 || params.min_points > params.max_points {
@@ -405,6 +407,24 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             let lo = o.extrapolation_min.unwrap_or(data_range.0);
             let hi = o.extrapolation_max.unwrap_or(data_range.1);
             let s = Shepard::new(&pts, &zs, area, params);
+            // A location within half a character of data points takes their
+            // (average) value; elsewhere the surface is interpolated.
+            let grid_pts: Vec<((f64, f64), f64)> =
+                valid_pts.iter().map(|&(p, v)| (frame.grid(p), v)).collect();
+            let at_location = |r: usize, c: usize| -> Option<f64> {
+                let here: Vec<f64> = grid_pts
+                    .iter()
+                    .filter(|((gr, gc), _)| {
+                        (gr - r as f64).abs() <= 0.5 && (gc - c as f64).abs() <= 0.5
+                    })
+                    .map(|x| x.1)
+                    .collect();
+                if here.is_empty() {
+                    s.eval(frame.centre(r, c))
+                } else {
+                    Some(here.iter().sum::<f64>() / here.len() as f64)
+                }
+            };
             // Standard SYMAP computes about one character in six (every second
             // line, every third column) and derives the rest; elective 37
             // computes every character independently.
@@ -420,7 +440,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                         .filter(|c| c % sc == 0 || *c == frame.cols)
                         .map(move |c| (r, c))
                 })
-                .map(|(r, c)| ((r, c), s.eval(frame.centre(r, c))))
+                .map(|(r, c)| ((r, c), at_location(r, c)))
                 .collect();
             let value = |r: usize, c: usize| -> Option<f64> {
                 let ((r0, r1), (c0, c1)) = (anchor(r, sr, frame.rows), anchor(c, sc, frame.cols));
@@ -442,7 +462,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                 for c in 1..frame.cols {
                     let p = frame.centre(r, c);
                     if inside(p) {
-                        fill[idx(r, c)] = match value(r, c).or_else(|| s.eval(p)) {
+                        fill[idx(r, c)] = match value(r, c) {
                             Some(v) => Fill::Value(classes.level(v.clamp(lo, hi.max(lo)))),
                             None => Fill::NoData,
                         };

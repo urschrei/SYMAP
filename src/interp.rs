@@ -12,7 +12,10 @@
 //! * a slope correction that extrapolates each point's value along a
 //!   locally estimated gradient, damped with distance.
 //!
-//! SYMAP exposes these as electives: 31 (the extrapolation fraction, 0.1),
+//! Details follow Shepard's SYMAP report (1970): the final radius is the
+//! distance to the next data point, and near neighbours are ignored when
+//! estimating slopes. SYMAP exposes these as electives: 31 (the
+//! extrapolation fraction, 0.1),
 //! 34 and 35 (initial and maximum search radius) and 36 (4 to 10 points).
 
 use crate::geom::Point;
@@ -31,6 +34,9 @@ pub struct ShepardParams {
     pub initial_radius: Option<f64>,
     /// Elective 35: never search beyond this distance.
     pub max_radius: Option<f64>,
+    /// Neighbours nearer than this are ignored when estimating slopes
+    /// (1.5 characters in SYMAP; Shepard 1970, note 12).
+    pub slope_min_distance: f64,
 }
 
 impl Default for ShepardParams {
@@ -44,6 +50,7 @@ impl Default for ShepardParams {
             fraction: 0.1,
             initial_radius: None,
             max_radius: None,
+            slope_min_distance: 0.0,
         }
     }
 }
@@ -121,10 +128,13 @@ impl Shepard {
         } else if within < lo {
             match d.get(lo) {
                 Some(x) => x.1,
-                None => d.last().map_or(1.0, |x| x.1 * 1.5).max(f64::MIN_POSITIVE),
+                // Every point is used: no taper (Shepard 1970, Example 1-1).
+                None => f64::INFINITY,
             }
         } else {
-            self.r0
+            // The final radius is the distance to the next data point, so no
+            // selected point gets zero weight (Shepard 1970, note 6).
+            d.get(within).map_or(f64::INFINITY, |x| x.1)
         };
         let r = self.params.max_radius.map_or(r, |m| r.min(m));
         d.retain(|x| x.1 < r);
@@ -170,7 +180,8 @@ impl Shepard {
     /// Weighted mean of directional derivatives towards neighbours: (d/dacross, d/ddown).
     fn gradient(&self, i: usize) -> (f64, f64) {
         let p = self.pts[i];
-        let (nb, r) = self.neighbours(p, Some(i));
+        let (mut nb, r) = self.neighbours(p, Some(i));
+        nb.retain(|x| x.1 >= self.params.slope_min_distance);
         if nb.is_empty() {
             return (0.0, 0.0);
         }
@@ -208,21 +219,12 @@ impl Shepard {
             num += wi * zi;
             den += wi;
         }
-        let v = if den > 0.0 && num.is_finite() {
+        Some(if den > 0.0 && num.is_finite() {
             num / den
         } else {
             // Degenerate weights: fall back to the nearest point.
             self.z[nb[0].0]
-        };
-        // Extrapolate beyond the local extremes (the highest and lowest of the
-        // points used here) by at most the elective 31 fraction of the range.
-        let (zlo, zhi) = nb
-            .iter()
-            .fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), &(i, _)| {
-                (l.min(self.z[i]), h.max(self.z[i]))
-            });
-        let reach = self.params.fraction * self.range;
-        Some(v.clamp(zlo - reach, zhi + reach))
+        })
     }
 }
 
@@ -311,7 +313,9 @@ mod tests {
 
     #[test]
     fn extrapolation_is_limited_near_local_extremes() {
-        // A steep ramp: slope correction would overshoot beyond the end points.
+        // The slope damping (elective 31's fraction) bounds how far the surface
+        // can go beyond the data: a steep ramp must not overshoot its ends by
+        // more than 0.1 of the range.
         let pts: Vec<Point> = (0..8).map(|i| Point::new(0.0, i as f64)).collect();
         let z: Vec<f64> = (0..8).map(|i| (i * i) as f64).collect();
         let s = Shepard::new(&pts, &z, 64.0, ShepardParams::default());
@@ -321,6 +325,18 @@ mod tests {
             let v = s.eval(p).unwrap();
             assert!(v >= -reach - 1e-9 && v <= 49.0 + reach + 1e-9, "{v}");
         }
+    }
+
+    #[test]
+    fn shepard_1970_example_1_1() {
+        // Report L, p. 8: 200 and 400 three units apart, P two units from
+        // the first. Slopes 66.7, a = 0.3, Z' = 217.4 and 384.6, Z_P = 341.
+        let pts = [Point::new(0.0, 0.0), Point::new(0.0, 3.0)];
+        let s = Shepard::new(&pts, &[200.0, 400.0], 1.0, ShepardParams::default());
+        let v = s.eval(Point::new(0.0, 2.0)).unwrap();
+        let want = (217.391_3 * 0.875 + 384.615_4 * 2.5) / 3.375;
+        assert!((v - want).abs() < 1e-3, "{v} vs {want}");
+        assert_eq!(v.round(), 341.0);
     }
 
     #[test]

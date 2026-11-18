@@ -34,13 +34,9 @@ boundaries it blanks the lower one, and no rule tested yet explains both.
 
 `examples/decks/example-1-3.sym` (row-and-column measurement) produces the
 contour map of Example 1-5. Its numeric interpretation and frequencies match
-the printout exactly. Where both maps print a level symbol, 94% of
-characters are on the same level and 99% within one. The original's surface
-is one level higher south of the −4 data point, where this implementation's
-slope correction carries it further downhill. Weakening the slope term
-improves the match steadily (96% with none), which suggests SYMAP applied it
-more selectively than Shepard's formula, but the standard fraction of 0.1
-is kept as the manual specifies. The original also fills outlines slightly
+the printout exactly. Where both maps print a level symbol, 95% of
+characters are on the same level and 99% within one, with the remaining
+differences balanced between higher and lower. The original also fills outlines slightly
 wider, from the integer part of the left edge to one past the integer part
 of the right edge, but Example 1-17 shows the opposite on one island, so the
 rule is not yet settled.
@@ -97,18 +93,27 @@ panels.
 
 ## Interpolation
 
-`interp::Shepard` follows Shepard (1968): a search radius that holds about
-seven points on average, adjusted to keep four to ten; weights of `1/d`
-tapering to zero at the radius; a direction factor; and a slope correction
-damped with distance. The surface passes exactly through the data. Wherever
-it is computed, it may go beyond the highest or lowest of the points used
-there by at most the elective 31 fraction (0.1) of the data range, and it is
-held within the data extremes unless electives 32 and 33 say otherwise.
+`interp::Shepard` follows Shepard (1968) as implemented in SYMAP and
+described in his 1970 report on SYMAP's interpolation:
 
-As the manual describes, values are computed for about one character in six
-(every second line and third column) and the rest are interpolated from them;
-elective 37 computes every character independently. The exact sampling
-pattern of the original is not documented.
+- the initial search radius holds about seven points on average, based on
+  the rectangle the data points occupy; the radius then adjusts to keep four
+  to ten points, and the final radius is the distance to the next data
+  point (no taper when every point is used);
+- weights of `1/d` taper to zero at the final radius, with a direction
+  factor for points not shadowed by others;
+- each data point carries a slope, from neighbours at least 1.5 characters
+  away, applied with a damping `a/(a+d)`; `a` is chosen so the slope term
+  never exceeds the elective 31 fraction (0.1) of the data range;
+- values are held within the data extremes unless electives 32 and 33 say
+  otherwise.
+
+Values are computed at grid points, every third column and every second
+line, and the characters between them are interpolated linearly; elective 37
+computes every character. A grid point within half a character of data
+points takes their (average) value, and a grid point with no data within
+reach makes the characters derived from it print as no data. The report's
+worked example (two points, value 341 between them) is a unit test.
 
 ## References
 
@@ -120,6 +125,10 @@ pattern of the original is not documented.
 - Shepard, D. (1968). A two-dimensional interpolation function for
   irregularly-spaced data. *Proceedings of the 1968 23rd ACM National
   Conference*, 517–524. <https://doi.org/10.1145/800186.810616>
+- Shepard, D. S. (1970). *SYMAP Interpolation Characteristics*. Computer
+  Mapping as an Aid in Air Pollution Studies, Vol. 2, Report L. Laboratory
+  for Computer Graphics and Spatial Analysis, Harvard University. NTIS PB 204
+  180 (APTD-0787). Scan: <https://archive.org/details/micro_IA41159411_0474>
 - Shepard, D. (1984). Computer Mapping: The SYMAP Interpolation Algorithm.
   In G. L. Gaile & C. J. Willmott (eds), *Spatial Statistics and Models*,
   Springer, 133–145. <https://doi.org/10.1007/978-94-017-3048-8_7>
