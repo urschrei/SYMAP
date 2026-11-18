@@ -81,6 +81,10 @@ fn map(out: &mut String, m: &PrintedMap) {
         list(o, &l.strikes, |o, s| string(o, s));
         o.push('}');
     });
+    if let Some(csv) = m.values_csv() {
+        out.push_str(",\"valuesCsv\":");
+        string(out, &csv);
+    }
     out.push_str(",\"asa\":");
     string(out, &m.to_asa());
     out.push('}');
@@ -132,7 +136,7 @@ mod tests {
                     F-MAP\nT\n\n\n    1       1.0       1.0\n99999\n999999\n";
         let j = run(deck);
         assert!(j.starts_with("{\"ok\":true,\"diagnostics\":[],\"maps\":[{\"kind\":\"contour\",\"rows\":8,\"cols\":10,"));
-        assert!(j.contains("\"strikes\":[") && j.contains("\"asa\":\"1*"));
+        assert!(j.contains("\"strikes\":[") && j.contains("\"asa\":\"1MAP SCALE"));
         assert_eq!(
             run("hello\n"),
             r#"{"ok":false,"error":{"line":1,"message":"expected a package header, found \"hello\""}}"#

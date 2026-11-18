@@ -58,6 +58,16 @@ pub enum Elective {
     /// 19, 20: invalid data range limits.
     InvalidMin(f64),
     InvalidMax(f64),
+    /// 21: keep every character's computed value (the original wrote them to
+    /// tape for other programs; here they can be downloaded).
+    StoreValues,
+    /// 28: dot conformant map. Blank: dot each zone to a density matching its
+    /// level; `percent`: dots as a share of the total value range; `per_dot`:
+    /// each dot stands for this much.
+    DotMap {
+        percent: bool,
+        per_dot: Option<f64>,
+    },
     /// 22: keep contour lines even where they crowd out symbolism.
     ContinuousContours,
     /// 23: no symbol at invalid data points.
@@ -85,7 +95,7 @@ pub enum Elective {
     },
     /// 37: compute every character independently (standard: one in six).
     Independence,
-    /// 21, 28, 38, 39 and unknown numbers.
+    /// 38, 39 (Version 6 extras) and unknown numbers.
     Unsupported {
         number: u32,
         fields: Vec<Option<f64>>,
@@ -230,6 +240,11 @@ pub fn parse(cards: &[(usize, &str)]) -> Result<Vec<Entry>, Error> {
             18 => Elective::InvalidBlank,
             19 => Elective::InvalidMin(need(0, "minimum")?),
             20 => Elective::InvalidMax(need(0, "maximum")?),
+            21 => Elective::StoreValues,
+            28 => Elective::DotMap {
+                percent: get(0).is_some_and(|v| v > 0.0),
+                per_dot: get(1).filter(|v| *v > 0.0),
+            },
             22 => Elective::ContinuousContours,
             23 => Elective::NoInvalidSymbol,
             24 => Elective::NoNumericInterpretation,

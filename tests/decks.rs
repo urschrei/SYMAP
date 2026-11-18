@@ -212,3 +212,108 @@ fn barriers_stop_interpolation() {
     assert_eq!(levels(with), vec![Level::In(0), Level::In(4)]);
     assert!(levels(without).len() >= 4, "{:?}", levels(without));
 }
+
+#[test]
+fn tables_before_the_map_match_the_manual() {
+    // Example 1-4 (data points) and Example 1-21 (zones), as printed.
+    let m = &run(&deck("example-1-3.sym")).unwrap().maps[0];
+    let rows: Vec<(i64, i64, i64)> = m
+        .table
+        .iter()
+        .map(|t| (t.row, t.col, (t.value.unwrap() * 100.0).round() as i64))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            (24, 13, 1200),
+            (13, 34, -1400),
+            (26, 30, 4300),
+            (20, 53, 3800),
+            (28, 48, -400),
+            (30, 70, 0)
+        ]
+    );
+    let text = m.to_text();
+    assert!(text.starts_with("MAP SCALE =     1.0000 INCHES ON OUTPUT MAP/UNITS ON SOURCE MAP\n"));
+    assert!(text.contains("    6)                30        70         6         0.0         2\n"));
+    let z = &run(&deck("example-1-20.sym")).unwrap().maps[0];
+    let zones: Vec<(i64, i64, usize)> = z
+        .table
+        .iter()
+        .map(|t| {
+            (
+                t.row,
+                t.col,
+                match t.level {
+                    Some(Level::In(k)) => k as usize + 1,
+                    _ => 0,
+                },
+            )
+        })
+        .collect();
+    assert_eq!(
+        zones,
+        vec![
+            (20, 17, 2),
+            (13, 36, 1),
+            (27, 34, 5),
+            (19, 52, 2),
+            (29, 49, 5),
+            (30, 70, 4)
+        ]
+    );
+    // Elective 17 suppresses the table.
+    let quiet =
+        deck("example-1-3.sym").replace("    2            0.0", "   17\n    2            0.0");
+    assert!(run(&quiet).unwrap().maps[0].to_text().starts_with("*----"));
+}
+
+#[test]
+fn elective_21_keeps_values() {
+    let d = deck("example-1-3.sym").replace("    2            0.0", "   21\n    2            0.0");
+    let m = &run(&d).unwrap().maps[0];
+    let csv = m.values_csv().unwrap();
+    let lines: Vec<&str> = csv.lines().collect();
+    assert_eq!(lines.len(), 39);
+    assert!(lines.iter().all(|l| l.split(',').count() == 79));
+    // The value at data point 3 (row 26, column 30) is the data value.
+    assert_eq!(lines[25].split(',').nth(29), Some("43"));
+    assert!(
+        run(&deck("example-1-3.sym")).unwrap().maps[0]
+            .values_csv()
+            .is_none()
+    );
+}
+
+#[test]
+fn elective_28_dot_maps() {
+    let dots = |extra: &str| {
+        let d = deck("example-1-20.sym").replace(
+            "    2            0.0",
+            &format!("{extra}\n    2            0.0"),
+        );
+        let m = run(&d).unwrap().maps.remove(0);
+        let count = |zone: usize| -> usize {
+            // Count dots in the cells of a zone's rows around its centre.
+            let t = &m.table[zone - 1];
+            (t.row - 2..=t.row + 2)
+                .flat_map(|r| (t.col - 3..=t.col + 3).map(move |c| (r as usize, c as usize)))
+                .filter(|&(r, c)| m.at(r, c) == Strikes::new("."))
+                .count()
+        };
+        let (low, high) = (count(2), count(3));
+        (m, low, high)
+    };
+    let (m, low, high) = dots("   28");
+    // Level 1 zone (12) gets a fifth of its cells dotted; level 5 zones all.
+    assert!(low < high, "{low} {high}");
+    // Zones carry dots, not tone: no solid symbols around zone 3's centre.
+    let t = &m.table[2];
+    let solid = (t.row - 2..=t.row + 2)
+        .flat_map(|r| (t.col - 3..=t.col + 3).map(move |c| (r as usize, c as usize)))
+        .filter(|&(r, c)| m.at(r, c).plain() == '█')
+        .count();
+    assert_eq!(solid, 0);
+    let (_, low2, high2) = dots("   28       1.0");
+    assert!(low2 < high2);
+}

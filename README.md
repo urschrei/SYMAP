@@ -17,6 +17,12 @@ cargo run -- examples/decks/example-1-14.sym
 cargo run -- --asa examples/decks/hills.sym
 ```
 
+Each map's printout starts, as the original's did, with the map scale and a
+table of its data points (or zones), giving each one's printed row and
+column, value and level; for contour maps it also gives the standard search
+radius. `--values` prints the values computed for maps that use elective 21,
+as CSV.
+
 `--asa` writes Fortran carriage control: lines starting with `+` overprint
 the line above, which is how darker tones were struck on the line printer.
 Plain output stands in single characters for overprints (`Θ` for `O`+`-`,
@@ -47,6 +53,13 @@ differences balanced between higher and lower. The original also fills outlines 
 wider, from the integer part of the left edge to one past the integer part
 of the right edge, but Example 1-17 shows the opposite on one island, so the
 rule is not yet settled.
+
+The original also printed its standard initial search radius: 3.09271 for
+Example 1-3 and 3.29958 for Example 1-6 (whose data points are those of
+Example 1-14). This implementation, which bases the radius on the rectangle
+the data points occupy, gives 2.12; no simple measure of the points or the
+outline reproduces both printed values, so the formula is still open. Using
+SYMAP's printed radius (elective 34) raises Example 1-5's agreement to 97%.
 
 ## In the browser
 
@@ -105,8 +118,11 @@ cards. Lines starting with `#` between packages are comments (an extension).
 | 34, 35, 36 | search radius and point count | yes |
 | 31 + 36 + 37 | proximal map | yes |
 | 37 | compute every character independently | yes |
-| 17, 26 | tabular output, overprint alignment | accepted, no effect |
-| 21, 28, 38, 39 | tape output, dot maps, data graph, regression plane | not implemented (warning) |
+| 17 | no table of data points or zones before the map | yes |
+| 21 | keep each character's computed value (`--values`, or the site's Values download) | yes |
+| 28 | dot conformant maps: by level, as a share of the range, or one dot per amount | yes |
+| 26 | overprint alignment (a printer adjustment) | accepted, no effect |
+| 38, 39 | Version 6 data graph and regression plane | not implemented (warning) |
 
 Standard symbolism follows Tables 3-1 and 3-2: from `.` to `O`+`X`+`A`+`V`
 over up to ten levels, data points as their level number (`*` for the

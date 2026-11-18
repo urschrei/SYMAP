@@ -92,6 +92,8 @@ button, select {
   border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer;
 }
 button:hover, select:hover { border-color: var(--muted); }
+button:disabled { opacity: 0.45; cursor: default; }
+button:disabled:hover { border-color: var(--line); }
 button:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 1px;
 }

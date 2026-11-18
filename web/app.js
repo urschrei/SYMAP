@@ -279,6 +279,7 @@ async function run() {
   state.result = result;
   showMessages();
   render();
+  $('download-values').disabled = !(result.ok && result.maps.some((m) => m.valuesCsv));
 }
 
 // --------------------------------------------------------------- actions
@@ -346,6 +347,10 @@ async function init() {
   $('zoom').addEventListener('change', (e) => { state.zoom = e.target.value; render(); });
   $('download-asa').addEventListener('click', () => { const t = outputs('asa'); if (t) download('symap-asa.txt', t); });
   $('download-text').addEventListener('click', () => { const t = outputs('text'); if (t) download('symap.txt', t); });
+  $('download-values').addEventListener('click', () => {
+    const maps = state.result?.ok ? state.result.maps.filter((m) => m.valuesCsv) : [];
+    if (maps.length) download('symap-values.csv', maps.map((m) => m.valuesCsv).join('\n'));
+  });
   $('share').addEventListener('click', async (e) => {
     const url = `${location.origin}${location.pathname}#deck=${await compress(deck.value)}`;
     history.replaceState(null, '', url);

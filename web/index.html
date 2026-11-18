@@ -78,8 +78,11 @@
               <tr><td>14</td><td>Margins (border shifts) in inches</td><td>top, left, bottom, right</td></tr>
               <tr><td>15</td><td>Lines and characters per inch (standard 8, 10)</td><td>lines, columns</td></tr>
               <tr><td>16</td><td>Allow maps over 72 inches</td><td>—</td></tr>
+              <tr><td>17</td><td>No table of data points or zones before the map</td><td>—</td></tr>
               <tr><td>18, 19, 20, 23</td><td>Invalid data: blank and −0; at or above; at or below; no <code>M</code> symbol</td><td>value</td></tr>
+              <tr><td>21</td><td>Keep each character's computed value (download as CSV)</td><td>—</td></tr>
               <tr><td>25, 27</td><td>No data points on a conformant map; contour even with conformolines</td><td>—</td></tr>
+              <tr><td>28</td><td>Dot conformant map: dots to a density for each level; or as a share of the range (11–20 &gt; 0); or one dot per amount (21–30)</td><td>—, flag, amount</td></tr>
               <tr><td>31, 32, 33</td><td>Extrapolation fraction (standard 0.1); absolute minimum; maximum</td><td>value</td></tr>
               <tr><td>34, 35, 36</td><td>Initial and maximum search radius; minimum and maximum points (4, 10)</td><td>value(s)</td></tr>
               <tr><td>37</td><td>Compute every character (standard: one in six)</td><td>—</td></tr>
@@ -111,6 +114,7 @@
           <button type="button" id="share" title="Copy a link containing this deck">Copy link</button>
           <button type="button" id="download-asa" title="Fortran carriage-control output, with overprint lines">ASA</button>
           <button type="button" id="download-text" title="Plain text, one character per position">Text</button>
+          <button type="button" id="download-values" title="Computed values as CSV (maps with elective 21)" disabled>Values</button>
         </div>
       </div>
       <ul class="messages" id="messages" aria-live="polite"></ul>

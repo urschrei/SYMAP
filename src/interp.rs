@@ -125,6 +125,11 @@ impl Shepard {
         s
     }
 
+    /// The initial search radius, in source-map units.
+    pub fn initial_radius(&self) -> f64 {
+        self.r0
+    }
+
     /// The effective distance from `p` to `q`: the squares of the strengths of
     /// all barriers crossed an odd number of times are added to the squared
     /// distance (Shepard 1970, 1.3.1). `None` across an impermeable barrier.

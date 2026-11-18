@@ -1,16 +1,19 @@
 use std::io::Read;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: symap [--asa] [DECK | -]\n\n\
+const USAGE: &str = "usage: symap [--asa | --values] [DECK | -]\n\n\
     Reads a SYMAP deck (from stdin if DECK is omitted or '-') and prints its maps.\n\
-    --asa   emit Fortran carriage control with overprint lines instead of plain text";
+    --asa     emit Fortran carriage control with overprint lines instead of plain text\n\
+    --values  print the computed values of maps with elective 21, as CSV";
 
 fn main() -> ExitCode {
     let mut asa = false;
+    let mut values = false;
     let mut path: Option<String> = None;
     for a in std::env::args().skip(1) {
         match a.as_str() {
             "--asa" => asa = true,
+            "--values" => values = true,
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return ExitCode::SUCCESS;
@@ -42,6 +45,15 @@ fn main() -> ExitCode {
         Ok(run) => {
             for d in &run.diagnostics {
                 eprintln!("warning: {d}");
+            }
+            if values {
+                let csv: Vec<String> = run.maps.iter().filter_map(|m| m.values_csv()).collect();
+                if csv.is_empty() {
+                    eprintln!("symap: no map in this deck uses elective 21 (store values)");
+                    return ExitCode::FAILURE;
+                }
+                print!("{}", csv.join("\n"));
+                return ExitCode::SUCCESS;
             }
             for (i, m) in run.maps.iter().enumerate() {
                 for w in &m.warnings {

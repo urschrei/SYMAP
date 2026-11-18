@@ -66,7 +66,11 @@ fn border_mark(i: usize, fill: char) -> char {
 }
 
 fn num(v: f64) -> String {
-    if v != 0.0 && !(1e-2..1e7).contains(&v.abs()) {
+    // SYMAP prints zero as 0.0 (Examples 1-4, 1-12).
+    if v == 0.0 {
+        return "0.0".into();
+    }
+    if !(1e-2..1e7).contains(&v.abs()) {
         format!("{v:.3e}")
     } else {
         format!("{v:.2}")
@@ -271,9 +275,75 @@ impl PrintedMap {
     }
 
     /// The full printed output for this map.
+    /// The scale and the data point (or zone) table printed before the map,
+    /// as in the manual's Examples 1-4 and 1-21. Elective 17 suppresses it.
+    fn prelude(&self) -> Vec<Line> {
+        let f = &self.frame;
+        let mut out = vec![
+            Line::text(format!(
+                "MAP SCALE = {:>10.4} INCHES ON OUTPUT MAP/UNITS ON SOURCE MAP",
+                f.scale
+            )),
+            Line::text(format!(
+                "MAP SHOULD BE PRINTED AT {:>5.1} ROWS PER INCH AND {:>5.1} COLUMNS PER INCH",
+                f.lines_per_inch, f.cols_per_inch
+            )),
+            Line::blank(),
+            Line::text(format!(
+                "ROW    = DOWN   COORDINATE * {:>10.4}",
+                f.scale * f.lines_per_inch
+            )),
+            Line::text(format!(
+                "COLUMN = ACROSS COORDINATE * {:>10.4}",
+                f.scale * f.cols_per_inch
+            )),
+            Line::blank(),
+        ];
+        let zones = self.table.first().is_some_and(|t| t.shape.is_some());
+        out.push(Line::text(if zones {
+            "CONFORMOLINES FOR MAP"
+        } else {
+            "DATA POINTS FOR MAP"
+        }));
+        out.push(Line::text(if zones {
+            "  ZONE    TYPE       ROW    COLUMN     DATUM       VALUE     LEVEL"
+        } else {
+            " POINT               ROW    COLUMN     DATUM       VALUE     LEVEL"
+        }));
+        out.push(Line::blank());
+        for t in &self.table {
+            let level = match t.level {
+                Some(Level::Low) => "L".to_string(),
+                Some(Level::High) => "H".to_string(),
+                Some(Level::In(k)) => (k + 1).to_string(),
+                None => "M".to_string(),
+            };
+            out.push(Line::text(format!(
+                "{:>5})    {:<4} {:>9} {:>9} {:>9} {:>11} {:>9}",
+                t.number,
+                t.shape.map(String::from).unwrap_or_default(),
+                t.row,
+                t.col,
+                t.datum.map(|d| d.to_string()).unwrap_or_default(),
+                t.value.map(num).unwrap_or_else(|| "INVALID".into()),
+                level
+            )));
+        }
+        if let Some(r) = self.search_radius {
+            out.push(Line::blank());
+            out.push(Line::text(format!("STANDARD SEARCH RADIUS IS {r:>10.5}")));
+        }
+        out.push(Line::blank());
+        out
+    }
+
     pub fn page(&self) -> Vec<Line> {
         let rows = self.bordered();
-        let mut out = Vec::new();
+        let mut out = if self.tabular {
+            self.prelude()
+        } else {
+            Vec::new()
+        };
         for (i, cols) in self.panels().into_iter().enumerate() {
             if i > 0 {
                 out.push(Line::blank());
@@ -293,6 +363,22 @@ impl PrintedMap {
             out.extend(self.histogram());
         }
         out
+    }
+
+    /// Elective 21's values as CSV: one line per printed line inside the
+    /// border, empty where nothing was computed. `None` without elective 21.
+    pub fn values_csv(&self) -> Option<String> {
+        let v = self.values.as_ref()?;
+        let w = self.width();
+        let mut out = String::new();
+        for r in 1..self.frame.rows {
+            let row: Vec<String> = (1..self.frame.cols)
+                .map(|c| v[r * w + c].map(|x| format!("{x}")).unwrap_or_default())
+                .collect();
+            out.push_str(&row.join(","));
+            out.push('\n');
+        }
+        Some(out)
     }
 
     /// Plain text, one character per print position.

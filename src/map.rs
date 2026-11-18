@@ -47,6 +47,12 @@ pub struct Options {
     pub max_radius: Option<f64>,
     pub point_count: Option<(Option<f64>, Option<f64>)>,
     pub independence: bool,
+    /// Elective 21: keep each character's computed value.
+    pub store_values: bool,
+    /// Elective 28: dot map (`percent`, `per_dot`).
+    pub dots: Option<(bool, Option<f64>)>,
+    /// Elective 17 turns off the table printed before the map.
+    pub tabular: bool,
 }
 
 impl Default for Options {
@@ -77,6 +83,9 @@ impl Default for Options {
             max_radius: None,
             point_count: None,
             independence: false,
+            store_values: false,
+            dots: None,
+            tabular: true,
         }
     }
 }
@@ -99,7 +108,10 @@ impl Options {
                 Elective::NoHistogram => o.bars = false,
                 Elective::Text(t) => o.text = t.clone(),
                 Elective::PrintValues => o.print_values = true,
-                Elective::Repeat | Elective::NoTabular | Elective::OverprintAlignment => {}
+                Elective::Repeat | Elective::OverprintAlignment => {}
+                Elective::NoTabular => o.tabular = false,
+                Elective::StoreValues => o.store_values = true,
+                Elective::DotMap { percent, per_dot } => o.dots = Some((*percent, *per_dot)),
                 Elective::Scale(s) => o.layout.scale = Some(*s),
                 Elective::Margins(m) => o.layout.margins = *m,
                 Elective::CharsPerInch { rows, cols } => {
@@ -168,6 +180,73 @@ pub struct PrintedMap {
     pub numeric: bool,
     pub bars: bool,
     pub warnings: Vec<String>,
+    /// Elective 21: each print position's computed value (row-major, like `grid`).
+    pub values: Option<Vec<Option<f64>>>,
+    /// The table printed before the map: data points, or zones for a
+    /// conformant map (unless elective 17).
+    pub table: Vec<TableRow>,
+    pub tabular: bool,
+    /// The initial search radius of a contour map, in source-map units.
+    pub search_radius: Option<f64>,
+}
+
+/// One row of the table printed before a map.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TableRow {
+    /// Point or zone number, in input order.
+    pub number: usize,
+    /// Zone shape (`A`, `L`, `P`); `None` for data points.
+    pub shape: Option<char>,
+    /// Print position (of a zone's centre).
+    pub row: i64,
+    pub col: i64,
+    /// The E-VALUES reference used, if any.
+    pub datum: Option<usize>,
+    /// `None` for invalid data.
+    pub value: Option<f64>,
+    pub level: Option<Level>,
+}
+
+/// The E-VALUES entry a reference maps to after E1-VALUES INDEX.
+fn datum(pk: &Packages, r: usize) -> Option<usize> {
+    match pk.index.iter().rev().find(|(from, _)| *from == r) {
+        Some((_, to)) => *to,
+        None => Some(r),
+    }
+}
+
+/// Centre of a zone outline: the area centroid, or the mean of its vertices.
+fn centre_of(z: &crate::deck::Conformoline) -> Point {
+    let v = &z.vertices;
+    let n = v.len() as f64;
+    let mean = Point::new(
+        v.iter().map(|p| p.down).sum::<f64>() / n,
+        v.iter().map(|p| p.across).sum::<f64>() / n,
+    );
+    if z.shape != ZoneShape::Area || v.len() < 3 {
+        return mean;
+    }
+    let (mut a, mut cd, mut ca) = (0.0, 0.0, 0.0);
+    for i in 0..v.len() {
+        let (p, q) = (v[i], v[(i + 1) % v.len()]);
+        let cross = p.across * q.down - q.across * p.down;
+        a += cross;
+        cd += (p.down + q.down) * cross;
+        ca += (p.across + q.across) * cross;
+    }
+    if a.abs() < 1e-12 {
+        mean
+    } else {
+        Point::new(cd / (3.0 * a), ca / (3.0 * a))
+    }
+}
+
+/// A deterministic scatter order for dot maps.
+fn scatter(r: usize, c: usize) -> u64 {
+    let mut h = (r as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ (c as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
+    h ^= h >> 31;
+    h.wrapping_mul(0x94D0_49BB_1331_11EB) ^ (h >> 29)
 }
 
 impl PrintedMap {
@@ -378,9 +457,12 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         NoData,
         Value(Level),
     }
+    let mut search_radius = None;
     let mut fill = vec![Fill::Background; (frame.rows + 1) * width];
     // Which conformant zone (value reference) fills each character.
     let mut zone_of: Vec<Option<usize>> = vec![None; (frame.rows + 1) * width];
+    // Each character's computed value, before classing.
+    let mut cell_value: Vec<Option<f64>> = vec![None; (frame.rows + 1) * width];
     let inside =
         |p: Point| pk.outlines.is_empty() || pk.outlines.iter().any(|r| geom::in_ring(p, r));
     let valid_pts: Vec<(Point, f64)> = pk
@@ -428,6 +510,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             let barriers: Vec<Vec<(Point, f64)>> =
                 pk.barriers.iter().map(|b| b.vertices.clone()).collect();
             let s = Shepard::with_barriers(&pts, &zs, area, params, &barriers);
+            search_radius = Some(s.initial_radius());
             // A location within half a character of data points takes their
             // (average) value; elsewhere the surface is interpolated.
             let grid_pts: Vec<((f64, f64), f64)> =
@@ -484,7 +567,11 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                     let p = frame.centre(r, c);
                     if inside(p) {
                         fill[idx(r, c)] = match value(r, c) {
-                            Some(v) => Fill::Value(classes.level(v.clamp(lo, hi.max(lo)))),
+                            Some(v) => {
+                                let v = v.clamp(lo, hi.max(lo));
+                                cell_value[idx(r, c)] = Some(v);
+                                Fill::Value(classes.level(v))
+                            }
                             None => Fill::NoData,
                         };
                     }
@@ -497,8 +584,9 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                 for c in 1..frame.cols {
                     let p = frame.centre(r, c);
                     if inside(p) {
-                        fill[idx(r, c)] =
-                            Fill::Value(classes.level(valid_pts[interp::nearest(&pts, p)].1));
+                        let v = valid_pts[interp::nearest(&pts, p)].1;
+                        cell_value[idx(r, c)] = Some(v);
+                        fill[idx(r, c)] = Fill::Value(classes.level(v));
                     }
                 }
             }
@@ -516,6 +604,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                                 {
                                     fill[idx(r, c)] = f;
                                     zone_of[idx(r, c)] = Some(z.reference);
+                                    cell_value[idx(r, c)] = Some(*v);
                                 }
                             }
                         }
@@ -524,6 +613,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                         for (r, c) in trace(&frame, &z.vertices) {
                             fill[idx(r, c)] = f;
                             zone_of[idx(r, c)] = Some(z.reference);
+                            cell_value[idx(r, c)] = Some(*v);
                         }
                     }
                 }
@@ -552,6 +642,44 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             Fill::Value(Level::In(k)) => symbolism.general[*k as usize],
         })
         .collect();
+    // Elective 28: a dot map shows each zone as scattered dots instead of tone.
+    if let (Some((percent, per_dot)), MapKind::Conformant) = (o.dots, kind) {
+        let mut cells: std::collections::BTreeMap<usize, Vec<usize>> = Default::default();
+        for (i, z) in zone_of.iter().enumerate() {
+            if let Some(z) = z {
+                cells.entry(*z).or_default().push(i);
+                grid[i] = symbolism.background;
+            }
+        }
+        let (lo, hi) = (classes.min(), classes.max());
+        for (z, mut list) in cells {
+            let Some(v) = item_values
+                .iter()
+                .zip(&pk.conformolines)
+                .find(|(_, c)| c.reference == z)
+                .and_then(|(v, _)| *v)
+            else {
+                continue;
+            };
+            let share = if let Some(k) = per_dot {
+                (v / k).round().max(0.0) / list.len() as f64
+            } else if percent {
+                (v - lo) / (hi - lo)
+            } else {
+                match classes.level(v) {
+                    Level::Low => 0.0,
+                    Level::In(k) => (k as f64 + 1.0) / n as f64,
+                    Level::High => 1.0,
+                }
+            };
+            let k = ((share.clamp(0.0, 1.0) * list.len() as f64).round() as usize).min(list.len());
+            list.sort_by_key(|&i| scatter(i / width, i % width));
+            for &i in &list[..k] {
+                grid[i] = Strikes::single('.');
+            }
+        }
+    }
+
     if o.lines != Lines::None && kind == MapKind::Conformant {
         // Conformant boundaries are drawn where they run: each zone edge is
         // traced to the nearest character on every line it crosses (or every
@@ -723,6 +851,50 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         }
     }
 
+    // The table printed before the map.
+    let level_of = |v: Option<f64>| v.map(|v| classes.level(v));
+    let table: Vec<TableRow> = if kind == MapKind::Conformant {
+        pk.conformolines
+            .iter()
+            .zip(&item_values)
+            .enumerate()
+            .map(|(i, (z, v))| {
+                let (r, c) = frame.grid(centre_of(z));
+                TableRow {
+                    number: i + 1,
+                    shape: Some(match z.shape {
+                        ZoneShape::Area => 'A',
+                        ZoneShape::Line => 'L',
+                        ZoneShape::Point => 'P',
+                    }),
+                    row: (r + 0.5).floor() as i64,
+                    col: (c + 0.5).floor() as i64,
+                    datum: datum(pk, z.reference),
+                    value: *v,
+                    level: level_of(*v),
+                }
+            })
+            .collect()
+    } else {
+        pk.points
+            .iter()
+            .zip(&point_values)
+            .enumerate()
+            .map(|(i, (p, v))| {
+                let (r, c) = frame.grid(*p);
+                TableRow {
+                    number: i + 1,
+                    shape: None,
+                    row: (r + 0.5).floor() as i64,
+                    col: (c + 0.5).floor() as i64,
+                    datum: datum(pk, i + 1),
+                    value: *v,
+                    level: level_of(*v),
+                }
+            })
+            .collect()
+    };
+
     Ok(PrintedMap {
         kind,
         titles: spec.titles.clone(),
@@ -737,5 +909,9 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         numeric: o.numeric,
         bars: o.bars,
         warnings,
+        values: o.store_values.then_some(cell_value),
+        table,
+        tabular: o.tabular,
+        search_radius,
     })
 }
