@@ -19,13 +19,15 @@ module, the front end and the example decks into `target/site`.
 ## Interface
 
 `src/wasm.rs` exports a plain C ABI: `symap_alloc`, `symap_run`,
-`symap_result_ptr` and `symap_free`. A deck goes in as UTF-8 and the result
+`symap_import`, `symap_result_ptr` and `symap_free`. A deck goes in as UTF-8 and the result
 comes back as JSON: each map's lines (plain and per overprint pass, with
 page ejects), titles, warnings, ASA output and, with elective 21, the
 computed values as CSV. Errors carry the line of the card that caused them.
 
 The front end runs the module in a Web Worker and coalesces requests, so
-typing in the editor never queues more than one run.
+typing in the editor never queues more than one run. `symap_import` takes a
+JSON request (the file's text, its name and the options) and returns the
+deck it makes; imports use a second instance on the main thread.
 
 ## The printout
 
@@ -52,6 +54,6 @@ characters and 8 lines to the inch.
 
 The `Site` workflow runs the tests, rustfmt and clippy (native and wasm),
 builds the site, and runs a browser smoke test (`scripts/smoke-test.mjs`).
-The smoke test renders every example, turns a sheet, and checks that an
-error links to its card. The workflow publishes `target/site` to GitHub
+The smoke test renders every example, turns a sheet, imports a small CSV,
+and checks that an error links to its card. The workflow publishes `target/site` to GitHub
 Pages from `main`.

@@ -187,3 +187,26 @@ button:focus-visible, select:focus-visible, textarea:focus-visible {
   .masthead, .workbench { padding-left: 16px; padding-right: 16px; }
   .colophon { padding-left: 16px; padding-right: 16px; }
 }
+
+/* Import dialog */
+#import-dialog {
+  border: 1px solid var(--line); border-radius: 10px; padding: 0;
+  background: var(--surface); color: var(--ink); width: min(30rem, calc(100vw - 32px));
+}
+#import-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+.import-form { display: grid; gap: 10px; padding: 18px 20px; }
+.import-form h2 { margin: 0; font-size: 17px; }
+.import-form p { margin: 0; }
+.import-source { font: 13px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.import-help { font-size: 13px; color: var(--muted); }
+.import-form label { display: grid; gap: 4px; font-size: 13px; }
+.import-form label.check { display: flex; align-items: center; gap: 8px; }
+.import-form input[type="text"], .import-form input[type="number"] {
+  font: inherit; font-size: 13px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
+}
+.import-summary { font-size: 13px; min-height: 1.5em; }
+.import-summary.error { color: var(--error); }
+.import-actions { display: flex; justify-content: flex-end; gap: 8px; }
+#import-create { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.editor.dropping { outline: 2px dashed var(--accent); outline-offset: -2px; }

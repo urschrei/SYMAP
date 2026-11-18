@@ -7,7 +7,10 @@
 //! 2. `symap_run(ptr, len)` runs the deck, frees the input, and returns the
 //!    byte length of a JSON result (see `json`).
 //! 3. `symap_result_ptr()` gives the address of that result, valid until the
-//!    next `symap_run`.
+//!    next `symap_run` or `symap_import`.
+//!
+//! `symap_import(ptr, len)` works the same way, taking a JSON import request
+//! (see `json::import`) and returning the deck it makes.
 
 use std::cell::RefCell;
 
@@ -38,6 +41,19 @@ pub unsafe extern "C" fn symap_run(ptr: *mut u8, len: usize) -> usize {
     let text = String::from_utf8_lossy(&input).into_owned();
     drop(input);
     let json = crate::json::run(&text).into_bytes();
+    let n = json.len();
+    RESULT.with(|r| *r.borrow_mut() = json);
+    n
+}
+
+/// # Safety
+/// `ptr` must come from `symap_alloc(len)` with `len` bytes written.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn symap_import(ptr: *mut u8, len: usize) -> usize {
+    let input = unsafe { Vec::from_raw_parts(ptr, len, len.max(1)) };
+    let text = String::from_utf8_lossy(&input).into_owned();
+    drop(input);
+    let json = crate::json::import(&text).into_bytes();
     let n = json.len();
     RESULT.with(|r| *r.borrow_mut() = json);
     n

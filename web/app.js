@@ -1,4 +1,4 @@
-import { createRunner } from './symap.js';
+import { createRunner, loadSymap } from './symap.js';
 
 const EXAMPLES = [
   { file: 'example-1-14.sym', name: 'Manual Example 1-14: proximal maps' },
@@ -382,6 +382,85 @@ function flash(button, text) {
   setTimeout(() => { button.textContent = old; }, 1500);
 }
 
+// ---------------------------------------------------------------- import
+
+// Imports are occasional, so they use their own instance on the main thread.
+let importer = null;
+const pending = { text: '', name: '', result: null };
+
+function importRequest() {
+  return {
+    text: pending.text,
+    name: pending.name,
+    value: $('import-value').value,
+    map: $('import-map').value,
+    width: Number($('import-width').value) || 8,
+    title: $('import-title').value.trim(),
+    outline: $('import-outline').checked,
+  };
+}
+
+function refreshImport() {
+  const r = importer.importData(importRequest());
+  pending.result = r;
+  const summary = $('import-summary');
+  summary.classList.toggle('error', !r.ok);
+  $('import-create').disabled = !r.ok;
+  if (!r.ok) {
+    summary.textContent = (r.error.line ? `Line ${r.error.line}: ` : '') + r.error.message;
+    return;
+  }
+  const sel = $('import-value');
+  if ([...sel.options].map((o) => o.value).join() !== r.fields.join()) {
+    sel.replaceChildren(...r.fields.map((f) => new Option(f, f)));
+  }
+  sel.value = r.value;
+  const notes = r.warnings.length ? ` ${r.warnings.map((w) => w[0].toUpperCase() + w.slice(1)).join('. ')}.` : '';
+  summary.textContent = `${r.points} points, mapping ${r.value}.${notes}`;
+}
+
+async function openImport(file) {
+  importer ??= await loadSymap(new URL('symap.wasm', import.meta.url));
+  pending.text = await file.text();
+  pending.name = file.name;
+  $('import-source').textContent = file.name;
+  $('import-value').replaceChildren();
+  $('import-title').value = '';
+  refreshImport();
+  $('import-dialog').showModal();
+}
+
+function wireImport() {
+  const input = $('import-file');
+  $('import').addEventListener('click', () => input.click());
+  input.addEventListener('change', () => { if (input.files[0]) openImport(input.files[0]); input.value = ''; });
+  for (const id of ['import-value', 'import-map', 'import-width', 'import-title', 'import-outline']) {
+    $(id).addEventListener('change', refreshImport);
+  }
+  $('import-cancel').addEventListener('click', () => $('import-dialog').close('cancel'));
+  $('import-dialog').addEventListener('close', async () => {
+    if ($('import-dialog').returnValue !== 'create') return;
+    refreshImport();
+    const r = pending.result;
+    if (!r?.ok) return;
+    deck.value = r.deck;
+    deck.scrollTop = 0;
+    deck.setSelectionRange(0, 0);
+    syncRuler();
+    await run();
+  });
+  const editor = deck.closest('.editor');
+  editor.addEventListener('dragover', (e) => {
+    if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); editor.classList.add('dropping'); }
+  });
+  editor.addEventListener('dragleave', () => editor.classList.remove('dropping'));
+  editor.addEventListener('drop', (e) => {
+    editor.classList.remove('dropping');
+    const file = e.dataTransfer.files[0];
+    if (file) { e.preventDefault(); openImport(file); }
+  });
+}
+
 async function init() {
   buildRuler();
   const sel = $('examples');
@@ -403,6 +482,7 @@ async function init() {
     }
   });
   $('run').addEventListener('click', run);
+  wireImport();
 
   const setMode = (overprint) => {
     state.overprint = overprint;

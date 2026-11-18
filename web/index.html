@@ -29,6 +29,8 @@
             <span class="visually-hidden">Example deck</span>
             <select id="examples"></select>
           </label>
+          <button id="import" type="button" title="Make a deck from points in a CSV or GeoJSON file (or drop the file on the editor)">Import data…</button>
+          <input id="import-file" type="file" accept=".csv,.tsv,.txt,.geojson,.json" hidden>
           <button id="run" type="button" title="Run (Ctrl+Enter)">Run</button>
         </div>
       </div>
@@ -136,6 +138,31 @@
       <div class="sheets" id="sheets"></div>
     </section>
   </main>
+
+  <dialog id="import-dialog" aria-labelledby="import-heading">
+    <form method="dialog" class="import-form">
+      <h2 id="import-heading">Import points</h2>
+      <p class="import-source" id="import-source"></p>
+      <p class="import-help">Points with longitude and latitude (or easting and northing) and a
+        numeric value become an outline, data points and values on ordinary cards, which you
+        can then edit.</p>
+      <label>Value to map <select id="import-value"></select></label>
+      <label>Map
+        <select id="import-map">
+          <option value="contour" selected>Contour (interpolated)</option>
+          <option value="proximal">Proximal (nearest point)</option>
+        </select>
+      </label>
+      <label>Width in inches <input id="import-width" type="number" min="2" max="30" step="0.5" value="8"></label>
+      <label>Title <input id="import-title" type="text" maxlength="80"></label>
+      <label class="check"><input id="import-outline" type="checkbox" checked> Outline around the points</label>
+      <p class="import-summary" id="import-summary" aria-live="polite"></p>
+      <div class="import-actions">
+        <button id="import-cancel" type="button">Cancel</button>
+        <button id="import-create" value="create">Replace the deck</button>
+      </div>
+    </form>
+  </dialog>
 
   <footer class="colophon">
     <p>Card formats, electives and symbolism follow <cite>Computer Mapping as an Aid in Air Pollution Studies</cite>, Report K (Harvard Laboratory for Computer Graphics, 1971); interpolation follows Shepard (1968, 1970, 1984). Decks are 80-column cards: packages open with a header card and close with <code>99999</code>; <code>999999</code> ends the deck.</p>

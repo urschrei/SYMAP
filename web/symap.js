@@ -1,5 +1,5 @@
 // Loader for symap.wasm: a dependency-free module exporting
-// symap_alloc / symap_run / symap_result_ptr (see src/wasm.rs).
+// symap_alloc / symap_run / symap_import / symap_result_ptr (see src/wasm.rs).
 
 export async function loadSymap(url) {
   let instance;
@@ -20,6 +20,15 @@ export async function loadSymap(url) {
       const ptr = w.symap_alloc(input.length);
       new Uint8Array(w.memory.buffer, ptr, input.length).set(input);
       const n = w.symap_run(ptr, input.length);
+      const out = new Uint8Array(w.memory.buffer, w.symap_result_ptr(), n);
+      return JSON.parse(dec.decode(out));
+    },
+    /** Make a deck from points: see json::import for the request. */
+    importData(request) {
+      const input = enc.encode(JSON.stringify(request));
+      const ptr = w.symap_alloc(input.length);
+      new Uint8Array(w.memory.buffer, ptr, input.length).set(input);
+      const n = w.symap_import(ptr, input.length);
       const out = new Uint8Array(w.memory.buffer, w.symap_result_ptr(), n);
       return JSON.parse(dec.decode(out));
     },

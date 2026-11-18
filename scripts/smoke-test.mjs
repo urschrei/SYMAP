@@ -43,6 +43,16 @@ const sideways = await page.$eval('#sheets canvas', (c) => [c.width, c.height]);
 check(sideways[0] === upright[1] && sideways[1] === upright[0], 'a sheet turns sideways');
 await page.selectOption('#turn', '0');
 
+const points = 'name,lat,lon,value\nA,51.52,-0.15,48\nB,51.52,-0.12,28\nC,51.45,0.01,24\nD,51.42,-0.34,13\n';
+await page.setInputFiles('#import-file', { name: 'points.csv', mimeType: 'text/csv', buffer: Buffer.from(points) });
+await page.waitForSelector('#import-dialog[open]', { timeout: 10000 });
+const summary = await page.textContent('#import-summary');
+await page.click('#import-create');
+await page.waitForFunction(() => document.getElementById('deck').value.startsWith('# Made by symap import'), null, { timeout: 10000 });
+await page.waitForTimeout(500);
+const imported = await page.$$eval('#messages li.error', (l) => l.length);
+check(summary.startsWith('4 points, mapping value') && imported === 0, `points import into a deck that runs (${summary.trim()})`);
+
 await page.fill('#deck', 'B-DATA POINTS\n1 2\nnot a card\n99999\n');
 await page.waitForSelector('#messages li.error button.line', { timeout: 10000 });
 await page.click('#messages li.error button.line');

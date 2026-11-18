@@ -111,13 +111,64 @@ pub fn run(text: &str) -> String {
             list(&mut out, &r.maps, map);
             out.push('}');
         }
-        Err(e) => {
-            out.push_str("{\"ok\":false,\"error\":{\"line\":");
-            line_no(&mut out, e.line);
-            out.push_str(",\"message\":");
-            string(&mut out, &e.message);
-            out.push_str("}}");
+        Err(e) => error(&mut out, &e),
+    }
+    out
+}
+
+fn error(out: &mut String, e: &crate::Error) {
+    out.push_str("{\"ok\":false,\"error\":{\"line\":");
+    line_no(out, e.line);
+    out.push_str(",\"message\":");
+    string(out, &e.message);
+    out.push_str("}}");
+}
+
+/// Import points and describe the deck made as JSON. The request is a JSON
+/// object: `{"text": "...", "name": "file.csv", "value": "no2",
+/// "map": "contour" | "proximal", "width": 8, "title": "...",
+/// "outline": true}`; only `text` is required. The reply is
+/// `{"ok": true, "deck": "...", "fields": [...], "value": "...",
+/// "points": n, "warnings": [...]}` or an error as for `run`.
+pub fn import(request: &str) -> String {
+    use crate::import::{self, json::Value};
+    let mut out = String::new();
+    let result = import::json::parse(request).and_then(|req| {
+        let text = req
+            .get("text")
+            .and_then(Value::as_str)
+            .ok_or_else(|| crate::Error::general("the request has no text"))?;
+        let s = |k| req.get(k).and_then(Value::as_str).map(str::to_string);
+        let mut opts = import::Options {
+            value: s("value").filter(|v| !v.is_empty()),
+            title: s("title").filter(|v| !v.is_empty()),
+            source: s("name"),
+            ..import::Options::default()
+        };
+        if s("map").as_deref() == Some("proximal") {
+            opts.map = import::MapType::Proximal;
         }
+        if let Some(w) = req.get("width").and_then(Value::as_f64) {
+            opts.width = w;
+        }
+        if let Some(Value::Bool(b)) = req.get("outline") {
+            opts.outline = *b;
+        }
+        import::import(text, &opts)
+    });
+    match result {
+        Ok(imp) => {
+            out.push_str("{\"ok\":true,\"deck\":");
+            string(&mut out, &imp.deck);
+            out.push_str(",\"fields\":");
+            list(&mut out, &imp.fields, |o, f| string(o, f));
+            out.push_str(",\"value\":");
+            string(&mut out, &imp.value);
+            let _ = write!(out, ",\"points\":{},\"warnings\":", imp.points);
+            list(&mut out, &imp.warnings, |o, w| string(o, w));
+            out.push('}');
+        }
+        Err(e) => error(&mut out, &e),
     }
     out
 }
@@ -125,6 +176,20 @@ pub fn run(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn import_request() {
+        let req = r#"{"text": "lon,lat,v\n-0.1,51.5,1\n-0.2,51.6,2\n0.0,51.4,3\n", "name": "a.csv", "map": "proximal", "width": 6}"#;
+        let reply = import(req);
+        assert!(reply.starts_with("{\"ok\":true,\"deck\":\"# Made by symap import from a.csv"));
+        assert!(reply.contains("\"fields\":[\"v\"],\"value\":\"v\",\"points\":3,\"warnings\":[]}"));
+        assert!(reply.contains("   31\\n   36\\n   37"));
+        let parsed = crate::import::json::parse(&reply).unwrap();
+        let deck = parsed.get("deck").unwrap().as_str().unwrap();
+        crate::run(deck).unwrap();
+        assert!(import("{}").contains("\"message\":\"the request has no text\""));
+        assert!(import("not json").starts_with("{\"ok\":false"));
+    }
 
     #[test]
     fn escapes() {

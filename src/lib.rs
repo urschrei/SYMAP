@@ -22,6 +22,7 @@ pub mod elective;
 pub mod error;
 pub mod frame;
 pub mod geom;
+pub mod import;
 pub mod interp;
 pub mod json;
 pub mod map;

@@ -27,8 +27,14 @@ starting with `+` overprints the line above, which is how the line printer
 struck darker tones. `--values` writes the values computed for maps that use
 elective 21, as CSV.
 
-The browser version has a card editor with field guides and the example
-decks. It draws each overprint layer onto green-bar or white paper, upright
+`symap import` makes a deck from points with values, in CSV or GeoJSON:
+
+```bash
+cargo run -- import stations.csv --value no2 > no2.sym
+```
+
+The browser version has a card editor with field guides, the example decks
+and the same importer. It draws each overprint layer onto green-bar or white paper, upright
 or sideways, and can download the output as text, ASA or CSV.
 
 ## What it covers
@@ -73,6 +79,7 @@ its sources, licences and simplifications.
 ## Documentation
 
 - [Writing decks](docs/decks.md): packages, electives and symbolism.
+- [Importing points](docs/importing.md): making a deck from CSV or GeoJSON.
 - [Interpolation](docs/interpolation.md): how values are computed, and how
   the search radius was recovered from the manual's printouts.
 - [Comparison with the manual](docs/fidelity.md): how the output was
