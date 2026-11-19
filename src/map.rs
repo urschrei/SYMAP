@@ -140,9 +140,10 @@ impl Options {
                 )),
             }
         }
-        if continuous && o.lines != Lines::None {
-            o.lines = Lines::Continuous;
-        }
+        o.lines = match (o.lines, continuous) {
+            (Lines::Standard, true) => Lines::Continuous,
+            (lines @ (Lines::None | Lines::Standard | Lines::Continuous), _) => lines,
+        };
         (o, warnings)
     }
 
@@ -701,68 +702,73 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         }
     }
 
-    if o.lines != Lines::None && kind == MapKind::Conformant {
-        // Conformant boundaries are drawn where they run: each zone edge is
-        // traced to the nearest character on every line it crosses (or every
-        // column, for shallow edges), and a traced character becomes a line
-        // where it separates two different zones. Outer edges stay filled.
-        // (Matches Example 1-22 of the 1971 manual, including lines between
-        // zones on the same level.)
-        let zone = |r: i64, c: i64| -> Option<usize> {
-            (r >= 1 && c >= 1 && r < frame.rows as i64 && c < frame.cols as i64)
-                .then(|| zone_of[idx(r as usize, c as usize)])
-                .flatten()
-        };
-        for z in pk
-            .conformolines
-            .iter()
-            .filter(|z| z.shape == ZoneShape::Area)
-        {
-            let n = z.vertices.len();
-            for k in 0..n {
-                let (p0, p1) = (
-                    frame.grid(z.vertices[k]),
-                    frame.grid(z.vertices[(k + 1) % n]),
-                );
-                let steep = (p1.0 - p0.0).abs() > (p1.1 - p0.1).abs();
-                for (r, c) in raster(&frame, p0, p1) {
-                    let (r, c) = (r as i64, c as i64);
-                    let (x, y) = if steep {
-                        (zone(r, c - 1), zone(r, c + 1))
-                    } else {
-                        (zone(r - 1, c), zone(r + 1, c))
-                    };
-                    if let (Some(x), Some(y)) = (x, y) {
-                        if x != y {
-                            grid[idx(r as usize, c as usize)] = symbolism.contour;
+    match (o.lines, kind) {
+        (Lines::None, _) => {}
+        (Lines::Standard | Lines::Continuous, MapKind::Conformant) => {
+            // Conformant boundaries are drawn where they run: each zone edge is
+            // traced to the nearest character on every line it crosses (or every
+            // column, for shallow edges), and a traced character becomes a line
+            // where it separates two different zones. Outer edges stay filled.
+            // (Matches Example 1-22 of the 1971 manual, including lines between
+            // zones on the same level.)
+            let zone = |r: i64, c: i64| -> Option<usize> {
+                (r >= 1 && c >= 1 && r < frame.rows as i64 && c < frame.cols as i64)
+                    .then(|| zone_of[idx(r as usize, c as usize)])
+                    .flatten()
+            };
+            for z in pk
+                .conformolines
+                .iter()
+                .filter(|z| z.shape == ZoneShape::Area)
+            {
+                let n = z.vertices.len();
+                for k in 0..n {
+                    let (p0, p1) = (
+                        frame.grid(z.vertices[k]),
+                        frame.grid(z.vertices[(k + 1) % n]),
+                    );
+                    let steep = (p1.0 - p0.0).abs() > (p1.1 - p0.1).abs();
+                    for (r, c) in raster(&frame, p0, p1) {
+                        let (r, c) = (r as i64, c as i64);
+                        let (x, y) = if steep {
+                            (zone(r, c - 1), zone(r, c + 1))
+                        } else {
+                            (zone(r - 1, c), zone(r + 1, c))
+                        };
+                        if let (Some(x), Some(y)) = (x, y) {
+                            if x != y {
+                                grid[idx(r as usize, c as usize)] = symbolism.contour;
+                            }
                         }
                     }
                 }
             }
         }
-    } else if o.lines != Lines::None {
-        // Lines are made in printing order. A character becomes a line where
-        // its level differs from the character above it, or from the one to
-        // its left unless that one is already a line. So a boundary takes
-        // one character, on whichever side the scan reaches second, rather
-        // than always the higher level. (Matches Examples 1-5, 1-16 and 1-17
-        // of the 1971 manual better than either side by level.) Standard
-        // SYMAP drops a line that would leave no symbol between it and the
-        // next; elective 22 keeps them.
-        let level = |r: usize, c: usize| levels[idx(r, c)];
-        let band = o.lines != Lines::Continuous;
-        let mut line = vec![false; fill.len()];
-        for r in 1..frame.rows {
-            for c in 1..frame.cols {
-                let Some(me) = level(r, c) else { continue };
-                let differs = |(nr, nc): (usize, usize), (br, bc): (usize, usize)| {
-                    level(nr, nc).is_some_and(|x| x != me) && (!band || level(br, bc) == Some(me))
-                };
-                if differs((r - 1, c), (r + 1, c))
-                    || (!line[idx(r, c - 1)] && differs((r, c - 1), (r, c + 1)))
-                {
-                    line[idx(r, c)] = true;
-                    grid[idx(r, c)] = symbolism.contour;
+        (lines @ (Lines::Standard | Lines::Continuous), MapKind::Contour | MapKind::Proximal) => {
+            // Lines are made in printing order. A character becomes a line where
+            // its level differs from the character above it, or from the one to
+            // its left unless that one is already a line. So a boundary takes
+            // one character, on whichever side the scan reaches second, rather
+            // than always the higher level. (Matches Examples 1-5, 1-16 and 1-17
+            // of the 1971 manual better than either side by level.) Standard
+            // SYMAP drops a line that would leave no symbol between it and the
+            // next; elective 22 keeps them.
+            let level = |r: usize, c: usize| levels[idx(r, c)];
+            let band = lines == Lines::Standard;
+            let mut line = vec![false; fill.len()];
+            for r in 1..frame.rows {
+                for c in 1..frame.cols {
+                    let Some(me) = level(r, c) else { continue };
+                    let differs = |(nr, nc): (usize, usize), (br, bc): (usize, usize)| {
+                        level(nr, nc).is_some_and(|x| x != me)
+                            && (!band || level(br, bc) == Some(me))
+                    };
+                    if differs((r - 1, c), (r + 1, c))
+                        || (!line[idx(r, c - 1)] && differs((r, c - 1), (r, c + 1)))
+                    {
+                        line[idx(r, c)] = true;
+                        grid[idx(r, c)] = symbolism.contour;
+                    }
                 }
             }
         }

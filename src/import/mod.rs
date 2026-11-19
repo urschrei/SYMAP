@@ -46,11 +46,17 @@ impl LineUse {
     }
 
     fn draws(self) -> bool {
-        matches!(self, LineUse::Legend | LineUse::Both)
+        match self {
+            LineUse::Legend | LineUse::Both => true,
+            LineUse::Barrier | LineUse::Omit => false,
+        }
     }
 
     fn bars(self) -> bool {
-        matches!(self, LineUse::Barrier | LineUse::Both)
+        match self {
+            LineUse::Barrier | LineUse::Both => true,
+            LineUse::Legend | LineUse::Omit => false,
+        }
     }
 }
 
@@ -183,7 +189,7 @@ fn numeric_fields(features: &[&Feature]) -> Vec<String> {
             match f.props.iter().find(|(k, _)| k == n).map(|(_, p)| p) {
                 Some(Prop::Number(_)) => num += 1,
                 Some(Prop::Text(_)) => text += 1,
-                _ => {}
+                Some(Prop::Missing) | None => {}
             }
         }
         num > 0 && text == 0
@@ -805,12 +811,21 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
     if !lines.is_empty() && line_parts.is_empty() {
         warnings.push("the lines all lie outside the map".into());
     }
-    let barriers = opts.lines.bars() && !line_parts.is_empty();
-    if barriers && map == MapKind::Conformant {
-        warnings.push("barriers have no effect on a conformant map, so none were written".into());
-    }
-    let barriers = barriers && map != MapKind::Conformant;
-    let legends = opts.lines.draws() && !line_parts.is_empty();
+    // What is written: barriers have no effect on a conformant map.
+    let written = match (opts.lines, map, line_parts.is_empty()) {
+        (_, _, true) => LineUse::Omit,
+        (LineUse::Barrier | LineUse::Both, MapKind::Conformant, false) => {
+            warnings
+                .push("barriers have no effect on a conformant map, so none were written".into());
+            if opts.lines == LineUse::Both {
+                LineUse::Legend
+            } else {
+                LineUse::Omit
+            }
+        }
+        (lines, _, false) => lines,
+    };
+    let (legends, barriers) = (written.draws(), written.bars());
 
     // The outline around points: their convex hull, enlarged.
     let point_outline = if opts.outline && !zonal && map != MapKind::Conformant {
@@ -872,20 +887,20 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
             );
         }
     }
-    if legends || barriers {
+    let how = match written {
+        LineUse::Both => Some(format!(
+            "drawn as line legends ({symbol}) and written as impermeable barriers (strength -1)"
+        )),
+        LineUse::Legend => Some(format!("drawn as line legends ({symbol})")),
+        LineUse::Barrier => Some("written as impermeable barriers (strength -1)".to_string()),
+        LineUse::Omit => None,
+    };
+    if let Some(how) = how {
         let from = opts
             .lines_source
             .as_deref()
             .map(|s| s.rsplit(['/', '\\']).next().unwrap_or(s))
             .map_or(String::new(), |s| format!(" from {s}"));
-        let how = match (legends, barriers) {
-            (true, true) => format!(
-                "drawn as line legends ({symbol}) and written as impermeable barriers \
-                 (strength -1)"
-            ),
-            (true, false) => format!("drawn as line legends ({symbol})"),
-            _ => "written as impermeable barriers (strength -1)".into(),
-        };
         let named = if names.is_empty() {
             String::new()
         } else {

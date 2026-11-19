@@ -163,7 +163,7 @@ impl PrintedMap {
         };
         let pct = |l: Level| match l {
             Level::In(k) => num(100.0 * (b[k as usize + 1] - b[k as usize]) / (max - min)),
-            _ => String::new(),
+            Level::Low | Level::High => String::new(),
         };
         vec![
             Line::blank(),
@@ -253,11 +253,14 @@ impl PrintedMap {
                     for j in 0..COL {
                         let box_cell =
                             (BLOCK / 2 - 3..=BLOCK / 2 + 3).contains(&j) && count(l) >= k;
-                        cells.push(match j {
-                            _ if !box_cell => Strikes::BLANK,
-                            _ if j == BLOCK / 2 - 3 || j == BLOCK / 2 + 3 => Strikes::single('I'),
-                            _ if j == BLOCK / 2 => point,
-                            _ => general,
+                        cells.push(if !box_cell {
+                            Strikes::BLANK
+                        } else if j == BLOCK / 2 - 3 || j == BLOCK / 2 + 3 {
+                            Strikes::single('I')
+                        } else if j == BLOCK / 2 {
+                            point
+                        } else {
+                            general
                         });
                     }
                 }
