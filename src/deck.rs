@@ -225,7 +225,7 @@ fn shape_of(c: char) -> Option<ZoneShape> {
 
 fn read_conformolines(p: &Package) -> Result<Vec<Conformoline>, Error> {
     let mut out: Vec<Conformoline> = Vec::new();
-    let mut last_ref = 0;
+    let mut last_ref: usize = 0;
     for (l, c) in p.data_cards() {
         // Fixed format: reference in 1-5, shape in 10.
         let (start, rest) = if let Some(shape) =
@@ -262,9 +262,12 @@ fn read_conformolines(p: &Package) -> Result<Vec<Conformoline>, Error> {
         match start {
             Some((r, shape)) => {
                 let reference = match r {
-                    Some(r) if r >= 1 => r as usize,
+                    Some(r) if r >= 1 => usize::try_from(r)
+                        .map_err(|_| Error::at(l, "zone reference is too large"))?,
                     Some(_) => return Err(Error::at(l, "zone reference must be at least 1")),
-                    None => last_ref + 1,
+                    None => last_ref
+                        .checked_add(1)
+                        .ok_or_else(|| Error::at(l, "zone reference is too large"))?,
                 };
                 last_ref = reference;
                 out.push(Conformoline {
