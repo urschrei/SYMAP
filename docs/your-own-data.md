@@ -185,7 +185,7 @@ share of each position covered by ink in the browser is:
 
 | Symbol | `.` | `'` | `-` | `=` | `+` | `X` | `O` | `O`+`-` | `O`+`X` | `O`+`X`+`A`+`V` |
 |--------|-----|-----|-----|-----|-----|-----|-----|---------|---------|-----------------|
-| Ink    | 0.06 | 0.09 | 0.09 | 0.27 | 0.23 | 0.38 | 0.43 | 0.49 | 0.69 | 0.87 |
+| Ink    | 0.06 | 0.09 | 0.09 | 0.20 | 0.23 | 0.38 | 0.43 | 0.49 | 0.69 | 0.87 |
 
 Each further strike on a position spreads more ink, as a ribbon did on
 paper, so `O`+`X`+`A`+`V` prints almost solid and `O`+`X` remains visibly
@@ -200,7 +200,8 @@ rather than a measurement of the original printouts.
   elective 7 to replace one of them.
 - **Seven or more levels** add `'`, which is close to `.`; eight or more
   add `O` between `X` and `O`+`-`, close to both; and with nine or ten
-  levels `=` prints slightly darker than `+`, which sits above it. In my opinion more than
+  levels `=` and `+` are close (0.20 and 0.23), as they were on the
+  original printouts. In my opinion more than
   six levels is only worthwhile where the reader will check values against
   the legend rather than read the tones.
 
