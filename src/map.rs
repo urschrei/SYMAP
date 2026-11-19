@@ -195,8 +195,8 @@ pub struct PrintedMap {
 pub struct TableRow {
     /// Point or zone number, in input order.
     pub number: usize,
-    /// Zone shape (`A`, `L`, `P`); `None` for data points.
-    pub shape: Option<char>,
+    /// `None` for data points.
+    pub shape: Option<ZoneShape>,
     /// Print position (of a zone's centre).
     pub row: i64,
     pub col: i64,
@@ -885,11 +885,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                 let (r, c) = frame.grid(centre_of(z));
                 TableRow {
                     number: i + 1,
-                    shape: Some(match z.shape {
-                        ZoneShape::Area => 'A',
-                        ZoneShape::Line => 'L',
-                        ZoneShape::Point => 'P',
-                    }),
+                    shape: Some(z.shape),
                     row: (r + 0.5).floor() as i64,
                     col: (c + 0.5).floor() as i64,
                     datum: datum(pk, z.reference),

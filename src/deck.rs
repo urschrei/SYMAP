@@ -56,6 +56,17 @@ pub enum ZoneShape {
     Point,
 }
 
+impl ZoneShape {
+    /// The letter in column 10.
+    pub fn letter(self) -> char {
+        match self {
+            ZoneShape::Area => 'A',
+            ZoneShape::Line => 'L',
+            ZoneShape::Point => 'P',
+        }
+    }
+}
+
 /// One A-CONFORMOLINES outline.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Conformoline {

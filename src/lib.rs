@@ -33,7 +33,7 @@ mod symbols;
 mod wasm;
 
 pub use classify::{Classes, Level};
-pub use deck::MapKind;
+pub use deck::{MapKind, ZoneShape};
 pub use error::{Diagnostic, Error};
 pub use frame::Frame;
 pub use geom::Point;

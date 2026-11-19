@@ -3,6 +3,7 @@
 //! the 1971 manual's examples.
 
 use crate::classify::Level;
+use crate::deck::MapKind;
 use crate::map::PrintedMap;
 use crate::symbols::Strikes;
 
@@ -291,7 +292,7 @@ impl PrintedMap {
             )),
             Line::blank(),
         ];
-        let zones = self.table.first().is_some_and(|t| t.shape.is_some());
+        let zones = self.kind == MapKind::Conformant;
         out.push(Line::text(if zones {
             "CONFORMOLINES FOR MAP"
         } else {
@@ -308,7 +309,7 @@ impl PrintedMap {
             out.push(Line::text(format!(
                 "{:>5})    {:<4} {:>9} {:>9} {:>9} {:>11} {:>9}",
                 t.number,
-                t.shape.map(String::from).unwrap_or_default(),
+                t.shape.map(|s| s.letter().to_string()).unwrap_or_default(),
                 t.row,
                 t.col,
                 t.datum.map(|d| d.to_string()).unwrap_or_default(),
