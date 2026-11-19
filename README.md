@@ -27,7 +27,8 @@ starting with `+` overprints the line above, which is how the line printer
 struck darker tones. `--values` writes the values computed for maps that use
 elective 21, as CSV.
 
-`symap import` makes a deck from points with values, in CSV or GeoJSON:
+`symap import` makes a deck from points or polygons with values, in CSV,
+GeoJSON or TopoJSON:
 
 ```bash
 cargo run -- import stations.csv --value no2 > no2.sym
@@ -80,7 +81,8 @@ its sources, licences and simplifications.
 ## Documentation
 
 - [Writing decks](docs/decks.md): packages, electives and symbolism.
-- [Importing points](docs/importing.md): making a deck from CSV or GeoJSON.
+- [Importing data](docs/importing.md): making a deck from CSV, GeoJSON or
+  TopoJSON.
 - [Interpolation](docs/interpolation.md): how values are computed, and how
   the search radius was recovered from the manual's printouts.
 - [Comparison with the manual](docs/fidelity.md): how the output was

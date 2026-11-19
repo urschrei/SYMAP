@@ -1,15 +1,19 @@
-# Importing points
+# Importing data
 
-The importer turns points with values into a deck. It writes ordinary,
-commented cards, so the deck it makes can be read, edited and run like any
-other; the deck remains the program's only input.
+The importer turns points or polygons with values into a deck. It writes
+ordinary, commented cards, so the deck it makes can be read, edited and run
+like any other; the deck remains the program's only input.
 
 ```bash
 cargo run -- import stations.csv --value no2 > no2.sym
 ```
 
 ```bash
-cargo run -- no2.sym
+cargo run -- import wards.geojson --value density > wards.sym
+```
+
+```bash
+cargo run -- wards.sym
 ```
 
 In the browser, the Import data button (or dropping a file on the editor)
@@ -17,45 +21,84 @@ opens the same importer, with a choice of field, map type, width and title.
 
 ## Input
 
-**CSV** needs a header row. Coordinates come from columns named `lon`,
-`lng`, `long` or `longitude` and `lat` or `latitude`; failing those, from
-`easting`, `east` or `x` and `northing`, `north` or `y`. Commas, semicolons
-or tabs separate fields, and fields may be quoted.
+**CSV** holds points. It needs a header row. Coordinates come from columns
+named `lon`, `lng`, `long` or `longitude` and `lat` or `latitude`; failing
+those, from `easting`, `east` or `x` and `northing`, `north` or `y`. Commas,
+semicolons or tabs separate fields, and fields may be quoted.
 
-**GeoJSON** needs a FeatureCollection (or a single Feature) of Point or
-MultiPoint features; their properties supply the values. Other geometries
-are left out, with a warning. Polygons and lines are not imported yet.
+**GeoJSON** holds a FeatureCollection (or a single Feature) of Point,
+MultiPoint, Polygon or MultiPolygon features; their properties supply the
+values. Lines are left out, with a warning.
+
+**TopoJSON** holds the same geometries in a topology, whose arcs already
+record which borders are shared. The first object is used unless
+`--object` names another.
 
 A field can be mapped if it holds numbers and no text. Without `--value`,
-the first such field is used, passing over identifiers such as `id` and
-`objectid`. Points without a value for the field are left out, with a
-warning. A text field named `name`, `label`, `title`, `site`, `station` or
-`place` is listed in the deck's comments, so that each data point can be
-identified.
+the first such field is used, passing over identifiers (`id`, `objectid`,
+and names ending in `_id` or `_code`, for example). Items without a value
+for the field are left out, with a warning. A text field called `name`,
+`label`, `title`, `site`, `station` or `place` (or else one whose name
+contains "name" or ends in "desc") is listed in the deck's comments, so that
+each point or zone can be identified.
 
-## What the deck contains
+When a file holds both, polygons are mapped and points are left out.
 
-- **Coordinates.** Longitude and latitude are projected with a transverse
-  Mercator on WGS84, centred on the points, in kilometres. Over a city or a
-  county this distorts nothing that a line printer can show. Projected
-  coordinates are used as given; when they span more than 1,000 units they
-  are taken to be metres and given in kilometres. GeoJSON whose coordinates
-  fall outside longitude and latitude ranges is treated as projected.
-- **Measurement.** Locations are measured down from the top edge and across
-  from the left edge, with a margin of 5% of the larger extent around the
-  points.
-- **Outline.** An A-OUTLINE around the points: their convex hull, enlarged a
-  little so that the outermost points are not on the line. `--no-outline`
-  maps the whole rectangle instead.
-- **Data points and values.** B-DATA POINTS to the nearest metre, and
-  E-VALUES as given.
-- **Map.** Three title cards (the title, the field and number of points, and
-  the map type), elective 1 for the size (8 inches wide unless `--width`
-  says otherwise) and elective 2 for the extremes. `--proximal` adds
-  electives 31, 36 and 37 for a proximal map.
+## Coordinates
 
-The comments at the head of the deck record the source file, the projection
-and its centre, the origin of the measurements, and anything left out.
+Longitude and latitude are projected with a transverse Mercator on WGS84,
+centred on the data, in kilometres. Over a city or a county this distorts
+nothing that a line printer can show. Projected coordinates are used as
+given; when they span more than 1,000 units they are taken to be metres and
+given in kilometres. GeoJSON and TopoJSON whose coordinates fall outside
+longitude and latitude ranges are treated as projected (older GeoJSON files
+in a national grid, for example).
+
+Locations are measured down from the top edge and across from the left
+edge, with a margin around the data: 5% of the larger extent for points,
+2% for polygons.
+
+## Polygons
+
+Polygons make a conformant map by default. Each feature becomes a zone of
+A-CONFORMOLINES, with one ring for each part of a MultiPolygon, and its
+value goes on E-VALUES.
+
+- **Shared borders.** A border between two zones is simplified once, so the
+  zones on either side still meet and the white boundary lines stay
+  continuous. For GeoJSON the importer finds the shared borders itself,
+  splitting rings where neighbouring zones stop agreeing about their
+  vertices (the rule TopoJSON uses); TopoJSON supplies them as arcs.
+- **Simplification.** Borders are simplified (Douglas–Peucker) to within
+  half a character at the chosen width, as finer detail cannot be printed.
+  Parts smaller than half a character are left out, with a warning, unless
+  a zone has no other part.
+- **Holes and enclaves.** The first zone on the cards to claim a character
+  keeps it, so smaller rings are written first, and a zone inside another
+  zone's hole keeps its own level. A hole with no zone inside it (a lake,
+  say) is filled by the zone around it, with a warning.
+
+With `--contour` or `--proximal`, each zone's value is placed at its
+centroid as a data point instead, and the zones themselves become the
+outline, so the map stops at the edge of the data.
+
+## Points
+
+Points make a contour map by default, or a proximal map with `--proximal`.
+They become B-DATA POINTS to the nearest metre, with an A-OUTLINE around
+them: their convex hull, enlarged a little so that the outermost points are
+not on the line. `--no-outline` maps the whole rectangle instead.
+
+## What else the deck contains
+
+- Three title cards: the title (the file's name unless `--title` gives one),
+  the field and the number of points or zones, and the map type.
+- Elective 1 for the size (8 inches wide unless `--width` says otherwise)
+  and elective 2 for the extremes; electives 31, 36 and 37 for a proximal
+  map.
+- Comments at the head of the deck recording the source file, the
+  projection and its centre, the origin of the measurements, the
+  simplification, and anything left out.
 
 ## Editing the result
 

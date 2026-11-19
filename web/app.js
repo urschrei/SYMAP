@@ -466,20 +466,22 @@ function flash(button, text) {
 let importer = null;
 const pending = { text: '', name: '', result: null };
 
-function importRequest() {
+// `auto` lets the importer choose the map: conformant for polygons,
+// contour for points.
+function importRequest(auto) {
   return {
     text: pending.text,
     name: pending.name,
     value: $('import-value').value,
-    map: $('import-map').value,
+    map: auto ? '' : $('import-map').value,
     width: Number($('import-width').value) || 8,
     title: $('import-title').value.trim(),
     outline: $('import-outline').checked,
   };
 }
 
-function refreshImport() {
-  const r = importer.importData(importRequest());
+function refreshImport(auto = false) {
+  const r = importer.importData(importRequest(auto));
   pending.result = r;
   const summary = $('import-summary');
   summary.classList.toggle('error', !r.ok);
@@ -493,8 +495,9 @@ function refreshImport() {
     sel.replaceChildren(...r.fields.map((f) => new Option(f, f)));
   }
   sel.value = r.value;
+  $('import-map').value = r.map;
   const notes = r.warnings.length ? ` ${r.warnings.map((w) => w[0].toUpperCase() + w.slice(1)).join('. ')}.` : '';
-  summary.textContent = `${r.points} points, mapping ${r.value}.${notes}`;
+  summary.textContent = `${r.count} ${r.unit}, mapping ${r.value}.${notes}`;
 }
 
 async function openImport(file) {
@@ -504,7 +507,7 @@ async function openImport(file) {
   $('import-source').textContent = file.name;
   $('import-value').replaceChildren();
   $('import-title').value = '';
-  refreshImport();
+  refreshImport(true);
   $('import-dialog').showModal();
 }
 
@@ -513,7 +516,7 @@ function wireImport() {
   $('import').addEventListener('click', () => input.click());
   input.addEventListener('change', () => { if (input.files[0]) openImport(input.files[0]); input.value = ''; });
   for (const id of ['import-value', 'import-map', 'import-width', 'import-title', 'import-outline']) {
-    $(id).addEventListener('change', refreshImport);
+    $(id).addEventListener('change', () => refreshImport());
   }
   $('import-cancel').addEventListener('click', () => $('import-dialog').close('cancel'));
   $('import-dialog').addEventListener('close', async () => {

@@ -6,9 +6,13 @@ const USAGE: &str = "usage: symap [--asa | --values] [DECK | -]\n\
     Reads a SYMAP deck (from stdin if DECK is omitted or '-') and prints its maps.\n\
     --asa     emit Fortran carriage control with overprint lines instead of plain text\n\
     --values  print the computed values of maps with elective 21, as CSV\n\n\
-    import reads points from CSV or GeoJSON and prints a deck that maps them.\n\
+    import reads points (CSV, GeoJSON, TopoJSON) or polygons (GeoJSON, TopoJSON)\n\
+    and prints a deck that maps them.\n\
     --value FIELD   the column or property to map (the first numeric one)\n\
-    --proximal      a proximal map instead of a contour map\n\
+    --conformant    a conformant map of the polygons (the default for polygons)\n\
+    --contour       a contour map (the default for points; zones give centroids)\n\
+    --proximal      a proximal map\n\
+    --object NAME   the TopoJSON object to read (the first)\n\
     --width INCHES  printed width of the map (8)\n\
     --title TEXT    first title card (the file's name)\n\
     --no-outline    map the whole rectangle, not just around the points";
@@ -41,8 +45,9 @@ fn import(args: &[String]) -> ExitCode {
                     .map(|w| opts.width = w)
                     .map_err(|_| format!("--width: '{v}' is not a number"))
             }),
-            "--proximal" => {
-                opts.map = symap::import::MapType::Proximal;
+            "--object" => next("--object").map(|v| opts.object = Some(v)),
+            "--contour" | "--proximal" | "--conformant" => {
+                opts.map = symap::import::MapType::parse(&a[2..]);
                 Ok(())
             }
             "--no-outline" => {
@@ -74,9 +79,11 @@ fn import(args: &[String]) -> ExitCode {
                 eprintln!("warning: {w}");
             }
             eprintln!(
-                "mapped {} at {} points (numeric fields: {})",
+                "{} map of {} for {} {} (numeric fields: {})",
+                imp.map.name(),
                 imp.value,
-                imp.points,
+                imp.count,
+                imp.unit,
                 imp.fields.join(", ")
             );
             print!("{}", imp.deck);

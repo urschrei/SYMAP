@@ -1,52 +1,83 @@
-//! Turning modern point data into a SYMAP deck.
+//! Turning modern data into a SYMAP deck.
 //!
-//! The importer reads points with values from CSV (a header row, then
-//! longitude and latitude or easting and northing columns) or GeoJSON
-//! (Point and MultiPoint features), projects them, and writes an ordinary,
-//! commented deck: an outline around the points, B-DATA POINTS, E-VALUES and
-//! an F-MAP package. The deck is the program's only input, so what the
-//! importer produces can be read, edited and run like any other deck.
+//! The importer reads points or polygons with values from CSV (points),
+//! GeoJSON or TopoJSON, projects them, and writes an ordinary, commented
+//! deck. Polygons become A-CONFORMOLINES zones for a conformant map, with
+//! shared borders simplified once so that neighbours still meet; for a
+//! contour or proximal map, each zone gives its centroid as a data point.
+//! Points become B-DATA POINTS with an outline around them. The deck is the
+//! program's only input, so what the importer produces can be read, edited
+//! and run like any other deck.
 
 pub mod csv;
 pub mod json;
 pub mod project;
+pub mod read;
+pub mod topology;
 
 use crate::Error;
 use project::TransverseMercator;
+use read::{Feature, Geom, Prop, Ring};
 use std::fmt::Write;
+use topology::{P, Topology};
 
-/// The kind of map to draw from the points.
+/// The kind of map to draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MapType {
     Contour,
     Proximal,
+    Conformant,
+}
+
+impl MapType {
+    pub fn name(self) -> &'static str {
+        match self {
+            MapType::Contour => "contour",
+            MapType::Proximal => "proximal",
+            MapType::Conformant => "conformant",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<MapType> {
+        match s {
+            "contour" => Some(MapType::Contour),
+            "proximal" => Some(MapType::Proximal),
+            "conformant" => Some(MapType::Conformant),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Options {
     /// The property or column to map; the first numeric one if `None`.
     pub value: Option<String>,
-    pub map: MapType,
+    /// Conformant for polygons and contour for points if `None`.
+    pub map: Option<MapType>,
     /// Printed width of the map in inches.
     pub width: f64,
     /// First title card; the source's name if `None`.
     pub title: Option<String>,
-    /// Draw an outline around the points (their convex hull, enlarged a
-    /// little); without one, the whole rectangle is mapped.
+    /// Draw an outline: around points, their convex hull enlarged a little;
+    /// for zones mapped as points, the zones themselves. Without one, the
+    /// whole rectangle is mapped.
     pub outline: bool,
     /// The file's name, recorded in the deck's comments.
     pub source: Option<String>,
+    /// The TopoJSON object to read; the first if `None`.
+    pub object: Option<String>,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Options {
             value: None,
-            map: MapType::Contour,
+            map: None,
             width: 8.0,
             title: None,
             outline: true,
             source: None,
+            object: None,
         }
     }
 }
@@ -59,213 +90,64 @@ pub struct Imported {
     pub fields: Vec<String>,
     /// The one mapped.
     pub value: String,
-    pub points: usize,
+    pub map: MapType,
+    /// How many points or zones were mapped, and which.
+    pub count: usize,
+    pub unit: &'static str,
     pub warnings: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-enum Prop {
-    Number(f64),
-    Text(String),
-    Missing,
-}
-
-impl Prop {
-    fn from_text(s: &str) -> Prop {
-        let t = s.trim();
-        if t.is_empty() {
-            Prop::Missing
-        } else {
-            match t.parse::<f64>() {
-                Ok(n) if n.is_finite() => Prop::Number(n),
-                _ => Prop::Text(t.to_string()),
-            }
-        }
-    }
-}
-
-struct Record {
-    x: f64,
-    y: f64,
-    props: Vec<(String, Prop)>,
-}
-
-struct Points {
-    records: Vec<Record>,
-    /// Coordinates are longitude and latitude (otherwise already projected).
-    geographic: bool,
-    warnings: Vec<String>,
-}
-
-const LON: &[&str] = &["lon", "lng", "long", "longitude"];
-const LAT: &[&str] = &["lat", "latitude"];
-const EAST: &[&str] = &["easting", "east", "x"];
-const NORTH: &[&str] = &["northing", "north", "y"];
 const NAMES: &[&str] = &["name", "label", "title", "site", "station", "place"];
 const IDS: &[&str] = &["id", "fid", "gid", "objectid", "ogc_fid", "osm_id", "code"];
 
-fn find(header: &[String], names: &[&str]) -> Option<usize> {
-    names
-        .iter()
-        .find_map(|n| header.iter().position(|h| h.eq_ignore_ascii_case(n)))
+/// Identifier-like fields are passed over when choosing what to map.
+fn is_id(field: &str) -> bool {
+    let f = field.to_ascii_lowercase();
+    IDS.contains(&f.as_str())
+        || ["_id", "_code", "id_str", "_cd"]
+            .iter()
+            .any(|s| f.ends_with(s))
 }
 
-fn read_csv(text: &str) -> Result<Points, Error> {
-    let t = csv::parse(text)?;
-    let (ix, iy, geographic) = match (find(&t.header, LON), find(&t.header, LAT)) {
-        (Some(x), Some(y)) => (x, y, true),
-        _ => match (find(&t.header, EAST), find(&t.header, NORTH)) {
-            (Some(x), Some(y)) => (x, y, false),
-            _ => {
-                return Err(Error::at(
-                    1,
-                    format!(
-                        "CSV: no coordinate columns; expected longitude and latitude \
-                         (lon, lat) or easting and northing (x, y), found: {}",
-                        t.header.join(", ")
-                    ),
-                ));
-            }
-        },
-    };
-    let mut records = Vec::new();
-    let mut skipped = 0;
-    for (_, row) in &t.rows {
-        let coord = |i: usize| row.get(i).and_then(|s| s.trim().parse::<f64>().ok());
-        let (Some(x), Some(y)) = (coord(ix), coord(iy)) else {
-            skipped += 1;
-            continue;
-        };
-        let props = t
-            .header
-            .iter()
-            .enumerate()
-            .filter(|&(i, _)| i != ix && i != iy)
-            .map(|(i, h)| (h.clone(), Prop::from_text(row.get(i).map_or("", |s| s))))
-            .collect();
-        records.push(Record { x, y, props });
-    }
-    let mut warnings = Vec::new();
-    if skipped > 0 {
-        warnings.push(format!("{skipped} rows without coordinates were left out"));
-    }
-    Ok(Points {
-        records,
-        geographic,
-        warnings,
-    })
-}
-
-fn read_geojson(text: &str) -> Result<Points, Error> {
-    use json::Value;
-    let doc = json::parse(text)?;
-    let features: Vec<&Value> = match doc.get("type").and_then(Value::as_str) {
-        Some("FeatureCollection") => doc
-            .get("features")
-            .and_then(Value::as_array)
-            .ok_or_else(|| Error::general("GeoJSON: a FeatureCollection needs a features array"))?
-            .iter()
-            .collect(),
-        Some("Feature") => vec![&doc],
-        _ => {
-            return Err(Error::general(
-                "GeoJSON: expected a FeatureCollection or a Feature",
-            ));
-        }
-    };
-    let mut records = Vec::new();
-    let mut other = 0;
-    for (k, f) in features.iter().enumerate() {
-        let props: Vec<(String, Prop)> = match f.get("properties") {
-            Some(Value::Object(m)) => m
-                .iter()
-                .map(|(k, v)| {
-                    let p = match v {
-                        Value::Number(n) => Prop::Number(*n),
-                        Value::String(s) => Prop::from_text(s),
-                        Value::Bool(b) => Prop::Text(b.to_string()),
-                        _ => Prop::Missing,
-                    };
-                    (k.clone(), p)
-                })
-                .collect(),
-            _ => Vec::new(),
-        };
-        let geometry = f.get("geometry");
-        let kind = geometry.and_then(|g| g.get("type")).and_then(Value::as_str);
-        let coords = geometry.and_then(|g| g.get("coordinates"));
-        let positions: Vec<&Value> = match (kind, coords) {
-            (Some("Point"), Some(c)) => vec![c],
-            (Some("MultiPoint"), Some(Value::Array(cs))) => cs.iter().collect(),
-            _ => {
-                other += 1;
-                continue;
-            }
-        };
-        for p in positions {
-            let xy = p.as_array().filter(|a| a.len() >= 2);
-            let (Some(x), Some(y)) = (
-                xy.and_then(|a| a[0].as_f64()),
-                xy.and_then(|a| a[1].as_f64()),
-            ) else {
-                return Err(Error::general(format!(
-                    "GeoJSON: feature {} has a malformed position",
-                    k + 1
-                )));
-            };
-            records.push(Record {
-                x,
-                y,
-                props: props.clone(),
-            });
-        }
-    }
-    let mut warnings = Vec::new();
-    if other > 0 {
-        warnings.push(format!(
-            "{other} features that are not points were left out"
-        ));
-    }
-    // RFC 7946 coordinates are longitude and latitude; older files may carry
-    // projected coordinates instead.
-    let geographic = records
+/// The field that names each item: one of the usual names, or else any
+/// text field whose name contains "name" or ends in "desc".
+fn name_field(features: &[&Feature]) -> Option<String> {
+    let text_fields: Vec<&String> = features
         .iter()
-        .all(|r| r.x.abs() <= 180.0 && r.y.abs() <= 90.0);
-    if !geographic {
-        warnings.push(
-            "coordinates are outside longitude and latitude ranges, so they are used as \
-             projected coordinates"
-                .into(),
-        );
-    }
-    Ok(Points {
-        records,
-        geographic,
-        warnings,
-    })
+        .flat_map(|f| &f.props)
+        .filter(|(_, p)| matches!(p, Prop::Text(_)))
+        .map(|(k, _)| k)
+        .collect();
+    NAMES
+        .iter()
+        .find_map(|n| text_fields.iter().find(|k| k.eq_ignore_ascii_case(n)))
+        .or_else(|| {
+            text_fields.iter().find(|k| {
+                let k = k.to_ascii_lowercase();
+                k.contains("name") || k.ends_with("desc")
+            })
+        })
+        .map(|k| (*k).clone())
 }
 
 /// Numeric fields in first-seen order: those with at least one number and
 /// no text.
-fn numeric_fields(records: &[Record]) -> Vec<String> {
+fn numeric_fields(features: &[&Feature]) -> Vec<String> {
     let mut names: Vec<String> = Vec::new();
-    for r in records {
-        for (k, _) in &r.props {
+    for f in features {
+        for (k, _) in &f.props {
             if !names.contains(k) {
                 names.push(k.clone());
             }
         }
     }
     names.retain(|n| {
-        let vals = records
-            .iter()
-            .filter_map(|r| r.props.iter().find(|(k, _)| k == n).map(|(_, p)| p));
         let (mut num, mut text) = (0, 0);
-        for v in vals {
-            match v {
-                Prop::Number(_) => num += 1,
-                Prop::Text(_) => text += 1,
-                Prop::Missing => {}
+        for f in features {
+            match f.props.iter().find(|(k, _)| k == n).map(|(_, p)| p) {
+                Some(Prop::Number(_)) => num += 1,
+                Some(Prop::Text(_)) => text += 1,
+                _ => {}
             }
         }
         num > 0 && text == 0
@@ -301,31 +183,29 @@ fn field(x: f64) -> Result<String, Error> {
     field_with(x, 6)
 }
 
-/// Locations to the nearest thousandth (a metre, in kilometres).
-fn coordinate_card(down: f64, across: f64) -> Result<String, Error> {
+/// A location to the nearest thousandth (a metre, in kilometres), after
+/// `head` in columns 1-10.
+fn coordinate_card(head: &str, (down, across): P) -> Result<String, Error> {
     Ok(format!(
-        "{:10}{}{}",
-        "",
+        "{head:10}{}{}",
         field_with(down, 3)?,
         field_with(across, 3)?
     ))
 }
 
 /// Convex hull (Andrew's monotone chain), counter-clockwise.
-fn hull(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
+fn hull(points: &[P]) -> Vec<P> {
     let mut p = points.to_vec();
     p.sort_by(|a, b| a.partial_cmp(b).unwrap());
     p.dedup();
     if p.len() < 3 {
         return p;
     }
-    let cross = |o: (f64, f64), a: (f64, f64), b: (f64, f64)| {
-        (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0)
-    };
-    let mut h: Vec<(f64, f64)> = Vec::new();
+    let cross = |o: P, a: P, b: P| (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0);
+    let mut h: Vec<P> = Vec::new();
     for pass in 0..2 {
         let start = h.len();
-        let iter: Box<dyn Iterator<Item = &(f64, f64)>> = if pass == 0 {
+        let iter: Box<dyn Iterator<Item = &P>> = if pass == 0 {
             Box::new(p.iter())
         } else {
             Box::new(p.iter().rev())
@@ -339,6 +219,33 @@ fn hull(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
         h.pop();
     }
     h
+}
+
+/// Area-weighted centroid of rings (closed or not).
+fn centroid(rings: &[Vec<P>]) -> Option<P> {
+    let (mut a, mut x, mut y) = (0.0, 0.0, 0.0);
+    for r in rings {
+        let n = r.len();
+        for i in 0..n {
+            let (p, q) = (r[i], r[(i + 1) % n]);
+            let c = p.0 * q.1 - q.0 * p.1;
+            a += c;
+            x += (p.0 + q.0) * c;
+            y += (p.1 + q.1) * c;
+        }
+    }
+    if a.abs() > 1e-12 {
+        Some((x / (3.0 * a), y / (3.0 * a)))
+    } else {
+        let pts: Vec<&P> = rings.iter().flatten().collect();
+        (!pts.is_empty()).then(|| {
+            let n = pts.len() as f64;
+            (
+                pts.iter().map(|p| p.0).sum::<f64>() / n,
+                pts.iter().map(|p| p.1).sum::<f64>() / n,
+            )
+        })
+    }
 }
 
 /// Comment lines, wrapped to fit the card.
@@ -365,23 +272,45 @@ fn card_text(s: &str) -> String {
         .to_uppercase()
 }
 
-/// Read points from CSV or GeoJSON and write a deck that maps them.
-pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
-    let geojson = text
-        .trim_start_matches('\u{feff}')
-        .trim_start()
-        .starts_with('{');
-    let Points {
-        records,
-        geographic,
-        mut warnings,
-    } = if geojson {
-        read_geojson(text)?
-    } else {
-        read_csv(text)?
-    };
+/// One mapped item: a point, or a zone's rings (arc references).
+struct Item {
+    value: f64,
+    name: Option<String>,
+    point: P,
+    outer: Vec<Vec<i64>>,
+    holes: Vec<Vec<i64>>,
+}
 
-    let fields = numeric_fields(&records);
+/// Read points or polygons from CSV, GeoJSON or TopoJSON and write a deck
+/// that maps them.
+pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
+    let src = read::read(text, opts.object.as_deref())?;
+    let mut warnings = src.warnings;
+    let (polys, points): (Vec<&Feature>, Vec<&Feature>) = src
+        .features
+        .iter()
+        .partition(|f| matches!(f.geom, Geom::Polygon { .. }));
+    let zonal = !polys.is_empty();
+    if zonal && !points.is_empty() {
+        warnings.push(format!(
+            "{} point features were left out; the polygons are mapped",
+            points.len()
+        ));
+    }
+    let map = opts.map.unwrap_or(if zonal {
+        MapType::Conformant
+    } else {
+        MapType::Contour
+    });
+    if map == MapType::Conformant && !zonal {
+        return Err(Error::general(
+            "a conformant map needs polygons; this file has only points",
+        ));
+    }
+    let features = if zonal { polys } else { points };
+    let unit = if zonal { "zones" } else { "points" };
+
+    let fields = numeric_fields(&features);
     let value = match &opts.value {
         Some(v) => {
             if !fields.contains(v) {
@@ -394,108 +323,191 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         }
         None => fields
             .iter()
-            .find(|f| !IDS.iter().any(|id| f.eq_ignore_ascii_case(id)))
+            .find(|f| !is_id(f))
             .or(fields.first())
             .cloned()
             .ok_or_else(|| Error::general("no numeric field to map"))?,
     };
-    let name_field = NAMES.iter().find_map(|n| {
-        records
-            .iter()
-            .flat_map(|r| &r.props)
-            .find(|(k, p)| k.eq_ignore_ascii_case(n) && matches!(p, Prop::Text(_)))
-            .map(|(k, _)| k.clone())
-    });
+    let name_field = name_field(&features);
 
-    // Points with a value for the mapped field.
-    let mut missing = 0;
-    let mut pts: Vec<(f64, f64, f64, Option<String>)> = Vec::new();
-    for r in &records {
-        let get = |name: &str| r.props.iter().find(|(k, _)| k == name).map(|(_, p)| p);
-        match get(&value) {
-            Some(Prop::Number(v)) => {
-                let name = name_field.as_deref().and_then(get).and_then(|p| match p {
-                    Prop::Text(s) => Some(s.clone()),
-                    Prop::Number(n) => Some(n.to_string()),
-                    Prop::Missing => None,
-                });
-                pts.push((r.x, r.y, *v, name));
-            }
-            _ => missing += 1,
-        }
-    }
+    // Items with a value for the mapped field.
+    let kept: Vec<(&Feature, f64, Option<String>)> = features
+        .iter()
+        .filter_map(|f| {
+            let get = |name: &str| f.props.iter().find(|(k, _)| k == name).map(|(_, p)| p);
+            let Some(Prop::Number(v)) = get(&value) else {
+                return None;
+            };
+            let name = name_field.as_deref().and_then(get).and_then(|p| match p {
+                Prop::Text(s) => Some(s.clone()),
+                Prop::Number(n) => Some(n.to_string()),
+                Prop::Missing => None,
+            });
+            Some((*f, *v, name))
+        })
+        .collect();
+    let missing = features.len() - kept.len();
     if missing > 0 {
         warnings.push(format!(
-            "{missing} points without a value for {value} were left out"
+            "{missing} {unit} without a value for {value} were left out"
         ));
     }
-    if pts.len() < 3 {
+    let needed = if map == MapType::Conformant { 1 } else { 3 };
+    if kept.len() < needed {
         return Err(Error::general(format!(
-            "{} points have a value for {value}; at least three are needed",
-            pts.len()
+            "{} {unit} have a value for {value}; at least {needed} are needed",
+            kept.len()
         )));
     }
 
-    // Project to kilometres east and north.
-    let (projection, en): (String, Vec<(f64, f64)>) = if geographic {
-        let (mut lo, mut hi) = ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN));
-        for &(x, y, ..) in &pts {
-            lo = (lo.0.min(x), lo.1.min(y));
-            hi = (hi.0.max(x), hi.1.max(y));
+    // Source coordinates in use, to choose the projection.
+    let mut raw: Vec<P> = Vec::new();
+    let mut used_arcs = vec![false; src.arcs.len()];
+    for (f, ..) in &kept {
+        match &f.geom {
+            Geom::Point(p) => raw.push(*p),
+            Geom::Polygon { outer, holes } => {
+                for r in outer.iter().chain(holes) {
+                    match r {
+                        Ring::Coords(c) => raw.extend(c),
+                        Ring::Arcs(a) => {
+                            for &i in a {
+                                used_arcs[topology::arc_index(i)] = true;
+                            }
+                        }
+                    }
+                }
+            }
         }
-        let tm = TransverseMercator {
-            lon0: (lo.0 + hi.0) / 2.0,
-            lat0: (lo.1 + hi.1) / 2.0,
-        };
-        let en = pts
-            .iter()
-            .map(|&(x, y, ..)| {
-                let (e, n) = tm.forward(x, y);
-                (e / 1000.0, n / 1000.0)
-            })
-            .collect();
-        (
-            format!(
-                "Longitude and latitude are projected with a transverse Mercator on \
-                 WGS84, centred on {:.4}, {:.4}, in kilometres.",
-                tm.lon0, tm.lat0
-            ),
-            en,
-        )
+    }
+    for (arc, _) in src.arcs.iter().zip(&used_arcs).filter(|(_, u)| **u) {
+        raw.extend(arc);
+    }
+    let in_range = raw.iter().all(|p| p.0.abs() <= 180.0 && p.1.abs() <= 90.0);
+    let geographic = src.geographic.unwrap_or(in_range);
+    if src.geographic.is_none() && !geographic {
+        warnings.push(
+            "coordinates are outside longitude and latitude ranges, so they are used as \
+             projected coordinates"
+                .into(),
+        );
+    }
+    let (lo, hi) = raw.iter().fold(
+        ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN)),
+        |(lo, hi), p| {
+            (
+                (lo.0.min(p.0), lo.1.min(p.1)),
+                (hi.0.max(p.0), hi.1.max(p.1)),
+            )
+        },
+    );
+    let tm = TransverseMercator {
+        lon0: (lo.0 + hi.0) / 2.0,
+        lat0: (lo.1 + hi.1) / 2.0,
+    };
+    let k = if (hi.0 - lo.0).max(hi.1 - lo.1) > 1000.0 {
+        1000.0
     } else {
-        let extent = pts
-            .iter()
-            .map(|p| p.0)
-            .fold(f64::MIN, f64::max)
-            .max(pts.iter().map(|p| p.1).fold(f64::MIN, f64::max))
-            - pts
-                .iter()
-                .map(|p| p.0)
-                .fold(f64::MAX, f64::min)
-                .min(pts.iter().map(|p| p.1).fold(f64::MAX, f64::min));
-        let k = if extent > 1000.0 { 1000.0 } else { 1.0 };
-        (
-            if k > 1.0 {
-                "Projected coordinates are taken to be metres and given in kilometres.".into()
-            } else {
-                "Projected coordinates are used as given.".into()
-            },
-            pts.iter().map(|&(x, y, ..)| (x / k, y / k)).collect(),
+        1.0
+    };
+    let project = |p: P| -> P {
+        if geographic {
+            let (e, n) = tm.forward(p.0, p.1);
+            (e / 1000.0, n / 1000.0)
+        } else {
+            (p.0 / k, p.1 / k)
+        }
+    };
+    let projection = if geographic {
+        format!(
+            "Longitude and latitude are projected with a transverse Mercator on WGS84, \
+             centred on {:.4}, {:.4}, in kilometres.",
+            tm.lon0, tm.lat0
         )
+    } else if k > 1.0 {
+        "Projected coordinates are taken to be metres and given in kilometres.".into()
+    } else {
+        "Projected coordinates are used as given.".into()
     };
 
-    let (mut e0, mut n0, mut e1, mut n1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-    for &(e, n) in &en {
-        e0 = e0.min(e);
-        n0 = n0.min(n);
-        e1 = e1.max(e);
-        n1 = n1.max(n);
+    // Projected items, and (for zones) the topology of their borders.
+    let mut topo = Topology::default();
+    let mut items: Vec<Item> = Vec::new();
+    if zonal {
+        let topojson = !src.arcs.is_empty();
+        let mut coords: Vec<Vec<P>> = Vec::new();
+        let mut shapes: Vec<(usize, usize)> = Vec::new(); // outer, hole counts
+        let mut arc_rings: Vec<Vec<i64>> = Vec::new();
+        for (f, ..) in &kept {
+            let Geom::Polygon { outer, holes } = &f.geom else {
+                unreachable!()
+            };
+            shapes.push((outer.len(), holes.len()));
+            for r in outer.iter().chain(holes) {
+                match r {
+                    Ring::Coords(c) => coords.push(c.iter().map(|&p| project(p)).collect()),
+                    Ring::Arcs(a) => arc_rings.push(a.clone()),
+                }
+            }
+        }
+        let refs = if topojson {
+            topo.arcs = src
+                .arcs
+                .iter()
+                .map(|a| a.iter().map(|&p| project(p)).collect())
+                .collect();
+            arc_rings
+        } else {
+            let (t, refs) = Topology::from_rings(&coords);
+            topo = t;
+            refs
+        };
+        let mut refs = refs.into_iter();
+        for ((_, v, name), (no, nh)) in kept.iter().zip(shapes) {
+            let outer: Vec<Vec<i64>> = refs.by_ref().take(no).collect();
+            let holes: Vec<Vec<i64>> = refs.by_ref().take(nh).collect();
+            items.push(Item {
+                value: *v,
+                name: name.clone(),
+                point: (0.0, 0.0),
+                outer,
+                holes,
+            });
+        }
+    } else {
+        for (f, v, name) in &kept {
+            let Geom::Point(p) = f.geom else {
+                unreachable!()
+            };
+            items.push(Item {
+                value: *v,
+                name: name.clone(),
+                point: project(p),
+                outer: Vec::new(),
+                holes: Vec::new(),
+            });
+        }
     }
+
+    // The frame: a margin around everything mapped.
+    let extent: Vec<P> = if zonal {
+        items
+            .iter()
+            .flat_map(|i| &i.outer)
+            .flat_map(|r| topo.ring(r))
+            .collect()
+    } else {
+        items.iter().map(|i| i.point).collect()
+    };
+    let (e0, n0, e1, n1) = extent.iter().fold(
+        (f64::MAX, f64::MAX, f64::MIN, f64::MIN),
+        |(a, b, c, d), p| (a.min(p.0), b.min(p.1), c.max(p.0), d.max(p.1)),
+    );
     let span = (e1 - e0).max(n1 - n0);
-    if span <= 0.0 {
-        return Err(Error::general("the points all lie in one place"));
+    if span.is_nan() || span <= 0.0 {
+        return Err(Error::general(format!("the {unit} all lie in one place")));
     }
-    let margin = 0.05 * span;
+    let margin = if zonal { 0.02 } else { 0.05 } * span;
     let top = n1 + margin;
     let left = e0 - margin;
     let down_extent = n1 - n0 + 2.0 * margin;
@@ -506,73 +518,179 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
     }
     let height = width * down_extent / across_extent;
     // Down and across from the top-left corner.
-    let grid: Vec<(f64, f64)> = en.iter().map(|&(e, n)| (top - n, e - left)).collect();
+    let grid = |(e, n): P| (top - n, e - left);
+    // One character across, in source kilometres.
+    let char_width = 0.1 * across_extent / width;
+    let char_area = char_width * char_width * 1.25;
 
+    // Zones: simplify shared borders once, then rebuild each zone's rings.
+    let mut rings: Vec<(usize, Vec<P>)> = Vec::new();
+    let tolerance = char_width / 2.0;
+    if zonal {
+        topo.simplify(tolerance);
+        let outer_refs: Vec<Vec<i64>> = items.iter().flat_map(|i| i.outer.clone()).collect();
+        let uses = topo.uses(&outer_refs);
+        let (mut small, mut filled) = (0, 0);
+        for (z, item) in items.iter_mut().enumerate() {
+            let mut kept_rings = Vec::new();
+            for r in &item.outer {
+                let ring: Vec<P> = topo.ring(r).into_iter().map(grid).collect();
+                if ring.len() < 4 || topology::area(&ring).abs() < char_area / 2.0 {
+                    small += 1;
+                } else {
+                    kept_rings.push(ring);
+                }
+            }
+            if kept_rings.is_empty() {
+                // Keep the largest part, however small, so the zone remains.
+                if let Some(r) = item.outer.iter().max_by(|a, b| {
+                    topology::area(&topo.ring(a))
+                        .abs()
+                        .total_cmp(&topology::area(&topo.ring(b)).abs())
+                }) {
+                    let ring: Vec<P> = topo.ring(r).into_iter().map(grid).collect();
+                    if ring.len() >= 4 {
+                        small -= 1;
+                        kept_rings.push(ring);
+                    }
+                }
+            }
+            item.point = centroid(&kept_rings).unwrap_or((0.0, 0.0));
+            filled += item
+                .holes
+                .iter()
+                .filter(|h| h.iter().any(|&a| uses[topology::arc_index(a)] == 0))
+                .count();
+            rings.extend(kept_rings.into_iter().map(|r| (z + 1, r)));
+        }
+        if small > 0 {
+            warnings.push(format!(
+                "{small} parts smaller than half a character were left out"
+            ));
+        }
+        if filled > 0 && map == MapType::Conformant {
+            warnings.push(format!(
+                "{filled} holes with no zone inside are filled by the zone around them"
+            ));
+        }
+        // Smaller rings first: the first zone to claim a character keeps
+        // it, so enclaves stay distinct from the zones around them.
+        rings.sort_by(|a, b| {
+            topology::area(&a.1)
+                .abs()
+                .total_cmp(&topology::area(&b.1).abs())
+        });
+    } else {
+        for i in &mut items {
+            i.point = grid(i.point);
+        }
+    }
+
+    // The deck.
     let source = opts
         .source
         .as_deref()
         .map(|s| s.rsplit(['/', '\\']).next().unwrap_or(s))
         .unwrap_or("the imported data");
+    let n = items.len();
     let mut out = String::new();
     comment(
         &mut out,
-        &format!(
-            "Made by symap import from {source}: {} points, mapping {value}.",
-            pts.len()
-        ),
+        &format!("Made by symap import from {source}: {n} {unit}, mapping {value}."),
     );
     comment(&mut out, &projection);
     comment(
         &mut out,
         &format!(
-            "Locations are measured down from {:.3} and across from {:.3}, with a \
-             margin of {:.3} around the points.",
-            top, left, margin
+            "Locations are measured down from {top:.3} and across from {left:.3}, with a \
+             margin of {margin:.3} around the {unit}."
         ),
     );
+    if zonal {
+        comment(
+            &mut out,
+            &format!(
+                "Borders are simplified to within {tolerance:.3} (half a character), each \
+                 shared border once, so neighbouring zones still meet."
+            ),
+        );
+        if map != MapType::Conformant {
+            comment(
+                &mut out,
+                "Each zone's value is placed at its centroid as a data point.",
+            );
+        }
+    }
     for w in &warnings {
         comment(&mut out, &format!("Note: {w}."));
     }
     if name_field.is_some() {
-        let _ = writeln!(out, "#\n# Data points, in order:");
-        for (i, p) in pts.iter().enumerate() {
-            if let Some(name) = &p.3 {
+        let what = if zonal { "Zones" } else { "Data points" };
+        let _ = writeln!(out, "#\n# {what}, in order:");
+        for (i, item) in items.iter().enumerate() {
+            if let Some(name) = &item.name {
                 let name: String = name.chars().filter(|c| !c.is_control()).take(70).collect();
                 let _ = writeln!(out, "# {:>4} {name}", i + 1);
             }
         }
     }
 
-    if opts.outline {
-        let h = hull(&grid);
-        if h.len() >= 3 {
-            let (cd, ca) = h.iter().fold((0.0, 0.0), |s, p| (s.0 + p.0, s.1 + p.1));
-            let c = (cd / h.len() as f64, ca / h.len() as f64);
-            let _ = writeln!(out, "A-OUTLINE");
-            let grown: Vec<(f64, f64)> = h
-                .iter()
-                .map(|&(d, a)| {
-                    let (dd, da) = (d - c.0, a - c.1);
-                    let len = (dd * dd + da * da).sqrt().max(1e-9);
-                    (d + dd / len * margin * 0.6, a + da / len * margin * 0.6)
-                })
-                .collect();
-            for &(d, a) in grown.iter().chain(grown.first()) {
-                let _ = writeln!(out, "{}", coordinate_card(d, a)?);
-            }
-            let _ = writeln!(out, "99999");
-        } else {
-            warnings.push("the points are in a line, so no outline was drawn".into());
+    let write_ring = |out: &mut String, head: &str, ring: &[P]| -> Result<(), Error> {
+        for (j, &p) in ring.iter().enumerate() {
+            let _ = writeln!(
+                out,
+                "{}",
+                coordinate_card(if j == 0 { head } else { "" }, p)?
+            );
         }
+        Ok(())
+    };
+    if map == MapType::Conformant {
+        let _ = writeln!(out, "A-CONFORMOLINES");
+        for (z, ring) in &rings {
+            write_ring(&mut out, &format!("{z:>5}    A"), ring)?;
+        }
+        let _ = writeln!(out, "99999");
+    } else {
+        if opts.outline {
+            if zonal {
+                let _ = writeln!(out, "A-OUTLINE");
+                for (_, ring) in &rings {
+                    write_ring(&mut out, "", ring)?;
+                }
+                let _ = writeln!(out, "99999");
+            } else {
+                let pts: Vec<P> = items.iter().map(|i| i.point).collect();
+                let h = hull(&pts);
+                if h.len() >= 3 {
+                    let (cd, ca) = h.iter().fold((0.0, 0.0), |s, p| (s.0 + p.0, s.1 + p.1));
+                    let c = (cd / h.len() as f64, ca / h.len() as f64);
+                    let mut grown: Vec<P> = h
+                        .iter()
+                        .map(|&(d, a)| {
+                            let (dd, da) = (d - c.0, a - c.1);
+                            let len = (dd * dd + da * da).sqrt().max(1e-9);
+                            (d + dd / len * margin * 0.6, a + da / len * margin * 0.6)
+                        })
+                        .collect();
+                    grown.push(grown[0]);
+                    let _ = writeln!(out, "A-OUTLINE");
+                    write_ring(&mut out, "", &grown)?;
+                    let _ = writeln!(out, "99999");
+                } else {
+                    warnings.push("the points are in a line, so no outline was drawn".into());
+                }
+            }
+        }
+        let _ = writeln!(out, "B-DATA POINTS");
+        for i in &items {
+            let _ = writeln!(out, "{}", coordinate_card("", i.point)?);
+        }
+        let _ = writeln!(out, "99999");
     }
-    let _ = writeln!(out, "B-DATA POINTS");
-    for &(d, a) in &grid {
-        let _ = writeln!(out, "{}", coordinate_card(d, a)?);
-    }
-    let _ = writeln!(out, "99999");
     let _ = writeln!(out, "E-VALUES");
-    for p in &pts {
-        let _ = writeln!(out, "{:10}{}", "", field(p.2)?);
+    for i in &items {
+        let _ = writeln!(out, "{:10}{}", "", field(i.value)?);
     }
     let _ = writeln!(out, "99999");
 
@@ -584,17 +702,19 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
     });
     let _ = writeln!(out, "F-MAP");
     let _ = writeln!(out, "{}", card_text(&title));
+    let counted = if zonal {
+        format!("{value} for {n} zones")
+    } else {
+        format!("{value} at {n} points")
+    };
+    let _ = writeln!(out, "{}", card_text(&counted));
     let _ = writeln!(
         out,
         "{}",
-        card_text(&format!("{value} at {} points", pts.len()))
-    );
-    let _ = writeln!(
-        out,
-        "{}",
-        match opts.map {
+        match map {
             MapType::Contour => "CONTOUR MAP - SHEPARD INTERPOLATION",
             MapType::Proximal => "PROXIMAL MAP - NEAREST DATA POINT",
+            MapType::Conformant => "CONFORMANT MAP",
         }
     );
     let _ = writeln!(
@@ -613,7 +733,7 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         field_with(down_extent, 3)?,
         field_with(across_extent, 3)?
     );
-    if opts.map == MapType::Proximal {
+    if map == MapType::Proximal {
         let _ = writeln!(out, "   31\n   36\n   37");
     }
     let _ = writeln!(out, "99999\n999999");
@@ -622,7 +742,9 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         deck: out,
         fields,
         value,
-        points: pts.len(),
+        map,
+        count: n,
+        unit,
         warnings,
     })
 }
@@ -647,7 +769,10 @@ mod tests {
         let imp = import(CSV, &opts).unwrap();
         assert_eq!(imp.fields, ["no2"]);
         assert_eq!(imp.value, "no2");
-        assert_eq!(imp.points, 4);
+        assert_eq!(
+            (imp.count, imp.unit, imp.map),
+            (4, "points", MapType::Contour)
+        );
         assert_eq!(
             imp.warnings,
             ["1 points without a value for no2 were left out"]
@@ -699,18 +824,23 @@ mod tests {
            "geometry": {"type": "LineString", "coordinates": [[-6.3, 53.34], [-6.2, 53.35]]}}
         ]}"#;
         let opts = Options {
-            map: MapType::Proximal,
+            map: Some(MapType::Proximal),
             ..Options::default()
         };
         let imp = import(gj, &opts).unwrap();
-        assert_eq!(imp.points, 4);
+        assert_eq!(imp.count, 4);
         assert_eq!(
             imp.warnings,
-            ["1 features that are not points were left out"]
+            ["1 features that are neither points nor polygons were left out"]
         );
         assert!(imp.deck.contains("   31\n   36\n   37\n"));
         let run = crate::run(&imp.deck).unwrap();
         assert_eq!(run.maps[0].kind, crate::MapKind::Proximal);
+        let conformant = Options {
+            map: Some(MapType::Conformant),
+            ..Options::default()
+        };
+        assert!(import(gj, &conformant).is_err());
     }
 
     #[test]
@@ -731,6 +861,165 @@ mod tests {
                 .contains("numeric fields: height")
         );
         assert!(import("x,y,v\n1,1,1\n1,1,2\n1,1,3\n", &Options::default()).is_err());
+    }
+
+    /// Four zones in a 2x2 grid with wavy shared borders, the north-east
+    /// one with an enclave (a fifth zone) in a hole, and a lake (a hole
+    /// with no zone) in the south-west.
+    fn zones_geojson() -> String {
+        let wave = |a: P, b: P| -> Vec<P> {
+            (0..=20)
+                .map(|i| {
+                    let t = i as f64 / 20.0;
+                    let w = 0.002 * (t * 40.0).sin();
+                    (a.0 + t * (b.0 - a.0) + w, a.1 + t * (b.1 - a.1) + w)
+                })
+                .collect()
+        };
+        let (x0, x1, x2, y0, y1, y2) = (-0.2, -0.1, 0.0, 51.4, 51.5, 51.6);
+        let mid_v_lo = wave((x1, y0), (x1, y1));
+        let mid_v_hi = wave((x1, y1), (x1, y2));
+        let mid_h_l = wave((x0, y1), (x1, y1));
+        let mid_h_r = wave((x1, y1), (x2, y1));
+        let rev = |v: &[P]| -> Vec<P> { v.iter().rev().copied().collect() };
+        let cat = |parts: &[Vec<P>]| -> Vec<P> {
+            let mut out: Vec<P> = Vec::new();
+            for p in parts {
+                for &q in p {
+                    if out.last() != Some(&q) {
+                        out.push(q);
+                    }
+                }
+            }
+            if out.first() != out.last() {
+                out.push(out[0]);
+            }
+            out
+        };
+        let sw = cat(&[vec![(x0, y0)], mid_v_lo.clone(), rev(&mid_h_l)]);
+        let se = cat(&[vec![(x1, y0), (x2, y0), (x2, y1)], rev(&mid_h_r)]);
+        let nw = cat(&[mid_h_l.clone(), mid_v_hi.clone(), vec![(x0, y2)]]);
+        let ne = cat(&[mid_h_r.clone(), vec![(x2, y2)], rev(&mid_v_hi)]);
+        let enclave = vec![
+            (-0.06, 51.54),
+            (-0.03, 51.54),
+            (-0.03, 51.57),
+            (-0.06, 51.57),
+            (-0.06, 51.54),
+        ];
+        let lake = vec![
+            (-0.17, 51.43),
+            (-0.14, 51.43),
+            (-0.14, 51.46),
+            (-0.17, 51.43),
+        ];
+        let ring = |r: &[P]| -> String {
+            let pts: Vec<String> = r.iter().map(|p| format!("[{},{}]", p.0, p.1)).collect();
+            format!("[{}]", pts.join(","))
+        };
+        let feat = |name: &str, v: f64, rings: &[&[P]]| -> String {
+            let rs: Vec<String> = rings.iter().map(|r| ring(r)).collect();
+            format!(
+                r#"{{"type":"Feature","properties":{{"name":"{name}","v":{v}}},
+                   "geometry":{{"type":"Polygon","coordinates":[{}]}}}}"#,
+                rs.join(",")
+            )
+        };
+        format!(
+            r#"{{"type":"FeatureCollection","features":[{},{},{},{},{}]}}"#,
+            feat("SW", 1.0, &[&sw, &lake]),
+            feat("SE", 2.0, &[&se]),
+            feat("NW", 3.0, &[&nw]),
+            feat("NE", 4.0, &[&ne, &enclave]),
+            feat("Enclave", 5.0, &[&enclave]),
+        )
+    }
+
+    #[test]
+    fn polygons_make_a_conformant_map() {
+        let imp = import(&zones_geojson(), &Options::default()).unwrap();
+        assert_eq!(
+            (imp.map, imp.count, imp.unit),
+            (MapType::Conformant, 5, "zones")
+        );
+        assert_eq!(
+            imp.warnings,
+            ["1 holes with no zone inside are filled by the zone around them"]
+        );
+        assert!(imp.deck.contains("\nA-CONFORMOLINES\n"));
+        assert!(imp.deck.contains("#    5 Enclave\n"));
+        assert!(imp.deck.lines().all(|l| l.len() <= 80));
+        let run = crate::run(&imp.deck).unwrap();
+        let m = &run.maps[0];
+        assert_eq!(m.kind, crate::MapKind::Conformant);
+        // The table follows the cards, which put smaller zones first.
+        let mut values: Vec<f64> = m.table.iter().filter_map(|t| t.value).collect();
+        assert_eq!(values[0], 5.0);
+        values.sort_by(f64::total_cmp);
+        assert_eq!(values, [1.0, 2.0, 3.0, 4.0, 5.0]);
+        // Every zone prints its own level: with five levels, the enclave
+        // takes the top one (O+X+A+V) inside the zone around it (O+-).
+        let text = m.to_text();
+        let enclave_row = text.lines().find(|l| l.contains('█')).unwrap();
+        assert!(enclave_row.contains('Θ'), "{text}");
+    }
+
+    #[test]
+    fn shared_borders_stay_shared() {
+        let imp = import(&zones_geojson(), &Options::default()).unwrap();
+        // Every vertex of the middle (wavy) border is used by both zones on
+        // either side, so the cards for each pair of neighbours agree.
+        let deck = &imp.deck;
+        let zones: Vec<Vec<&str>> = deck
+            .split("    A")
+            .skip(1)
+            .map(|z| z.lines().take_while(|l| l.starts_with(' ')).collect())
+            .collect();
+        let coords = |z: &Vec<&str>| -> Vec<String> {
+            z.iter().map(|l| l.trim_start().to_string()).collect()
+        };
+        let all: Vec<Vec<String>> = zones.iter().map(coords).collect();
+        // The four grid zones each share at least three vertices (two
+        // corners and the centre) with a neighbour.
+        let shared = |a: &Vec<String>, b: &Vec<String>| a.iter().filter(|p| b.contains(p)).count();
+        let big: Vec<&Vec<String>> = all.iter().filter(|z| z.len() > 6).collect();
+        assert_eq!(big.len(), 4);
+        for z in &big {
+            assert!(big.iter().filter(|o| shared(z, o) >= 2).count() >= 3);
+        }
+    }
+
+    #[test]
+    fn zones_as_points() {
+        let opts = Options {
+            map: Some(MapType::Contour),
+            ..Options::default()
+        };
+        let imp = import(&zones_geojson(), &opts).unwrap();
+        assert!(imp.deck.contains("\nA-OUTLINE\n") && imp.deck.contains("\nB-DATA POINTS\n"));
+        assert!(imp.deck.contains("placed at its centroid"));
+        let m = &crate::run(&imp.deck).unwrap().maps[0];
+        assert_eq!(m.kind, crate::MapKind::Contour);
+        assert_eq!(m.table.len(), 5);
+    }
+
+    #[test]
+    fn topojson_zones() {
+        let t = r#"{"type": "Topology",
+          "transform": {"scale": [0.001, 0.001], "translate": [-0.2, 51.4]},
+          "objects": {"zones": {"type": "GeometryCollection", "geometries": [
+            {"type": "Polygon", "arcs": [[0, 1]], "properties": {"name": "West", "v": 1}},
+            {"type": "Polygon", "arcs": [[2, -2]], "properties": {"name": "East", "v": 2}}
+          ]}},
+          "arcs": [
+            [[100, 0], [-100, 0], [0, 100], [100, 0]],
+            [[100, 100], [3, -30], [-6, -30], [3, -40]],
+            [[100, 100], [100, 0], [0, -100], [-100, 0]]
+          ]}"#;
+        let imp = import(t, &Options::default()).unwrap();
+        assert_eq!((imp.count, imp.map), (2, MapType::Conformant));
+        let m = &crate::run(&imp.deck).unwrap().maps[0];
+        assert!(m.to_text().contains("CONFORMANT MAP"));
     }
 
     #[test]

@@ -60,6 +60,18 @@ await page.waitForTimeout(500);
 const imported = await page.$$eval('#messages li.error', (l) => l.length);
 check(summary.startsWith('4 points, mapping value') && imported === 0, `points import into a deck that runs (${summary.trim()})`);
 
+const square = (x, v) => `{"type":"Feature","properties":{"name":"Z${v}","v":${v}},"geometry":{"type":"Polygon","coordinates":[[[${x},51.4],[${x + 0.1},51.4],[${x + 0.1},51.5],[${x},51.5],[${x},51.4]]]}}`;
+const zones = `{"type":"FeatureCollection","features":[${square(-0.2, 1)},${square(-0.1, 2)}]}`;
+await page.setInputFiles('#import-file', { name: 'zones.geojson', mimeType: 'application/geo+json', buffer: Buffer.from(zones) });
+await page.waitForSelector('#import-dialog[open]', { timeout: 10000 });
+const zoneSummary = await page.textContent('#import-summary');
+const zoneMap = await page.$eval('#import-map', (s) => s.value);
+await page.click('#import-create');
+await page.waitForFunction(() => document.getElementById('deck').value.includes('A-CONFORMOLINES'), null, { timeout: 10000 });
+await page.waitForTimeout(500);
+const zoneErrors = await page.$$eval('#messages li.error', (l) => l.length);
+check(zoneSummary.startsWith('2 zones') && zoneMap === 'conformant' && zoneErrors === 0, `polygons import as a conformant map (${zoneSummary.trim()})`);
+
 await page.fill('#deck', 'B-DATA POINTS\n1 2\nnot a card\n99999\n');
 await page.waitForSelector('#messages li.error button.line', { timeout: 10000 });
 await page.click('#messages li.error button.line');

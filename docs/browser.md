@@ -60,6 +60,6 @@ characters and 8 lines to the inch.
 
 The `Site` workflow runs the tests, rustfmt and clippy (native and wasm),
 builds the site, and runs a browser smoke test (`scripts/smoke-test.mjs`).
-The smoke test renders every example, turns a sheet, imports a small CSV,
+The smoke test renders every example, turns a sheet, imports a small CSV and a small GeoJSON,
 and checks that an error links to its card. The workflow publishes `target/site` to GitHub
 Pages from `main`.

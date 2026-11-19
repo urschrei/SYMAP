@@ -124,12 +124,13 @@ fn error(out: &mut String, e: &crate::Error) {
     out.push_str("}}");
 }
 
-/// Import points and describe the deck made as JSON. The request is a JSON
-/// object: `{"text": "...", "name": "file.csv", "value": "no2",
-/// "map": "contour" | "proximal", "width": 8, "title": "...",
-/// "outline": true}`; only `text` is required. The reply is
+/// Import points or zones and describe the deck made as JSON. The request
+/// is a JSON object: `{"text": "...", "name": "file.csv", "value": "no2",
+/// "map": "contour" | "proximal" | "conformant", "width": 8, "title": "...",
+/// "outline": true, "object": "..."}`; only `text` is required. The reply is
 /// `{"ok": true, "deck": "...", "fields": [...], "value": "...",
-/// "points": n, "warnings": [...]}` or an error as for `run`.
+/// "map": "...", "count": n, "unit": "points" | "zones", "warnings": [...]}`
+/// or an error as for `run`.
 pub fn import(request: &str) -> String {
     use crate::import::{self, json::Value};
     let mut out = String::new();
@@ -143,11 +144,10 @@ pub fn import(request: &str) -> String {
             value: s("value").filter(|v| !v.is_empty()),
             title: s("title").filter(|v| !v.is_empty()),
             source: s("name"),
+            object: s("object").filter(|v| !v.is_empty()),
+            map: s("map").as_deref().and_then(import::MapType::parse),
             ..import::Options::default()
         };
-        if s("map").as_deref() == Some("proximal") {
-            opts.map = import::MapType::Proximal;
-        }
         if let Some(w) = req.get("width").and_then(Value::as_f64) {
             opts.width = w;
         }
@@ -164,7 +164,13 @@ pub fn import(request: &str) -> String {
             list(&mut out, &imp.fields, |o, f| string(o, f));
             out.push_str(",\"value\":");
             string(&mut out, &imp.value);
-            let _ = write!(out, ",\"points\":{},\"warnings\":", imp.points);
+            let _ = write!(
+                out,
+                ",\"map\":\"{}\",\"count\":{},\"unit\":\"{}\",\"warnings\":",
+                imp.map.name(),
+                imp.count,
+                imp.unit
+            );
             list(&mut out, &imp.warnings, |o, w| string(o, w));
             out.push('}');
         }
@@ -182,7 +188,9 @@ mod tests {
         let req = r#"{"text": "lon,lat,v\n-0.1,51.5,1\n-0.2,51.6,2\n0.0,51.4,3\n", "name": "a.csv", "map": "proximal", "width": 6}"#;
         let reply = import(req);
         assert!(reply.starts_with("{\"ok\":true,\"deck\":\"# Made by symap import from a.csv"));
-        assert!(reply.contains("\"fields\":[\"v\"],\"value\":\"v\",\"points\":3,\"warnings\":[]}"));
+        assert!(reply.contains(
+            "\"fields\":[\"v\"],\"value\":\"v\",\"map\":\"proximal\",\"count\":3,\"unit\":\"points\",\"warnings\":[]}"
+        ));
         assert!(reply.contains("   31\\n   36\\n   37"));
         let parsed = crate::import::json::parse(&reply).unwrap();
         let deck = parsed.get("deck").unwrap().as_str().unwrap();
