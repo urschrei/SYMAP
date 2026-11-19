@@ -455,6 +455,30 @@ fn zone_rings(
     let grid = |p: P| sheet.grid(p);
     let char_area = sheet.char_width * sheet.char_width * 1.25;
     let mut rings: Vec<ZoneRing> = Vec::new();
+    // Rings as read, before simplification: an even-odd fill of a ring that
+    // crosses itself leaves parts of the zone out.
+    let crossed: Vec<&str> = zones
+        .iter()
+        .filter(|z| {
+            z.outer
+                .iter()
+                .chain(&z.holes)
+                .any(|r| geometry::crosses_itself(&topo.ring(r)))
+        })
+        .map(|z| z.name.as_deref().unwrap_or("unnamed"))
+        .collect();
+    if !crossed.is_empty() {
+        let shown = crossed.len().min(5);
+        let more = match crossed.len() - shown {
+            0 => String::new(),
+            n => format!(" and {n} more"),
+        };
+        warnings.push(format!(
+            "{} zones have outlines that cross themselves and may fill wrongly: {}{more}",
+            crossed.len(),
+            crossed[..shown].join(", ")
+        ));
+    }
     topo.simplify(sheet.char_width / 2.0);
     let outer_refs: Vec<Vec<i64>> = zones.iter().flat_map(|z| z.outer.clone()).collect();
     let uses = topo.uses(&outer_refs);
@@ -767,7 +791,7 @@ mod tests {
             (0..=20)
                 .map(|i| {
                     let t = i as f64 / 20.0;
-                    let w = 0.002 * (t * 40.0).sin();
+                    let w = 0.002 * (t * 12.0 * std::f64::consts::PI).sin();
                     (a.0 + t * (b.0 - a.0) + w, a.1 + t * (b.1 - a.1) + w)
                 })
                 .collect()
@@ -879,6 +903,30 @@ mod tests {
             );
             assert!(!imp.deck.contains("99."), "{}", imp.deck);
         }
+    }
+
+    #[test]
+    fn zones_that_cross_themselves_are_named() {
+        let bowtie = r#",{"type":"Feature","properties":{"name":"Bowtie","v":9},
+            "geometry":{"type":"Polygon","coordinates":[[[-0.15,51.42],[-0.12,51.45],
+            [-0.12,51.42],[-0.15,51.45],[-0.15,51.42]]]}}]}"#;
+        let g = zones_geojson();
+        let g = format!("{}{bowtie}", g.strip_suffix("]}").unwrap());
+        let imp = import(&g, &Options::default()).unwrap();
+        assert!(
+            imp.warnings.contains(
+                &"1 zones have outlines that cross themselves and may fill wrongly: Bowtie".into()
+            ),
+            "{:?}",
+            imp.warnings
+        );
+        assert!(
+            !import(&zones_geojson(), &Options::default())
+                .unwrap()
+                .warnings
+                .iter()
+                .any(|w| w.contains("cross"))
+        );
     }
 
     #[test]

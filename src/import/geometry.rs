@@ -8,9 +8,10 @@ use super::read::Ring;
 use super::topology::{self, P, arc_points};
 use crate::Point;
 use geo::algorithm::buffer::{BufferStyle, LineJoin};
+use geo::algorithm::validation::InvalidPolygon;
 use geo::{
     Buffer, Contains, ConvexHull, InteriorPoint, LineString, MultiPoint, MultiPolygon, Polygon,
-    Simplify,
+    Simplify, Validation,
 };
 
 fn pair(p: &Point) -> P {
@@ -73,6 +74,14 @@ pub(crate) fn grown(ring: &[Point], distance: f64) -> Option<Vec<Point>> {
     // in line with the corners: simplification removes them.
     let exterior = buffered.0.first()?.exterior().simplify(distance * 1e-3);
     Some(exterior.coords().map(|c| Point::new(c.x, c.y)).collect())
+}
+
+/// Whether a ring (in any coordinates) crosses or touches itself.
+pub(crate) fn crosses_itself(ring: &[P]) -> bool {
+    Polygon::new(LineString::from(ring.to_vec()), vec![])
+        .validation_errors()
+        .iter()
+        .any(|e| matches!(e, InvalidPolygon::SelfIntersection(_)))
 }
 
 /// Unsigned area of a ring.

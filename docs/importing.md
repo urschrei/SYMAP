@@ -82,6 +82,9 @@ value goes on E-VALUES.
   keeps it, so smaller rings are written first, and a zone inside another
   zone's hole keeps its own level. A hole with no zone inside it (a lake,
   for example) is filled by the zone around it, with a warning.
+- **Outlines that cross themselves.** A zone whose outline crosses or
+  touches itself may print with parts missing. Such zones are named in a
+  warning; correct them in the source data.
 
 With `--contour` or `--proximal`, each zone's value is placed at a point
 inside it (away from its edges, and outside any holes) as a data point
