@@ -74,6 +74,7 @@ character. Agreement ranges from 94% (Example 1-5, a contour map) to 99.5%
 | `london-no2.sym` | Annual mean nitrogen dioxide at 71 London monitoring sites, 2025 |
 | `london-house-prices.sym` | Central London median house prices, with the Thames as a barrier and without |
 | `london-zones.sym` | Fare zone of the nearest of 574 London rail stations |
+| `london-suitability.sym` | Two weighted suitability indexes on a 1 km grid of London, after Steinitz's Delmarva study |
 | `dublin-density.sym` | Population density of Dublin City's electoral divisions, Census 2022, with the Liffey |
 
 The manual's decks are transcribed card for card and checked against the
