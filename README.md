@@ -56,8 +56,8 @@ restores the deck.
   frequency distribution, laid out as in the manual's examples.
 
 The output has been compared with the manual's printouts, character by
-character. Agreement ranges from 96% (Example 1-5, a contour map) to 99.4%
-(Example 1-22, a conformant map).
+character. Agreement ranges from 94% (Example 1-5, a contour map) to 99.5%
+(Example 1-17, a proximal map).
 
 ## Examples
 
