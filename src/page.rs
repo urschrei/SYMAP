@@ -148,7 +148,7 @@ impl PrintedMap {
 
     fn numeric_interpretation(&self) -> Vec<Line> {
         let cols = self.columns();
-        let b = &self.classes.breaks;
+        let b = self.classes.breaks();
         let (min, max) = (self.classes.min(), self.classes.max());
         let lo = |l: Level| match l {
             Level::Low => "BELOW".to_string(),

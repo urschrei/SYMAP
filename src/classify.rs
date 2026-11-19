@@ -21,10 +21,10 @@ impl Level {
     }
 }
 
-/// Level boundaries, lowest first; `levels() == breaks.len() - 1`.
+/// Level boundaries, lowest first: at least two, in order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Classes {
-    pub breaks: Vec<f64>,
+    breaks: Vec<f64>,
 }
 
 impl Classes {
@@ -81,6 +81,11 @@ impl Classes {
         }
         breaks.push(max);
         Ok(Self { breaks })
+    }
+
+    /// The level boundaries, from the minimum to the maximum.
+    pub fn breaks(&self) -> &[f64] {
+        &self.breaks
     }
 
     pub fn levels(&self) -> usize {

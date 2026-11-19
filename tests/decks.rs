@@ -26,7 +26,7 @@ fn manual_example_1_14() {
     // Elective 1: 5 x 8 inches at 8 lines and 10 columns per inch.
     assert_eq!((a.frame.rows, a.frame.cols), (40, 80));
     // As printed in Example 1-17: five equal levels, 1 1 1 1 2 points.
-    assert_eq!(a.classes.breaks, vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0]);
+    assert_eq!(a.classes.breaks(), vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0]);
     assert_eq!(a.frequency.levels, vec![1, 1, 1, 1, 2]);
     let text = a.to_text();
     assert!(text.contains("A = AIRPORT") && text.contains("I----+----I"));
@@ -150,7 +150,7 @@ fn manual_example_1_3_contour() {
     // As printed on p. 13: extremes, level ranges and frequencies.
     assert_eq!(m.data_range, (-14.0, 43.0));
     let want = [-14.0, -2.6, 8.8, 20.2, 31.6, 43.0];
-    for (a, b) in m.classes.breaks.iter().zip(want) {
+    for (a, b) in m.classes.breaks().iter().zip(want) {
         assert!((a - b).abs() < 1e-9, "{a} {b}");
     }
     assert_eq!(m.frequency.levels, vec![2, 1, 1, 0, 2]);
