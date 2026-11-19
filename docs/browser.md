@@ -1,6 +1,7 @@
 # The browser version
 
-The library compiles to a dependency-free WebAssembly module, and `web/` is
+The library compiles to a WebAssembly module with bindings made by
+[wasm-bindgen](https://github.com/wasm-bindgen/wasm-bindgen), and `web/` is
 a static front end for it, published at <https://urschrei.github.io/SYMAP/>.
 
 ## Building
@@ -13,23 +14,24 @@ a static front end for it, published at <https://urschrei.github.io/SYMAP/>.
 python3 -m http.server --directory target/site
 ```
 
-The build uses the `wasm` Cargo profile (optimised for size) and copies the
-module, the front end and the example decks into `target/site`. It also
+The build needs the `wasm-bindgen` CLI at the version `Cargo.toml` pins
+(`cargo install wasm-bindgen-cli --version <that version>`). It uses the `wasm` Cargo profile (optimised for size), writes the
+module and its bindings to `target/site/pkg`, and copies the front end and
+the example decks into `target/site`. It also
 renders [Importing data](importing.md) and [Mapping your own data](your-own-data.md)
 into `target/site/docs` with [pandoc](https://pandoc.org), so those two guides
 are published alongside the map.
 
 ## Interface
 
-`src/wasm.rs` exports a plain C ABI: `symap_alloc`, `symap_run`,
-`symap_import`, `symap_result_ptr` and `symap_free`. A deck goes in as UTF-8 and the result
-comes back as JSON: each map's lines (plain and per overprint pass, with
+`src/wasm.rs` exports `run`, which takes a deck as a string and returns a
+plain object (its shape is in `src/json.rs`): each map's lines (plain and per overprint pass, with
 page ejects), titles, warnings, ASA output and, with elective 21, the
 computed values as CSV. Errors carry the line of the card that caused them.
 
 The front end runs the module in a Web Worker and coalesces requests, so
-typing in the editor never queues more than one run. `symap_import` takes a
-JSON request (the file's text, its name and the options) and returns the
+typing in the editor never queues more than one run. `importData` takes a
+request object (the file's text, its name and the options) and returns the
 deck it makes; imports use a second instance on the main thread.
 
 ## The printout

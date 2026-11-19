@@ -684,7 +684,7 @@ async function openImport(file) {
     $('import-dialog').showModal();
     return;
   }
-  importer ??= await loadSymap(new URL('symap.wasm', import.meta.url));
+  importer ??= await loadSymap();
   pending.text = await file.text();
   pending.name = file.name;
   $('import-source').textContent = file.name;
@@ -794,7 +794,7 @@ async function init() {
   window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
 
   render();
-  state.symap = await createRunner('symap.wasm');
+  state.symap = await createRunner();
 
   const fromHash = /^#deck=(.+)$/.exec(location.hash);
   if (fromHash) {

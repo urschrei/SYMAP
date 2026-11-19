@@ -10,7 +10,6 @@
 //! and run like any other deck.
 
 pub mod csv;
-pub mod json;
 pub mod project;
 pub mod read;
 pub mod topology;
