@@ -273,10 +273,8 @@ fn resolve_values(
 ) -> Result<Vec<Option<f64>>, Error> {
     refs.iter()
         .map(|&r| {
-            let target = match pk.index.iter().rev().find(|(from, _)| *from == r) {
-                Some((_, Some(to))) => *to,
-                Some((_, None)) => return Ok(None),
-                None => r,
+            let Some(target) = datum(pk, r) else {
+                return Ok(None);
             };
             let raw = *pk.values.get(target - 1).ok_or_else(|| {
                 Error::at(
