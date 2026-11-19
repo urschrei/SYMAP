@@ -47,7 +47,12 @@ characters and 8 lines to the inch.
   matches the letters on the manual's printouts; each glyph is stroked
   lightly for that spread. Level fills then read as tones, as on the original maps. A modern
   `=` spans the full glyph width, which makes it darker than `+`; the
-  printouts show it narrower, so it is narrowed to match.
+  printouts show it narrower, so it is narrowed to match. The manual's
+  printer also had faults that are not reproduced: its `O` and `D` often
+  lost their right-hand side (Example 1-12 reads "CATA" and "PCINT"), which
+  makes its `O` levels look as light as `+`, and its `.` printed as a heavy
+  blob. Maps printed elsewhere, such as Pittsburgh's for Adovasio et al.
+  (1975), show a full `O` and small dots.
 - **Overprinting.** Every strike is printed into the same cell in
   translucent ink, with a small offset between strikes, so overprints
   darken. Each further strike on a cell is stroked a pixel wider, as more
