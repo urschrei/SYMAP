@@ -43,7 +43,9 @@ characters and 8 lines to the inch.
   manual's printouts capitals are about 0.7 of the line pitch tall and 0.8
   of the character pitch wide, so the font is measured, sized and widened
   to match, and each glyph is stroked lightly for ink spread. Level fills
-  then read as tones, as on the original maps.
+  then read as tones, as on the original maps. Modern fonts draw `=` across
+  the whole cell, which makes it darker than `+`; the printouts show it
+  about three quarters of a cell wide, so it is narrowed to match.
 - **Overprinting.** Every strike is printed into the same cell in
   translucent ink, with a small offset between strikes, so overprints
   darken. This is the default, as in the original: the standard symbolism
