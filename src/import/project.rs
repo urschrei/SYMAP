@@ -4,6 +4,12 @@
 
 use super::topology::P;
 use crate::Error;
+use geo::{Densify, Euclidean, LineString};
+
+/// The longest a geographic segment can be before it is projected, in
+/// degrees. A degree along a parallel at 50 degrees north bows by about 120
+/// metres from the straight line.
+const MAX_DEGREES: f64 = 1.0;
 
 const A: f64 = 6_378_137.0;
 const F: f64 = 1.0 / 298.257_223_563;
@@ -128,6 +134,19 @@ impl Projection {
                 (e / 1000.0, n / 1000.0)
             }
             Projection::Projected { k } => (p.0 / k, p.1 / k),
+        }
+    }
+
+    /// A path's locations, projected. A geographic path first gets extra
+    /// vertices, so that its straight segments become the curves they
+    /// project to.
+    pub(crate) fn project_path(&self, path: &[P]) -> Vec<P> {
+        match self {
+            Projection::Geographic(_) => {
+                let dense = Euclidean.densify(&LineString::from(path.to_vec()), MAX_DEGREES);
+                dense.coords().map(|c| self.project(c.x_y())).collect()
+            }
+            Projection::Projected { .. } => path.iter().map(|&p| self.project(p)).collect(),
         }
     }
 

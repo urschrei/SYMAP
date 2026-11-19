@@ -377,27 +377,26 @@ fn project_zones(
     kept: Vec<Valued<Rings>>,
     projection: &Projection,
 ) -> (Vec<Zone>, Topology) {
-    let project = |p: P| projection.project(p);
     let mut coords: Vec<Vec<P>> = Vec::new();
     let mut arc_rings: Vec<Vec<i64>> = Vec::new();
     for k in &kept {
         for r in k.geom.outer.iter().chain(k.geom.holes) {
             match r {
-                Ring::Coords(c) => coords.push(c.iter().map(|&p| project(p)).collect()),
+                Ring::Coords(c) => coords.push(c.clone()),
                 Ring::Arcs(a) => arc_rings.push(a.clone()),
             }
         }
     }
-    let (topo, refs) = if src.arcs.is_empty() {
-        Topology::from_rings(&coords)
+    // Shared borders are found, then projected, in source coordinates, so
+    // that each is densified once and neighbours still meet.
+    let (source, refs) = if src.arcs.is_empty() {
+        let (t, refs) = Topology::from_rings(&coords);
+        (t.arcs, refs)
     } else {
-        let arcs = src
-            .arcs
-            .iter()
-            .map(|a| a.iter().map(|&p| project(p)).collect())
-            .collect();
-        (Topology { arcs }, arc_rings)
+        (src.arcs.clone(), arc_rings)
     };
+    let arcs = source.iter().map(|a| projection.project_path(a)).collect();
+    let topo = Topology { arcs };
     let mut refs = refs.into_iter();
     let zones = kept
         .into_iter()
@@ -927,6 +926,26 @@ mod tests {
                 .iter()
                 .any(|w| w.contains("cross"))
         );
+    }
+
+    #[test]
+    fn long_geographic_edges_curve() {
+        // A zone 20 degrees wide: its northern and southern edges follow
+        // parallels, which curve under the projection.
+        let g = r#"{"type":"Feature","properties":{"v":1},"geometry":{"type":"Polygon",
+            "coordinates":[[[0,40],[20,40],[20,60],[0,60],[0,40]]]}}"#;
+        let imp = import(g, &Options::default()).unwrap();
+        let cards = imp.deck.split("A-CONFORMOLINES\n").nth(1).unwrap();
+        let vertices = cards.lines().take_while(|l| *l != "99999").count();
+        assert!(vertices > 5, "{vertices} vertices");
+        // Projected coordinates are not densified.
+        let g = g
+            .replace("40]", "40000]")
+            .replace("60]", "60000]")
+            .replace("[20,", "[20000,");
+        let imp = import(&g, &Options::default()).unwrap();
+        let cards = imp.deck.split("A-CONFORMOLINES\n").nth(1).unwrap();
+        assert_eq!(cards.lines().take_while(|l| *l != "99999").count(), 5);
     }
 
     #[test]

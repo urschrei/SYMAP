@@ -130,7 +130,7 @@ pub(crate) fn clip_to(
     let mut drawn: Vec<usize> = Vec::new();
     let mut names: Vec<String> = Vec::new();
     for line in paths {
-        let projected: Vec<P> = line.points.iter().map(|&p| projection.project(p)).collect();
+        let projected = projection.project_path(&line.points);
         let simple = topology::douglas_peucker(&projected, tolerance);
         let on_grid: Vec<Point> = simple.into_iter().map(|p| sheet.grid(p)).collect();
         let (min, max) = (

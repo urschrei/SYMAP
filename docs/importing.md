@@ -50,9 +50,11 @@ When a file contains both, polygons are mapped and points are left out.
 ## Coordinates
 
 Longitude and latitude are projected with a transverse Mercator on WGS84,
-centred on the data, in kilometres. Over a city or a county the distortion
-is acceptable at line printer resolution. Data that span more than 30
-degrees of longitude give a warning; data that span more than 90 degrees are
+centred on the data, in kilometres. Lines and borders get extra vertices, no
+more than a degree apart, before they are projected, so that long straight
+edges curve as they should. Over a city or a county the distortion is
+acceptable at line printer resolution. Data that span more than 30 degrees
+of longitude give a warning; data that span more than 90 degrees are
 refused, and must be given as projected coordinates. Projected coordinates
 are used as given; when they span more than 1,000 units they are taken to be
 metres and given in kilometres. GeoJSON and TopoJSON whose coordinates fall
