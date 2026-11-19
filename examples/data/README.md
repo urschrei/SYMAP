@@ -18,5 +18,14 @@ Source: OS Open Rivers, Ordnance Survey,
 Crown copyright and database right 2026, licensed under the Open
 Government Licence v3.0.
 
+`london-grid-1km.csv` holds, for each 1 km British National Grid square at
+least half inside Greater London (1,597 squares), the share inside London,
+the mean PTAL 2023 access index of its 100 m cells, the share in Flood
+Zone 2 or 3, the LAEI 2019 modelled annual mean NO2, and the share that is
+public green space. `scripts/london_grid_1km.py` builds it and
+`scripts/london_suitability_deck.py` turns it into
+`decks/london-suitability.sym`, whose header lists the sources and
+licences.
+
 `london-no2-2025.sym` is the finished deck from
 [Mapping your own data](../../docs/your-own-data.md).
