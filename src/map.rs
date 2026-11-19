@@ -662,9 +662,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         .map(|f| match f {
             Fill::Background => symbolism.background,
             Fill::NoData => symbolism.no_data,
-            Fill::Value(Level::Low) => symbolism.low,
-            Fill::Value(Level::High) => symbolism.high,
-            Fill::Value(Level::In(k)) => symbolism.general[*k as usize],
+            Fill::Value(level) => symbolism.fill(*level),
         })
         .collect();
     // Elective 28: a dot map shows each zone as scattered dots instead of tone.
@@ -751,14 +749,14 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         // of the 1971 manual better than either side by level.) Standard
         // SYMAP drops a line that would leave no symbol between it and the
         // next; elective 22 keeps them.
-        let rank = |r: usize, c: usize| levels[idx(r, c)].map(Level::rank);
+        let level = |r: usize, c: usize| levels[idx(r, c)];
         let band = o.lines != Lines::Continuous;
         let mut line = vec![false; fill.len()];
         for r in 1..frame.rows {
             for c in 1..frame.cols {
-                let Some(me) = rank(r, c) else { continue };
+                let Some(me) = level(r, c) else { continue };
                 let differs = |(nr, nc): (usize, usize), (br, bc): (usize, usize)| {
-                    rank(nr, nc).is_some_and(|x| x != me) && (!band || rank(br, bc) == Some(me))
+                    level(nr, nc).is_some_and(|x| x != me) && (!band || level(br, bc) == Some(me))
                 };
                 if differs((r - 1, c), (r + 1, c))
                     || (!line[idx(r, c - 1)] && differs((r, c - 1), (r, c + 1)))
@@ -816,9 +814,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                 match level {
                     None if o.invalid_symbol => symbolism.invalid,
                     None => continue,
-                    Some(Level::Low) => symbolism.low_point,
-                    Some(Level::High) => symbolism.high_point,
-                    Some(Level::In(k)) => symbolism.point[k as usize],
+                    Some(level) => symbolism.point_symbol(level),
                 }
             };
         }

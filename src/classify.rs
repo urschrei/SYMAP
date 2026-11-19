@@ -11,12 +11,12 @@ pub enum Level {
 }
 
 impl Level {
-    /// Ordinal for comparing neighbours: Low < In(0) < ... < High.
-    pub fn rank(self) -> i32 {
+    /// The label printed for the level: `L`, `1` to `10`, or `H`.
+    pub fn label(self) -> String {
         match self {
-            Level::Low => -1,
-            Level::In(k) => k as i32,
-            Level::High => 1000,
+            Level::Low => "L".into(),
+            Level::In(k) => (k + 1).to_string(),
+            Level::High => "H".into(),
         }
     }
 }

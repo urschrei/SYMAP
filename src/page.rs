@@ -205,11 +205,7 @@ impl PrintedMap {
         let mut out = vec![
             Line::blank(),
             Line::text("FREQUENCY DISTRIBUTION OF DATA POINT VALUES IN EACH LEVEL"),
-            labelled("LEVEL", &|l| match l {
-                Level::Low => "L".into(),
-                Level::In(k) => (k + 1).to_string(),
-                Level::High => "H".into(),
-            }),
+            labelled("LEVEL", &|l| l.label()),
             rule.clone(),
         ];
         for i in 0..5 {
@@ -222,11 +218,7 @@ impl PrintedMap {
             .map(Strikes::single)
             .collect();
             for &l in &cols {
-                let (general, point) = match l {
-                    Level::Low => (s.low, s.low_point),
-                    Level::In(k) => (s.general[k as usize], s.point[k as usize]),
-                    Level::High => (s.high, s.high_point),
-                };
+                let (general, point) = (s.fill(l), s.point_symbol(l));
                 for j in 0..BLOCK {
                     cells.push(if i == 2 && j == BLOCK / 2 {
                         point
@@ -256,11 +248,7 @@ impl PrintedMap {
                     .map(Strikes::single)
                     .collect();
                 for &l in &cols {
-                    let (general, point) = match l {
-                        Level::Low => (s.low, s.low_point),
-                        Level::In(k) => (s.general[k as usize], s.point[k as usize]),
-                        Level::High => (s.high, s.high_point),
-                    };
+                    let (general, point) = (s.fill(l), s.point_symbol(l));
                     for j in 0..COL {
                         let box_cell =
                             (BLOCK / 2 - 3..=BLOCK / 2 + 3).contains(&j) && count(l) >= k;
@@ -316,12 +304,7 @@ impl PrintedMap {
         }));
         out.push(Line::blank());
         for t in &self.table {
-            let level = match t.level {
-                Some(Level::Low) => "L".to_string(),
-                Some(Level::High) => "H".to_string(),
-                Some(Level::In(k)) => (k + 1).to_string(),
-                None => "M".to_string(),
-            };
+            let level = t.level.map_or_else(|| "M".to_string(), Level::label);
             out.push(Line::text(format!(
                 "{:>5})    {:<4} {:>9} {:>9} {:>9} {:>11} {:>9}",
                 t.number,

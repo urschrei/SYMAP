@@ -1,6 +1,8 @@
 //! Printed symbolism: overprinted character stacks, and SYMAP's standard sets
 //! (1971 manual, Tables 3-1 and 3-2).
 
+use crate::classify::Level;
+
 /// Up to four characters struck in the same print position, in order.
 /// Blanks are passes with no strike.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -81,6 +83,24 @@ const SUBSETS: [&[usize]; 10] = [
 pub const MAX_LEVELS: usize = 10;
 
 impl Symbolism {
+    /// The symbol that fills a level.
+    pub fn fill(&self, level: Level) -> Strikes {
+        match level {
+            Level::Low => self.low,
+            Level::In(k) => self.general[usize::from(k)],
+            Level::High => self.high,
+        }
+    }
+
+    /// The symbol for a data point at a level.
+    pub fn point_symbol(&self, level: Level) -> Strikes {
+        match level {
+            Level::Low => self.low_point,
+            Level::In(k) => self.point[usize::from(k)],
+            Level::High => self.high_point,
+        }
+    }
+
     /// Standard symbolism for `levels` levels.
     pub fn standard(levels: usize) -> Self {
         assert!((1..=MAX_LEVELS).contains(&levels));
