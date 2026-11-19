@@ -5,7 +5,7 @@ use crate::classify::{Classes, Level};
 use crate::deck::{Direction, Legend, MapKind, MapSpec, Packages, ZoneShape};
 use crate::elective::{DotMode, Elective, Extrapolation, PointCount};
 use crate::error::Error;
-use crate::frame::{Frame, Layout};
+use crate::frame::{Frame, Layout, round_half_up};
 use crate::geom::{self, Extent, Point};
 use crate::interp::{PointIndex, Shepard, ShepardParams};
 use crate::symbols::{Strikes, Symbolism};
@@ -344,9 +344,9 @@ fn raster(
         let a = a as f64;
         let t = if a1 != a0 { (a - a0) / (a1 - a0) } else { 0.0 };
         if steep {
-            (a, ((c0 + t * (c1 - c0)) + 0.5).floor())
+            (a, round_half_up(c0 + t * (c1 - c0)))
         } else {
-            (((r0 + t * (r1 - r0)) + 0.5).floor(), a)
+            (round_half_up(r0 + t * (r1 - r0)), a)
         }
     })
 }
@@ -377,7 +377,7 @@ fn cells_around(frame: &Frame, vertices: &[Point]) -> impl Iterator<Item = (usiz
 pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
     let at = |m: String| Error::at(spec.line, m);
     let pk = &spec.packages;
-    let (o, mut warnings) = Options::from_spec(spec);
+    let (mut o, mut warnings) = Options::from_spec(spec);
 
     let kind = if !pk.conformolines.is_empty() && !o.force_contour {
         MapKind::Conformant
@@ -457,24 +457,21 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
     .map_err(|e| at(e.message))?;
     let symbolism = o
         .symbolism
-        .clone()
+        .take()
         .unwrap_or_else(|| Symbolism::standard(classes.levels()));
 
     // Frame.
     let extent = match o.extremes {
         Some((min, max)) => Extent { min, max },
         None => {
-            let pts: Vec<Point> = if kind == MapKind::Conformant {
-                pk.conformolines
-                    .iter()
-                    .flat_map(|z| z.vertices.clone())
-                    .collect()
+            let extent = if kind == MapKind::Conformant {
+                Extent::of(pk.conformolines.iter().flat_map(|z| &z.vertices))
             } else if !pk.outlines.is_empty() {
-                pk.outlines.concat()
+                Extent::of(pk.outlines.iter().flatten())
             } else {
-                pk.points.clone()
+                Extent::of(&pk.points)
             };
-            Extent::of(&pts).ok_or_else(|| at("nothing to map".into()))?
+            extent.ok_or_else(|| at("nothing to map".into()))?
         }
     };
     let (frame, w) = Frame::fit(extent, &o.layout).map_err(|e| at(e.message))?;
@@ -522,7 +519,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
     Ok(PrintedMap {
         kind,
         titles: spec.titles.clone(),
-        text: o.text.clone(),
+        text: std::mem::take(&mut o.text),
         frame,
         grid,
         levels,
@@ -1001,8 +998,8 @@ impl Drawing<'_> {
                     TableRow {
                         number: i + 1,
                         shape: Some(z.shape),
-                        row: (r + 0.5).floor() as i64,
-                        col: (c + 0.5).floor() as i64,
+                        row: round_half_up(r) as i64,
+                        col: round_half_up(c) as i64,
                         datum: datum(pk, z.reference),
                         value: *v,
                         level: level_of(*v),
@@ -1019,8 +1016,8 @@ impl Drawing<'_> {
                     TableRow {
                         number: i + 1,
                         shape: None,
-                        row: (r + 0.5).floor() as i64,
-                        col: (c + 0.5).floor() as i64,
+                        row: round_half_up(r) as i64,
+                        col: round_half_up(c) as i64,
                         datum: datum(pk, i + 1),
                         value: *v,
                         level: level_of(*v),

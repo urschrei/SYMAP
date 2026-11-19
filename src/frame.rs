@@ -44,6 +44,11 @@ pub struct Margins {
     pub right: f64,
 }
 
+/// The nearest whole grid position; halves go down or to the right.
+pub fn round_half_up(x: f64) -> f64 {
+    (x + 0.5).floor()
+}
+
 /// The standard size of the larger map dimension, in inches.
 pub const STANDARD_INCHES: f64 = 13.0;
 /// Maps larger than this need elective 16.
@@ -174,7 +179,7 @@ impl Frame {
     }
 
     pub fn cell_at(&self, r: f64, c: f64) -> Option<(usize, usize)> {
-        let (r, c) = ((r + 0.5).floor(), (c + 0.5).floor());
+        let (r, c) = (round_half_up(r), round_half_up(c));
         let inside = |x: f64, n: usize| x >= 1.0 && x <= (n - 1) as f64;
         (inside(r, self.rows) && inside(c, self.cols)).then_some((r as usize, c as usize))
     }
