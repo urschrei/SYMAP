@@ -287,8 +287,21 @@ fn shape_of(c: char) -> Option<ZoneShape> {
     }
 }
 
+/// A polygon closed by repeating its first vertex, without the repeat.
+/// `None` if it has fewer than three vertices or is not closed.
+fn closed(mut v: Vec<Point>) -> Option<Vec<Point>> {
+    let n = v.len();
+    if n < 4 || v[0] != v[n - 1] {
+        return None;
+    }
+    v.pop();
+    Some(v)
+}
+
 fn read_conformolines(p: &Package) -> Result<Vec<Conformoline>, Error> {
     let mut out: Vec<Conformoline> = Vec::new();
+    // The card each zone starts on.
+    let mut starts: Vec<usize> = Vec::new();
     let mut last_ref: usize = 0;
     for (l, c) in p.data_cards() {
         // Fixed format: reference in 1-5, shape in 10.
@@ -342,6 +355,7 @@ fn read_conformolines(p: &Package) -> Result<Vec<Conformoline>, Error> {
                         .ok_or_else(|| Error::at(l, "zone reference is too large"))?,
                 };
                 last_ref = reference;
+                starts.push(l);
                 out.push(Conformoline {
                     reference,
                     shape,
@@ -359,19 +373,17 @@ fn read_conformolines(p: &Package) -> Result<Vec<Conformoline>, Error> {
             },
         }
     }
-    for z in &mut out {
+    for (z, &start) in out.iter_mut().zip(&starts) {
         if z.shape == ZoneShape::Area {
-            let n = z.vertices.len();
-            if n < 4 || z.vertices[0] != z.vertices[n - 1] {
-                return Err(Error::at(
-                    p.line,
+            z.vertices = closed(std::mem::take(&mut z.vertices)).ok_or_else(|| {
+                Error::at(
+                    start,
                     format!(
                         "area zone {} must repeat its first vertex to close",
                         z.reference
                     ),
-                ));
-            }
-            z.vertices.pop();
+                )
+            })?;
         }
     }
     Ok(out)
@@ -449,14 +461,9 @@ fn read_legends(p: &Package) -> Result<Vec<Legend>, Error> {
                 vertices: more_vertices(p, &mut i, at)?,
             }),
             'A' => {
-                let mut v = more_vertices(p, &mut i, at)?;
-                if v.len() < 4 || v[0] != v[v.len() - 1] {
-                    return Err(Error::at(
-                        l,
-                        "area legend must repeat its first vertex to close",
-                    ));
-                }
-                v.pop();
+                let v = closed(more_vertices(p, &mut i, at)?).ok_or_else(|| {
+                    Error::at(l, "area legend must repeat its first vertex to close")
+                })?;
                 out.push(Legend::Area {
                     strikes,
                     vertices: v,
@@ -839,6 +846,9 @@ mod tests {
         assert_eq!(Deck::parse("hello\n").unwrap_err().line, Some(1));
         assert!(Deck::parse("Q-NONSENSE\n99999\n").is_err());
         assert!(Deck::parse("F-MAP\nA\n99999\n").is_err());
+        // An unclosed area zone is reported on its first card.
+        let d = "A-CONFORMOLINES\n1 A 0 0\n0 1\n1 1\n2 A 5 5\n5 6\n6 6\n99999\n999999\n";
+        assert_eq!(Deck::parse(d).unwrap_err().line, Some(2));
         // A deck without 999999 is reported on its last card, at least 1.
         assert_eq!(Deck::parse("").unwrap().diagnostics[0].line, 1);
         assert_eq!(Deck::parse("\n\n").unwrap().diagnostics[0].line, 2);
