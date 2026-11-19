@@ -202,7 +202,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible {
 .menu summary:hover { border-color: var(--muted); }
 .menu summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .menu-items {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 10; min-width: 17rem;
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 10; width: min(25rem, calc(100vw - 32px));
   display: grid; padding: 4px; background: var(--surface); border: 1px solid var(--line);
   border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
 }
@@ -211,6 +211,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible {
 }
 .menu-items button:hover:not(:disabled) { background: var(--bg); }
 .menu-items small { color: var(--muted); font-size: 12px; }
+.menu-items code { font-family: var(--mono); font-size: 12px; }
 .menu-check {
   display: grid; grid-template-columns: auto 1fr; gap: 0 8px; align-items: baseline;
   padding: 4px 10px 8px 26px; font-size: 13px; cursor: pointer;
