@@ -559,15 +559,15 @@ impl Deck {
         let mut deck = Deck::default();
         let mut state = Packages::default();
         let mut open: Option<Package> = None;
-        let mut prev_electives: Vec<Entry> = Vec::new();
         let mut ended = false;
         let warn = |deck: &mut Deck, line, m: String| {
             deck.diagnostics.push(Diagnostic { line, message: m })
         };
 
-        let lines: Vec<&str> = text.lines().collect();
-        for (idx, &c) in lines.iter().enumerate() {
+        let mut last = 0;
+        for (idx, c) in text.lines().enumerate() {
             let ln = idx + 1;
+            last = ln;
             if is_deck_end(c) {
                 if open.is_some() {
                     return Err(Error::at(ln, "deck ended inside a package (missing 99999)"));
@@ -575,7 +575,7 @@ impl Deck {
                 ended = true;
                 break;
             }
-            match open.as_mut() {
+            match open.take() {
                 None => {
                     if card::is_blank(c) || c.trim_start().starts_with('#') {
                         continue;
@@ -614,12 +614,12 @@ impl Deck {
                         }
                     }
                 }
-                Some(p) => {
+                Some(mut p) => {
                     if !is_terminator(c) {
                         p.cards.push((ln, c));
+                        open = Some(p);
                         continue;
                     }
-                    let p = open.take().unwrap();
                     match p.kind {
                         Kind::Outline => state.outlines = read_outline(&p)?,
                         Kind::Conformolines => state.conformolines = read_conformolines(&p)?,
@@ -640,11 +640,9 @@ impl Deck {
                             let titles = std::array::from_fn(|k| {
                                 card::cols(p.cards[k].1, 1, 72).trim_end().to_string()
                             });
-                            let electives = elective::resolve_repeat(
-                                &prev_electives,
-                                elective::parse(&p.cards[3..])?,
-                            );
-                            prev_electives = electives.clone();
+                            let previous = deck.maps.last().map_or(&[][..], |m| &m.electives);
+                            let electives =
+                                elective::resolve_repeat(previous, elective::parse(&p.cards[3..])?);
                             deck.maps.push(MapSpec {
                                 line: p.line,
                                 titles,
@@ -662,7 +660,7 @@ impl Deck {
         if !ended {
             warn(
                 &mut deck,
-                lines.len(),
+                last.max(1),
                 "deck does not end with 999999".into(),
             );
         }
@@ -841,6 +839,9 @@ mod tests {
         assert_eq!(Deck::parse("hello\n").unwrap_err().line, Some(1));
         assert!(Deck::parse("Q-NONSENSE\n99999\n").is_err());
         assert!(Deck::parse("F-MAP\nA\n99999\n").is_err());
+        // A deck without 999999 is reported on its last card, at least 1.
+        assert_eq!(Deck::parse("").unwrap().diagnostics[0].line, 1);
+        assert_eq!(Deck::parse("\n\n").unwrap().diagnostics[0].line, 2);
         // An unreadable text legend length is reported on its own card.
         let d = "C-OTOLEGENDS\n-  x3    P       1.0       1.0\nABC\n99999\n999999\n";
         let e = Deck::parse(d).unwrap_err();
