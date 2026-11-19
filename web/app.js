@@ -158,6 +158,11 @@ const SPREAD = 0.7;        // ink spread around each stroke, in pixels
 // Each further strike on a cell soaks more ink into the paper: four-strike
 // overprints (OXAV) print near-solid black, not just a darker O.
 const SPREAD_PER_STRIKE = 1.0;
+// Glyphs narrowed to the printer's type. A modern '=' spans its whole cell
+// and prints darker than '+', inverting the standard levels' order (Table
+// 3-2); the manual's printouts show a '=' about three quarters of a cell
+// wide, a little lighter than '+'.
+const NARROW = { '=': 0.75 };
 
 function hash(a, b, c) {
   let h = (a * 73856093) ^ (b * 19349663) ^ (c * 83492791);
@@ -264,6 +269,16 @@ function drawSheet(map, lines, density) {
         const dx = state.overprint ? (hash(i, c, k) - 0.5) * 0.6 : 0;
         const dy = state.overprint ? (hash(c, i, k + 7) - 0.5) * 0.6 : 0;
         const x = ((MARGIN_COLS + c + 0.5) * CELL_W + dx) / type.widen;
+        const narrow = NARROW[ch];
+        if (narrow) {
+          ctx.save();
+          ctx.translate(x, y + dy);
+          ctx.scale(narrow, 1);
+          ctx.fillText(ch, 0, 0);
+          ctx.strokeText(ch, 0, 0);
+          ctx.restore();
+          continue;
+        }
         ctx.fillText(ch, x, y + dy);
         // Ribbon ink spreads beyond the type face.
         ctx.strokeText(ch, x, y + dy);
