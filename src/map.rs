@@ -2,7 +2,7 @@
 //! lines, data points and legends.
 
 use crate::classify::{Classes, Level};
-use crate::deck::{Legend, MapKind, MapSpec, Packages, ZoneShape};
+use crate::deck::{Direction, Legend, MapKind, MapSpec, Packages, ZoneShape};
 use crate::elective::{DotMode, Elective, Extrapolation, PointCount};
 use crate::error::Error;
 use crate::frame::{Frame, Layout};
@@ -835,16 +835,15 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             }
             Legend::Text {
                 text,
-                vertical,
+                direction,
                 at,
                 shift,
             } => {
                 let (r0, c0) = frame.grid(*at);
                 for (k, ch) in text.chars().enumerate() {
-                    let (dr, dc) = if *vertical {
-                        (k as f64, 0.0)
-                    } else {
-                        (0.0, k as f64)
+                    let (dr, dc) = match direction {
+                        Direction::Down => (k as f64, 0.0),
+                        Direction::Across => (0.0, k as f64),
                     };
                     if let Some((r, c)) = frame.cell_at(r0 + shift.0 + dr, c0 + shift.1 + dc) {
                         grid[idx(r, c)] = Strikes::single(ch);

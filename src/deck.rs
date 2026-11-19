@@ -74,10 +74,10 @@ pub enum Legend {
         at: Point,
         shift: (f64, f64),
     },
-    /// A character string, horizontal or reading down.
+    /// A character string.
     Text {
         text: String,
-        vertical: bool,
+        direction: Direction,
         at: Point,
         shift: (f64, f64),
     },
@@ -91,6 +91,14 @@ pub enum Legend {
         strikes: Strikes,
         vertices: Vec<Point>,
     },
+}
+
+/// The direction a text legend reads in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Direction {
+    Across,
+    /// Column 1 of the legend card holds '-'.
+    Down,
 }
 
 /// One D-BARRIERS barrier: vertices and their strengths.
@@ -392,7 +400,11 @@ fn read_legends(p: &Package) -> Result<Vec<Legend>, Error> {
                     i += 1;
                     out.push(Legend::Text {
                         text: card::cols(t, 1, n as usize).trim_end().to_string(),
-                        vertical: card::col(c, 1) == '-',
+                        direction: if card::col(c, 1) == '-' {
+                            Direction::Down
+                        } else {
+                            Direction::Across
+                        },
                         at,
                         shift: shift()?,
                     });
@@ -742,7 +754,7 @@ mod tests {
             l[0],
             Legend::Text {
                 text: "SCALE".into(),
-                vertical: false,
+                direction: Direction::Across,
                 at: Point::new(0.6, 6.8),
                 shift: (1.0, -2.0)
             }
@@ -751,7 +763,13 @@ mod tests {
             matches!(&l[1], Legend::Line { strikes, vertices } if *strikes == Strikes::new("R/") && vertices.len() == 2)
         );
         assert!(matches!(&l[2], Legend::Symbol { strikes, .. } if *strikes == Strikes::new("A")));
-        assert!(matches!(&l[3], Legend::Text { vertical: true, .. }));
+        assert!(matches!(
+            &l[3],
+            Legend::Text {
+                direction: Direction::Down,
+                ..
+            }
+        ));
     }
 
     #[test]
