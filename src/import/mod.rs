@@ -1448,13 +1448,15 @@ mod tests {
                 .contains("not in longitude and latitude")
         );
         // A file of lines alone has nothing to map.
-        assert!(
-            import(
-                RIVER.replace("Point", "LineString").as_str(),
-                &Options::default()
+        let gauge = RIVER
+            .find(
+                r#",
+      {"type": "Feature", "properties": {"name": "Gauge"}"#,
             )
-            .is_err()
-        );
+            .unwrap();
+        let only_lines = format!("{}\n    ]}}", &RIVER[..gauge]);
+        let e = import(&only_lines, &Options::default()).unwrap_err();
+        assert!(e.message.contains("the file has only lines"), "{e}");
     }
 
     #[test]
