@@ -565,6 +565,21 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         lon0: (lo.0 + hi.0) / 2.0,
         lat0: (lo.1 + hi.1) / 2.0,
     };
+    let lon_span = hi.0 - lo.0;
+    if geographic && lon_span > 90.0 {
+        return Err(Error::general(format!(
+            "the data span {lon_span:.0} degrees of longitude, too many for the \
+             transverse Mercator projection used here; give projected coordinates \
+             (easting and northing) instead"
+        )));
+    }
+    if geographic && lon_span > 30.0 {
+        warnings.push(format!(
+            "the data span {lon_span:.0} degrees of longitude, so the transverse \
+             Mercator projection stretches east-west distances far from {:.1}",
+            tm.lon0
+        ));
+    }
     let k = if (hi.0 - lo.0).max(hi.1 - lo.1) > 1000.0 {
         1000.0
     } else {
@@ -1128,6 +1143,25 @@ mod tests {
             ..Options::default()
         };
         assert!(import(gj, &conformant).is_err());
+    }
+
+    #[test]
+    fn wide_longitude_spans() {
+        let csv = |w: f64| format!("lon,lat,v\n{},0,1\n0,10,2\n{w},0,3\n", -w);
+        let imp = import(&csv(20.0), &Options::default()).unwrap();
+        assert!(
+            imp.warnings
+                .iter()
+                .any(|w| w.contains("40 degrees of longitude"))
+        );
+        assert!(
+            import(&csv(10.0), &Options::default())
+                .unwrap()
+                .warnings
+                .is_empty()
+        );
+        let e = import(&csv(170.0), &Options::default()).unwrap_err();
+        assert!(e.message.contains("340 degrees"), "{e}");
     }
 
     #[test]
