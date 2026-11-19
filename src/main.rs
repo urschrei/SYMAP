@@ -30,52 +30,47 @@ fn read_input(path: Option<&str>) -> std::io::Result<String> {
     }
 }
 
-fn import(args: &[String]) -> ExitCode {
+/// Read `symap import`'s options into `opts`; returns the input path and
+/// the lines file.
+fn import_args(
+    mut p: lexopt::Parser,
+    opts: &mut symap::import::Options,
+) -> Result<(Option<String>, Option<String>), lexopt::Error> {
+    use lexopt::prelude::*;
+    use symap::import::{LineUse, MapType};
+    let (mut path, mut lines_from) = (None, None);
+    while let Some(arg) = p.next()? {
+        match arg {
+            Long("value") => opts.value = Some(p.value()?.string()?),
+            Long("title") => opts.title = Some(p.value()?.string()?),
+            Long("width") => opts.width = p.value()?.parse()?,
+            Long("object") => opts.object = Some(p.value()?.string()?),
+            Long("lines-from") => lines_from = Some(p.value()?.string()?),
+            Long("line-symbol") => opts.line_symbol = p.value()?.string()?,
+            Long("lines") => {
+                let v = p.value()?.string()?;
+                opts.lines = LineUse::parse(&v).ok_or_else(|| {
+                    format!("--lines: '{v}' is not legend, barrier, both or none")
+                })?;
+            }
+            Long(m @ ("contour" | "proximal" | "conformant")) => opts.map = MapType::parse(m),
+            Long("no-outline") => opts.outline = false,
+            Value(v) if path.is_none() => path = Some(v.string()?),
+            _ => return Err(arg.unexpected()),
+        }
+    }
+    Ok((path, lines_from))
+}
+
+fn import(args: lexopt::Parser) -> ExitCode {
     let mut opts = symap::import::Options::default();
-    let mut path: Option<String> = None;
-    let mut lines_from: Option<String> = None;
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        let mut next = |name: &str| {
-            it.next()
-                .cloned()
-                .ok_or_else(|| format!("{name} needs a value"))
-        };
-        let r: Result<(), String> = match a.as_str() {
-            "--value" => next("--value").map(|v| opts.value = Some(v)),
-            "--title" => next("--title").map(|v| opts.title = Some(v)),
-            "--width" => next("--width").and_then(|v| {
-                v.parse()
-                    .map(|w| opts.width = w)
-                    .map_err(|_| format!("--width: '{v}' is not a number"))
-            }),
-            "--object" => next("--object").map(|v| opts.object = Some(v)),
-            "--lines-from" => next("--lines-from").map(|v| lines_from = Some(v)),
-            "--line-symbol" => next("--line-symbol").map(|v| opts.line_symbol = v),
-            "--lines" => next("--lines").and_then(|v| {
-                symap::import::LineUse::parse(&v)
-                    .map(|l| opts.lines = l)
-                    .ok_or_else(|| format!("--lines: '{v}' is not legend, barrier, both or none"))
-            }),
-            "--contour" | "--proximal" | "--conformant" => {
-                opts.map = symap::import::MapType::parse(&a[2..]);
-                Ok(())
-            }
-            "--no-outline" => {
-                opts.outline = false;
-                Ok(())
-            }
-            _ if path.is_none() && !a.starts_with("--") => {
-                path = Some(a.clone());
-                Ok(())
-            }
-            _ => Err(format!("unexpected argument '{a}'")),
-        };
-        if let Err(e) = r {
+    let (path, lines_from) = match import_args(args, &mut opts) {
+        Ok(r) => r,
+        Err(e) => {
             eprintln!("symap import: {e}\n\n{USAGE}");
             return ExitCode::from(2);
         }
-    }
+    };
     opts.source = path.clone().filter(|p| p != "-");
     if let Some(f) = &lines_from {
         match std::fs::read_to_string(f) {
@@ -119,29 +114,38 @@ fn import(args: &[String]) -> ExitCode {
     }
 }
 
-fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(String::as_str) == Some("import") {
-        return import(&args[1..]);
-    }
-    let mut asa = false;
-    let mut values = false;
-    let mut path: Option<String> = None;
-    for a in args {
-        match a.as_str() {
-            "--asa" => asa = true,
-            "--values" => values = true,
-            "-h" | "--help" => {
-                println!("{USAGE}");
-                return ExitCode::SUCCESS;
-            }
-            _ if path.is_none() => path = Some(a),
-            _ => {
-                eprintln!("{USAGE}");
-                return ExitCode::from(2);
-            }
+/// The options for printing a deck: `--asa`, `--values` and the deck's path.
+fn run_args(mut p: lexopt::Parser) -> Result<(bool, bool, Option<String>), lexopt::Error> {
+    use lexopt::prelude::*;
+    let (mut asa, mut values, mut path) = (false, false, None);
+    while let Some(arg) = p.next()? {
+        match arg {
+            Long("asa") => asa = true,
+            Long("values") => values = true,
+            Value(v) if path.is_none() => path = Some(v.string()?),
+            _ => return Err(arg.unexpected()),
         }
     }
+    Ok((asa, values, path))
+}
+
+fn main() -> ExitCode {
+    let mut args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    if args.first().is_some_and(|a| a == "-h" || a == "--help") {
+        println!("{USAGE}");
+        return ExitCode::SUCCESS;
+    }
+    if args.first().is_some_and(|a| a == "import") {
+        args.remove(0);
+        return import(lexopt::Parser::from_args(args));
+    }
+    let (asa, values, path) = match run_args(lexopt::Parser::from_args(args)) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("symap: {e}\n\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
 
     let text = read_input(path.as_deref());
     let text = match text {
