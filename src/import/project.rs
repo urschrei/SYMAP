@@ -2,6 +2,9 @@
 //! centred on the data with a scale factor of 1. Over a city or a county the
 //! distortion is negligible at line-printer resolution.
 
+use super::topology::P;
+use crate::Error;
+
 const A: f64 = 6_378_137.0;
 const F: f64 = 1.0 / 298.257_223_563;
 
@@ -40,6 +43,107 @@ impl TransverseMercator {
                     + (5.0 - t + 9.0 * cc + 4.0 * cc * cc) * a.powi(4) / 24.0
                     + (61.0 - 58.0 * t + t * t + 600.0 * cc - 330.0 * ep2) * a.powi(6) / 720.0);
         (x, y)
+    }
+}
+
+/// How source coordinates become the deck's kilometres.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Projection {
+    /// Longitude and latitude, by transverse Mercator.
+    Geographic(TransverseMercator),
+    /// Projected coordinates, divided by `k` (1000 for metres).
+    Projected { k: f64 },
+}
+
+impl Projection {
+    /// The projection for coordinates `raw`, in longitude and latitude if
+    /// `declared` says so (or if they all fall within those ranges).
+    /// `lines` is whether a lines file is in longitude and latitude.
+    pub(crate) fn choose(
+        raw: &[P],
+        declared: Option<bool>,
+        lines: Option<bool>,
+        warnings: &mut Vec<String>,
+    ) -> Result<Self, Error> {
+        let in_range = raw.iter().all(|p| p.0.abs() <= 180.0 && p.1.abs() <= 90.0);
+        let geographic = declared.unwrap_or(in_range);
+        if declared.is_none() && !geographic {
+            warnings.push(
+                "coordinates are outside longitude and latitude ranges, so they are used as \
+                 projected coordinates"
+                    .into(),
+            );
+        }
+        if lines.is_some_and(|g| g != geographic) {
+            return Err(Error::general(if geographic {
+                "the lines file is not in longitude and latitude, as the data are"
+            } else {
+                "the lines file is in longitude and latitude, but the data are projected"
+            }));
+        }
+        let (lo, hi) = raw.iter().fold(
+            ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN)),
+            |(lo, hi), p| {
+                (
+                    (lo.0.min(p.0), lo.1.min(p.1)),
+                    (hi.0.max(p.0), hi.1.max(p.1)),
+                )
+            },
+        );
+        if !geographic {
+            let k = if (hi.0 - lo.0).max(hi.1 - lo.1) > 1000.0 {
+                1000.0
+            } else {
+                1.0
+            };
+            return Ok(Projection::Projected { k });
+        }
+        let tm = TransverseMercator {
+            lon0: (lo.0 + hi.0) / 2.0,
+            lat0: (lo.1 + hi.1) / 2.0,
+        };
+        let lon_span = hi.0 - lo.0;
+        if lon_span > 90.0 {
+            return Err(Error::general(format!(
+                "the data span {lon_span:.0} degrees of longitude, too many for the \
+                 transverse Mercator projection used here; give projected coordinates \
+                 (easting and northing) instead"
+            )));
+        }
+        if lon_span > 30.0 {
+            warnings.push(format!(
+                "the data span {lon_span:.0} degrees of longitude, so the transverse \
+                 Mercator projection stretches east-west distances far from {:.1}",
+                tm.lon0
+            ));
+        }
+        Ok(Projection::Geographic(tm))
+    }
+
+    /// A source location in kilometres (or the source's own units).
+    pub(crate) fn project(&self, p: P) -> P {
+        match self {
+            Projection::Geographic(tm) => {
+                let (e, n) = tm.forward(p.0, p.1);
+                (e / 1000.0, n / 1000.0)
+            }
+            Projection::Projected { k } => (p.0 / k, p.1 / k),
+        }
+    }
+
+    /// A sentence for the deck's comments.
+    pub(crate) fn describe(&self) -> String {
+        match self {
+            Projection::Geographic(tm) => format!(
+                "Longitude and latitude are projected with a transverse Mercator on WGS84, \
+                 centred on {:.4}, {:.4}, in kilometres.",
+                tm.lon0, tm.lat0
+            ),
+            Projection::Projected { k } if *k > 1.0 => {
+                "Projected coordinates are taken to be metres and given in kilometres.".into()
+            }
+            Projection::Projected { .. } => "Projected coordinates are used as given.".into(),
+        }
     }
 }
 

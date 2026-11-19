@@ -13,6 +13,7 @@ mod cards;
 mod csv;
 mod fields;
 mod geometry;
+mod lines;
 mod options;
 mod project;
 mod read;
@@ -22,12 +23,10 @@ pub use options::{Imported, LineUse, Options};
 
 use crate::Error;
 use crate::MapKind;
-use cards::{card_text, comment, coordinate_card, field, field_with};
 use fields::{is_id, name_field, numeric_fields};
-use geometry::{centroid, clip, hull, path};
-use project::TransverseMercator;
-use read::{Feature, Geom, Prop, Ring};
-use std::fmt::Write;
+use geometry::{centroid, hull};
+use project::Projection;
+use read::{Feature, Geom, Prop, Ring, Source};
 use topology::{P, Topology};
 
 /// One mapped item: a point, or a zone's rings (arc references).
@@ -37,6 +36,39 @@ struct Item {
     point: P,
     outer: Vec<Vec<i64>>,
     holes: Vec<Vec<i64>>,
+}
+
+/// A zone ring on the sheet, with its zone's number (from 1).
+type ZoneRing = (usize, Vec<P>);
+
+/// A feature with a value for the mapped field, and its name.
+struct Valued<'a> {
+    feature: &'a Feature,
+    value: f64,
+    name: Option<String>,
+}
+
+/// The printed sheet: the extent mapped, with a margin, and its size.
+struct Sheet {
+    /// Northing of the top edge and easting of the left edge.
+    top: f64,
+    left: f64,
+    margin: f64,
+    /// The extent, down and across, in kilometres (or source units).
+    down_extent: f64,
+    across_extent: f64,
+    /// Printed size in inches.
+    width: f64,
+    height: f64,
+    /// One character across, in kilometres (or source units).
+    char_width: f64,
+}
+
+impl Sheet {
+    /// Down and across from the top-left corner.
+    fn grid(&self, (e, n): P) -> P {
+        (self.top - n, e - self.left)
+    }
 }
 
 /// Read points or polygons from CSV, GeoJSON or TopoJSON and write a deck
@@ -60,64 +92,7 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
                 .to_string()
         }));
     }
-    // Lines, as paths in source coordinates, with the number of the feature
-    // they come from and its name: from this file and from a second one.
-    let mut lines: Vec<(usize, Option<String>, Vec<P>)> = Vec::new();
-    let line_name = |f: &Feature| {
-        name_field(&[f]).and_then(|k| {
-            f.props
-                .iter()
-                .find(|(n, _)| *n == k)
-                .and_then(|(_, p)| match p {
-                    Prop::Text(t) => Some(t.clone()),
-                    _ => None,
-                })
-        })
-    };
-    for (k, f) in line_features.iter().enumerate() {
-        if let Geom::Line(parts) = &f.geom {
-            for r in parts {
-                lines.push((k, line_name(f), path(&src.arcs, r)));
-            }
-        }
-    }
-    let mut line_count = line_features.len();
-    let mut lines_geographic: Option<bool> = None;
-    if let Some(t) = &opts.lines_text {
-        let other = read::read(t, None)?;
-        let n = other.features.len();
-        let mut used = 0;
-        let mut in_range = true;
-        for f in &other.features {
-            if let Geom::Line(parts) = &f.geom {
-                let k = line_features.len() + used;
-                used += 1;
-                for r in parts {
-                    let p = path(&other.arcs, r);
-                    in_range &= p.iter().all(|q| q.0.abs() <= 180.0 && q.1.abs() <= 90.0);
-                    lines.push((k, line_name(f), p));
-                }
-            }
-        }
-        if used < n {
-            warnings.push(format!(
-                "{} features in the lines file that are not lines were left out",
-                n - used
-            ));
-        }
-        if used == 0 {
-            return Err(Error::general("the lines file has no lines"));
-        }
-        line_count += used;
-        lines_geographic = Some(in_range);
-    }
-    if opts.lines == LineUse::Omit {
-        if line_count > 0 {
-            warnings.push(format!("{line_count} lines were left out"));
-        }
-        lines.clear();
-        line_count = 0;
-    }
+    let lines = lines::gather(&src, &line_features, opts, &mut warnings)?;
     let zonal = !polys.is_empty();
     if zonal && !points.is_empty() {
         warnings.push(format!(
@@ -139,41 +114,9 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
     let unit = if zonal { "zones" } else { "points" };
 
     let fields = numeric_fields(&features);
-    let value = match &opts.value {
-        Some(v) => {
-            if !fields.contains(v) {
-                return Err(Error::general(format!(
-                    "'{v}' is not a numeric field; numeric fields: {}",
-                    fields.join(", ")
-                )));
-            }
-            v.clone()
-        }
-        None => fields
-            .iter()
-            .find(|f| !is_id(f))
-            .or(fields.first())
-            .cloned()
-            .ok_or_else(|| Error::general("no numeric field to map"))?,
-    };
+    let value = choose_value(&fields, opts.value.as_deref())?;
     let name_field = name_field(&features);
-
-    // Items with a value for the mapped field.
-    let kept: Vec<(&Feature, f64, Option<String>)> = features
-        .iter()
-        .filter_map(|f| {
-            let get = |name: &str| f.props.iter().find(|(k, _)| k == name).map(|(_, p)| p);
-            let Some(Prop::Number(v)) = get(&value) else {
-                return None;
-            };
-            let name = name_field.as_deref().and_then(get).and_then(|p| match p {
-                Prop::Text(s) => Some(s.clone()),
-                Prop::Number(n) => Some(n.to_string()),
-                Prop::Missing => None,
-            });
-            Some((*f, *v, name))
-        })
-        .collect();
+    let kept = with_values(&features, &value, name_field.as_deref());
     let missing = features.len() - kept.len();
     if missing > 0 {
         warnings.push(format!(
@@ -188,11 +131,158 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         )));
     }
 
-    // Source coordinates in use, to choose the projection.
+    let raw = source_coordinates(&src, &kept);
+    let projection = Projection::choose(&raw, src.geographic, lines.geographic, &mut warnings)?;
+    let (items, topo) = project_items(&src, &kept, zonal, &projection);
+    let sheet = fit_sheet(&items, &topo, zonal, unit, opts.width)?;
+    let tolerance = sheet.char_width / 2.0;
+    let (items, rings) = if zonal {
+        zone_rings(items, topo, &sheet, map, needed, &mut warnings)?
+    } else {
+        let items = items
+            .into_iter()
+            .map(|i| Item {
+                point: sheet.grid(i.point),
+                ..i
+            })
+            .collect();
+        (items, Vec::new())
+    };
+
+    let symbol: String = opts.line_symbol.chars().take(4).collect();
+    if opts.lines.draws() && symbol.chars().any(|c| c.is_control()) {
+        return Err(Error::general(
+            "the line symbol must be printable characters",
+        ));
+    }
+    let clipped = lines::clip_to(&lines.paths, &projection, &sheet, tolerance);
+    if !lines.paths.is_empty() && clipped.parts.is_empty() {
+        warnings.push("the lines all lie outside the map".into());
+    }
+    // What is written: barriers have no effect on a conformant map.
+    let written = match (opts.lines, map, clipped.parts.is_empty()) {
+        (_, _, true) => LineUse::Omit,
+        (LineUse::Barrier | LineUse::Both, MapKind::Conformant, false) => {
+            warnings
+                .push("barriers have no effect on a conformant map, so none were written".into());
+            if opts.lines == LineUse::Both {
+                LineUse::Legend
+            } else {
+                LineUse::Omit
+            }
+        }
+        (lines, _, false) => lines,
+    };
+    let point_outline = if opts.outline && !zonal && map != MapKind::Conformant {
+        let outline = point_outline(&items, sheet.margin);
+        if outline.is_none() {
+            warnings.push("the points are in a line, so no outline was drawn".into());
+        }
+        outline
+    } else {
+        None
+    };
+
+    let source = opts
+        .source
+        .as_deref()
+        .map(|s| s.rsplit(['/', '\\']).next().unwrap_or(s))
+        .unwrap_or("the imported data");
+    let title = opts.title.clone().unwrap_or_else(|| {
+        source
+            .rsplit_once('.')
+            .map_or(source, |(s, _)| s)
+            .replace(['_', '-'], " ")
+    });
+    let deck = cards::write_deck(&cards::Plan {
+        source,
+        title: &title,
+        unit,
+        value: &value,
+        map,
+        zonal,
+        projection: &projection,
+        sheet: &sheet,
+        tolerance,
+        written,
+        symbol: &symbol,
+        lines_source: opts.lines_source.as_deref(),
+        clipped: &clipped,
+        warnings: &warnings,
+        named: name_field.is_some(),
+        items: &items,
+        rings: &rings,
+        outline: opts.outline,
+        point_outline: point_outline.as_deref(),
+    })?;
+    Ok(Imported {
+        deck,
+        fields,
+        value,
+        map,
+        count: items.len(),
+        unit,
+        lines: lines.count,
+        warnings,
+    })
+}
+
+/// The field to map: the one asked for, or the first numeric field that is
+/// not an identifier (or else the first).
+fn choose_value(fields: &[String], asked: Option<&str>) -> Result<String, Error> {
+    match asked {
+        Some(v) => {
+            if !fields.iter().any(|f| f == v) {
+                return Err(Error::general(format!(
+                    "'{v}' is not a numeric field; numeric fields: {}",
+                    fields.join(", ")
+                )));
+            }
+            Ok(v.to_string())
+        }
+        None => fields
+            .iter()
+            .find(|f| !is_id(f))
+            .or(fields.first())
+            .cloned()
+            .ok_or_else(|| Error::general("no numeric field to map")),
+    }
+}
+
+/// The features with a number for `value`, with the value and a name.
+fn with_values<'a>(
+    features: &[&'a Feature],
+    value: &str,
+    name_field: Option<&str>,
+) -> Vec<Valued<'a>> {
+    features
+        .iter()
+        .filter_map(|f| {
+            let get = |name: &str| f.props.iter().find(|(k, _)| k == name).map(|(_, p)| p);
+            let Some(Prop::Number(v)) = get(value) else {
+                return None;
+            };
+            let name = name_field.and_then(get).and_then(|p| match p {
+                Prop::Text(s) => Some(s.clone()),
+                Prop::Number(n) => Some(n.to_string()),
+                Prop::Missing => None,
+            });
+            Some(Valued {
+                feature: f,
+                value: *v,
+                name,
+            })
+        })
+        .collect()
+}
+
+/// Source coordinates in use, to choose the projection. Lines are drawn on
+/// the map but do not set its extent.
+fn source_coordinates(src: &Source, kept: &[Valued]) -> Vec<P> {
     let mut raw: Vec<P> = Vec::new();
     let mut used_arcs = vec![false; src.arcs.len()];
-    for (f, ..) in &kept {
-        match &f.geom {
+    for k in kept {
+        match &k.feature.geom {
             Geom::Point(p) => raw.push(*p),
             Geom::Polygon { outer, holes } => {
                 for r in outer.iter().chain(holes) {
@@ -206,83 +296,23 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
                     }
                 }
             }
-            // Lines are drawn on the map but do not set its extent.
             Geom::Line(_) => {}
         }
     }
     for (arc, _) in src.arcs.iter().zip(&used_arcs).filter(|(_, u)| **u) {
         raw.extend(arc);
     }
-    let in_range = raw.iter().all(|p| p.0.abs() <= 180.0 && p.1.abs() <= 90.0);
-    let geographic = src.geographic.unwrap_or(in_range);
-    if src.geographic.is_none() && !geographic {
-        warnings.push(
-            "coordinates are outside longitude and latitude ranges, so they are used as \
-             projected coordinates"
-                .into(),
-        );
-    }
-    if lines_geographic.is_some_and(|g| g != geographic) {
-        return Err(Error::general(if geographic {
-            "the lines file is not in longitude and latitude, as the data are"
-        } else {
-            "the lines file is in longitude and latitude, but the data are projected"
-        }));
-    }
-    let (lo, hi) = raw.iter().fold(
-        ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN)),
-        |(lo, hi), p| {
-            (
-                (lo.0.min(p.0), lo.1.min(p.1)),
-                (hi.0.max(p.0), hi.1.max(p.1)),
-            )
-        },
-    );
-    let tm = TransverseMercator {
-        lon0: (lo.0 + hi.0) / 2.0,
-        lat0: (lo.1 + hi.1) / 2.0,
-    };
-    let lon_span = hi.0 - lo.0;
-    if geographic && lon_span > 90.0 {
-        return Err(Error::general(format!(
-            "the data span {lon_span:.0} degrees of longitude, too many for the \
-             transverse Mercator projection used here; give projected coordinates \
-             (easting and northing) instead"
-        )));
-    }
-    if geographic && lon_span > 30.0 {
-        warnings.push(format!(
-            "the data span {lon_span:.0} degrees of longitude, so the transverse \
-             Mercator projection stretches east-west distances far from {:.1}",
-            tm.lon0
-        ));
-    }
-    let k = if (hi.0 - lo.0).max(hi.1 - lo.1) > 1000.0 {
-        1000.0
-    } else {
-        1.0
-    };
-    let project = |p: P| -> P {
-        if geographic {
-            let (e, n) = tm.forward(p.0, p.1);
-            (e / 1000.0, n / 1000.0)
-        } else {
-            (p.0 / k, p.1 / k)
-        }
-    };
-    let projection = if geographic {
-        format!(
-            "Longitude and latitude are projected with a transverse Mercator on WGS84, \
-             centred on {:.4}, {:.4}, in kilometres.",
-            tm.lon0, tm.lat0
-        )
-    } else if k > 1.0 {
-        "Projected coordinates are taken to be metres and given in kilometres.".into()
-    } else {
-        "Projected coordinates are used as given.".into()
-    };
+    raw
+}
 
-    // Projected items, and (for zones) the topology of their borders.
+/// Projected items, and (for zones) the topology of their borders.
+fn project_items(
+    src: &Source,
+    kept: &[Valued],
+    zonal: bool,
+    projection: &Projection,
+) -> (Vec<Item>, Topology) {
+    let project = |p: P| projection.project(p);
     let mut topo = Topology::default();
     let mut items: Vec<Item> = Vec::new();
     if zonal {
@@ -290,8 +320,8 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         let mut coords: Vec<Vec<P>> = Vec::new();
         let mut shapes: Vec<(usize, usize)> = Vec::new(); // outer, hole counts
         let mut arc_rings: Vec<Vec<i64>> = Vec::new();
-        for (f, ..) in &kept {
-            let Geom::Polygon { outer, holes } = &f.geom else {
+        for k in kept {
+            let Geom::Polygon { outer, holes } = &k.feature.geom else {
                 unreachable!()
             };
             shapes.push((outer.len(), holes.len()));
@@ -315,33 +345,42 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
             refs
         };
         let mut refs = refs.into_iter();
-        for ((_, v, name), (no, nh)) in kept.iter().zip(shapes) {
+        for (k, (no, nh)) in kept.iter().zip(shapes) {
             let outer: Vec<Vec<i64>> = refs.by_ref().take(no).collect();
             let holes: Vec<Vec<i64>> = refs.by_ref().take(nh).collect();
             items.push(Item {
-                value: *v,
-                name: name.clone(),
+                value: k.value,
+                name: k.name.clone(),
                 point: (0.0, 0.0),
                 outer,
                 holes,
             });
         }
     } else {
-        for (f, v, name) in &kept {
-            let Geom::Point(p) = f.geom else {
+        for k in kept {
+            let Geom::Point(p) = k.feature.geom else {
                 unreachable!()
             };
             items.push(Item {
-                value: *v,
-                name: name.clone(),
+                value: k.value,
+                name: k.name.clone(),
                 point: project(p),
                 outer: Vec::new(),
                 holes: Vec::new(),
             });
         }
     }
+    (items, topo)
+}
 
-    // The frame: a margin around everything mapped.
+/// The sheet: a margin around everything mapped, `width` inches across.
+fn fit_sheet(
+    items: &[Item],
+    topo: &Topology,
+    zonal: bool,
+    unit: &str,
+    width: f64,
+) -> Result<Sheet, Error> {
     let extent: Vec<P> = if zonal {
         items
             .iter()
@@ -360,378 +399,131 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         return Err(Error::general(format!("the {unit} all lie in one place")));
     }
     let margin = if zonal { 0.02 } else { 0.05 } * span;
-    let top = n1 + margin;
-    let left = e0 - margin;
-    let down_extent = n1 - n0 + 2.0 * margin;
-    let across_extent = e1 - e0 + 2.0 * margin;
-    let width = opts.width;
     if !(1.0..=30.0).contains(&width) {
         return Err(Error::general("the map width must be from 1 to 30 inches"));
     }
-    let height = width * down_extent / across_extent;
-    // Down and across from the top-left corner.
-    let grid = |(e, n): P| (top - n, e - left);
-    // One character across, in source kilometres.
-    let char_width = 0.1 * across_extent / width;
-    let char_area = char_width * char_width * 1.25;
+    let down_extent = n1 - n0 + 2.0 * margin;
+    let across_extent = e1 - e0 + 2.0 * margin;
+    Ok(Sheet {
+        top: n1 + margin,
+        left: e0 - margin,
+        margin,
+        down_extent,
+        across_extent,
+        width,
+        height: width * down_extent / across_extent,
+        char_width: 0.1 * across_extent / width,
+    })
+}
 
-    // Zones: simplify shared borders once, then rebuild each zone's rings.
-    let mut rings: Vec<(usize, Vec<P>)> = Vec::new();
-    let tolerance = char_width / 2.0;
-    if zonal {
-        topo.simplify(tolerance);
-        let outer_refs: Vec<Vec<i64>> = items.iter().flat_map(|i| i.outer.clone()).collect();
-        let uses = topo.uses(&outer_refs);
-        let (mut small, mut filled, mut empty) = (0, 0, 0);
-        let mut kept_items = Vec::new();
-        for mut item in items {
-            let mut kept_rings = Vec::new();
-            for r in &item.outer {
+/// Simplify shared borders once, then rebuild each zone's rings on the
+/// sheet, smaller rings first. Zones with no usable outline are left out.
+fn zone_rings(
+    items: Vec<Item>,
+    mut topo: Topology,
+    sheet: &Sheet,
+    map: MapKind,
+    needed: usize,
+    warnings: &mut Vec<String>,
+) -> Result<(Vec<Item>, Vec<ZoneRing>), Error> {
+    let grid = |p: P| sheet.grid(p);
+    let char_area = sheet.char_width * sheet.char_width * 1.25;
+    let mut rings: Vec<ZoneRing> = Vec::new();
+    topo.simplify(sheet.char_width / 2.0);
+    let outer_refs: Vec<Vec<i64>> = items.iter().flat_map(|i| i.outer.clone()).collect();
+    let uses = topo.uses(&outer_refs);
+    let (mut small, mut filled, mut empty) = (0, 0, 0);
+    let mut kept_items = Vec::new();
+    for mut item in items {
+        let mut kept_rings = Vec::new();
+        for r in &item.outer {
+            let ring: Vec<P> = topo.ring(r).into_iter().map(grid).collect();
+            if ring.len() < 4 || topology::area(&ring).abs() < char_area / 2.0 {
+                small += 1;
+            } else {
+                kept_rings.push(ring);
+            }
+        }
+        if kept_rings.is_empty() {
+            // Keep the largest part, however small, so the zone remains.
+            if let Some(r) = item.outer.iter().max_by(|a, b| {
+                topology::area(&topo.ring(a))
+                    .abs()
+                    .total_cmp(&topology::area(&topo.ring(b)).abs())
+            }) {
                 let ring: Vec<P> = topo.ring(r).into_iter().map(grid).collect();
-                if ring.len() < 4 || topology::area(&ring).abs() < char_area / 2.0 {
-                    small += 1;
-                } else {
+                if ring.len() >= 4 {
+                    small -= 1;
                     kept_rings.push(ring);
                 }
             }
-            if kept_rings.is_empty() {
-                // Keep the largest part, however small, so the zone remains.
-                if let Some(r) = item.outer.iter().max_by(|a, b| {
-                    topology::area(&topo.ring(a))
-                        .abs()
-                        .total_cmp(&topology::area(&topo.ring(b)).abs())
-                }) {
-                    let ring: Vec<P> = topo.ring(r).into_iter().map(grid).collect();
-                    if ring.len() >= 4 {
-                        small -= 1;
-                        kept_rings.push(ring);
-                    }
-                }
-            }
-            let Some(point) = centroid(&kept_rings) else {
-                empty += 1;
-                continue;
-            };
-            item.point = point;
-            filled += item
-                .holes
-                .iter()
-                .filter(|h| h.iter().any(|&a| uses[topology::arc_index(a)] == 0))
-                .count();
-            kept_items.push(item);
-            let z = kept_items.len();
-            rings.extend(kept_rings.into_iter().map(|r| (z, r)));
         }
-        items = kept_items;
-        if empty > 0 {
-            warnings.push(format!(
-                "{empty} zones with no usable outline were left out"
-            ));
-        }
-        if items.len() < needed {
-            return Err(Error::general(format!(
-                "{} zones have a usable outline; at least {needed} are needed",
-                items.len()
-            )));
-        }
-        if small > 0 {
-            warnings.push(format!(
-                "{small} parts smaller than half a character were left out"
-            ));
-        }
-        if filled > 0 && map == MapKind::Conformant {
-            warnings.push(format!(
-                "{filled} holes with no zone inside are filled by the zone around them"
-            ));
-        }
-        // Smaller rings first: the first zone to claim a character keeps
-        // it, so enclaves stay distinct from the zones around them.
-        let mut by_area: Vec<(f64, (usize, Vec<P>))> = rings
-            .into_iter()
-            .map(|r| (topology::area(&r.1).abs(), r))
-            .collect();
-        by_area.sort_by(|a, b| a.0.total_cmp(&b.0));
-        rings = by_area.into_iter().map(|(_, r)| r).collect();
-    } else {
-        for i in &mut items {
-            i.point = grid(i.point);
-        }
+        let Some(point) = centroid(&kept_rings) else {
+            empty += 1;
+            continue;
+        };
+        item.point = point;
+        filled += item
+            .holes
+            .iter()
+            .filter(|h| h.iter().any(|&a| uses[topology::arc_index(a)] == 0))
+            .count();
+        kept_items.push(item);
+        let z = kept_items.len();
+        rings.extend(kept_rings.into_iter().map(|r| (z, r)));
     }
-
-    // Lines: projected, simplified to half a character, and clipped to a
-    // character beyond the map's edges.
-    let symbol: String = opts.line_symbol.chars().take(4).collect();
-    if opts.lines.draws() && symbol.chars().any(|c| c.is_control()) {
-        return Err(Error::general(
-            "the line symbol must be printable characters",
+    if empty > 0 {
+        warnings.push(format!(
+            "{empty} zones with no usable outline were left out"
         ));
     }
-    let mut line_parts: Vec<Vec<P>> = Vec::new();
-    // The line features with a part on the map, and their names.
-    let mut drawn: Vec<usize> = Vec::new();
-    let mut names: Vec<&str> = Vec::new();
-    for (k, name, pts) in &lines {
-        let projected: Vec<P> = pts.iter().map(|&p| project(p)).collect();
-        let simple = topology::douglas_peucker(&projected, tolerance);
-        let on_grid: Vec<P> = simple
-            .into_iter()
-            .map(grid)
-            .map(|(d, a)| (d + char_width, a + char_width))
-            .collect();
-        for part in clip(
-            &on_grid,
-            (
-                down_extent + 2.0 * char_width,
-                across_extent + 2.0 * char_width,
-            ),
-        ) {
-            line_parts.push(
-                part.into_iter()
-                    .map(|(d, a)| (d - char_width, a - char_width))
-                    .collect(),
-            );
-            if !drawn.contains(k) {
-                drawn.push(*k);
-                if let Some(n) = name.as_deref().filter(|n| !names.contains(n)) {
-                    names.push(n);
-                }
-            }
-        }
+    if kept_items.len() < needed {
+        return Err(Error::general(format!(
+            "{} zones have a usable outline; at least {needed} are needed",
+            kept_items.len()
+        )));
     }
-    if !lines.is_empty() && line_parts.is_empty() {
-        warnings.push("the lines all lie outside the map".into());
+    if small > 0 {
+        warnings.push(format!(
+            "{small} parts smaller than half a character were left out"
+        ));
     }
-    // What is written: barriers have no effect on a conformant map.
-    let written = match (opts.lines, map, line_parts.is_empty()) {
-        (_, _, true) => LineUse::Omit,
-        (LineUse::Barrier | LineUse::Both, MapKind::Conformant, false) => {
-            warnings
-                .push("barriers have no effect on a conformant map, so none were written".into());
-            if opts.lines == LineUse::Both {
-                LineUse::Legend
-            } else {
-                LineUse::Omit
-            }
-        }
-        (lines, _, false) => lines,
-    };
-    let (legends, barriers) = (written.draws(), written.bars());
+    if filled > 0 && map == MapKind::Conformant {
+        warnings.push(format!(
+            "{filled} holes with no zone inside are filled by the zone around them"
+        ));
+    }
+    // Smaller rings first: the first zone to claim a character keeps it, so
+    // enclaves stay distinct from the zones around them.
+    let mut by_area: Vec<(f64, ZoneRing)> = rings
+        .into_iter()
+        .map(|r| (topology::area(&r.1).abs(), r))
+        .collect();
+    by_area.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let rings = by_area.into_iter().map(|(_, r)| r).collect();
+    Ok((kept_items, rings))
+}
 
-    // The outline around points: their convex hull, enlarged.
-    let point_outline = if opts.outline && !zonal && map != MapKind::Conformant {
-        let pts: Vec<P> = items.iter().map(|i| i.point).collect();
-        let h = hull(&pts);
-        if h.len() >= 3 {
-            let (cd, ca) = h.iter().fold((0.0, 0.0), |s, p| (s.0 + p.0, s.1 + p.1));
-            let c = (cd / h.len() as f64, ca / h.len() as f64);
-            let mut grown: Vec<P> = h
-                .iter()
-                .map(|&(d, a)| {
-                    let (dd, da) = (d - c.0, a - c.1);
-                    let len = (dd * dd + da * da).sqrt().max(1e-9);
-                    (d + dd / len * margin * 0.6, a + da / len * margin * 0.6)
-                })
-                .collect();
-            grown.push(grown[0]);
-            Some(grown)
-        } else {
-            warnings.push("the points are in a line, so no outline was drawn".into());
-            None
-        }
-    } else {
-        None
-    };
-
-    // The deck.
-    let source = opts
-        .source
-        .as_deref()
-        .map(|s| s.rsplit(['/', '\\']).next().unwrap_or(s))
-        .unwrap_or("the imported data");
-    let n = items.len();
-    let mut out = String::new();
-    comment(
-        &mut out,
-        &format!("Made by symap import from {source}: {n} {unit}, mapping {value}."),
-    );
-    comment(&mut out, &projection);
-    comment(
-        &mut out,
-        &format!(
-            "Locations are measured down from {top:.3} and across from {left:.3}, with a \
-             margin of {margin:.3} around the {unit}."
-        ),
-    );
-    if zonal {
-        comment(
-            &mut out,
-            &format!(
-                "Borders are simplified to within {tolerance:.3} (half a character), each \
-                 shared border once, so neighbouring zones still meet."
-            ),
-        );
-        if map != MapKind::Conformant {
-            comment(
-                &mut out,
-                "Each zone's value is placed at its centroid as a data point.",
-            );
-        }
+/// The outline around points: their convex hull, enlarged by part of the
+/// margin and closed. `None` if the points are in a line.
+fn point_outline(items: &[Item], margin: f64) -> Option<Vec<P>> {
+    let pts: Vec<P> = items.iter().map(|i| i.point).collect();
+    let h = hull(&pts);
+    if h.len() < 3 {
+        return None;
     }
-    let how = match written {
-        LineUse::Both => Some(format!(
-            "drawn as line legends ({symbol}) and written as impermeable barriers (strength -1)"
-        )),
-        LineUse::Legend => Some(format!("drawn as line legends ({symbol})")),
-        LineUse::Barrier => Some("written as impermeable barriers (strength -1)".to_string()),
-        LineUse::Omit => None,
-    };
-    if let Some(how) = how {
-        let from = opts
-            .lines_source
-            .as_deref()
-            .map(|s| s.rsplit(['/', '\\']).next().unwrap_or(s))
-            .map_or(String::new(), |s| format!(" from {s}"));
-        let named = if names.is_empty() {
-            String::new()
-        } else {
-            format!(" ({})", names.join(", "))
-        };
-        comment(
-            &mut out,
-            &format!(
-                "{} lines{from}{named} are {how}, simplified to within {tolerance:.3} \
-                 and cut a character beyond the map's edges.",
-                drawn.len()
-            ),
-        );
-    }
-    for w in &warnings {
-        comment(&mut out, &format!("Note: {w}."));
-    }
-    if name_field.is_some() {
-        let what = if zonal { "Zones" } else { "Data points" };
-        let _ = writeln!(out, "#\n# {what}, in order:");
-        for (i, item) in items.iter().enumerate() {
-            if let Some(name) = &item.name {
-                let name: String = name.chars().filter(|c| !c.is_control()).take(70).collect();
-                let _ = writeln!(out, "# {:>4} {name}", i + 1);
-            }
-        }
-    }
-
-    let write_ring = |out: &mut String, head: &str, ring: &[P]| -> Result<(), Error> {
-        for (j, &p) in ring.iter().enumerate() {
-            let _ = writeln!(
-                out,
-                "{}",
-                coordinate_card(if j == 0 { head } else { "" }, p)?
-            );
-        }
-        Ok(())
-    };
-    if map == MapKind::Conformant {
-        let _ = writeln!(out, "A-CONFORMOLINES");
-        for (z, ring) in &rings {
-            write_ring(&mut out, &format!("{z:>5}    A"), ring)?;
-        }
-        let _ = writeln!(out, "99999");
-    } else {
-        if opts.outline {
-            if zonal {
-                let _ = writeln!(out, "A-OUTLINE");
-                for (_, ring) in &rings {
-                    write_ring(&mut out, "", ring)?;
-                }
-                let _ = writeln!(out, "99999");
-            } else if let Some(ring) = &point_outline {
-                let _ = writeln!(out, "A-OUTLINE");
-                write_ring(&mut out, "", ring)?;
-                let _ = writeln!(out, "99999");
-            }
-        }
-        let _ = writeln!(out, "B-DATA POINTS");
-        for i in &items {
-            let _ = writeln!(out, "{}", coordinate_card("", i.point)?);
-        }
-        let _ = writeln!(out, "99999");
-    }
-    if legends {
-        let _ = writeln!(out, "C-OTOLEGENDS");
-        for part in &line_parts {
-            write_ring(&mut out, &format!("     {symbol:<4}L"), part)?;
-        }
-        let _ = writeln!(out, "99999");
-    }
-    if barriers {
-        // Repeating a barrier's last vertex ends it.
-        let _ = writeln!(out, "D-BARRIERS");
-        for part in &line_parts {
-            for &p in part.iter().chain(part.last()) {
-                let _ = writeln!(out, "{}{}", coordinate_card("", p)?, field_with(-1.0, 1)?);
-            }
-        }
-        let _ = writeln!(out, "99999");
-    }
-    let _ = writeln!(out, "E-VALUES");
-    for i in &items {
-        let _ = writeln!(out, "{:10}{}", "", field(i.value)?);
-    }
-    let _ = writeln!(out, "99999");
-
-    let title = opts.title.clone().unwrap_or_else(|| {
-        source
-            .rsplit_once('.')
-            .map_or(source, |(s, _)| s)
-            .replace(['_', '-'], " ")
-    });
-    let _ = writeln!(out, "F-MAP");
-    let _ = writeln!(out, "{}", card_text(&title));
-    let counted = if zonal {
-        format!("{value} for {n} zones")
-    } else {
-        format!("{value} at {n} points")
-    };
-    let _ = writeln!(out, "{}", card_text(&counted));
-    let _ = writeln!(
-        out,
-        "{}",
-        match map {
-            MapKind::Contour => "CONTOUR MAP - SHEPARD INTERPOLATION",
-            MapKind::Proximal => "PROXIMAL MAP - NEAREST DATA POINT",
-            MapKind::Conformant => "CONFORMANT MAP",
-        }
-    );
-    let _ = writeln!(
-        out,
-        "    1{:5}{}{}",
-        "",
-        field_with(height, 2)?,
-        field_with(width, 2)?
-    );
-    let _ = writeln!(
-        out,
-        "    2{:5}{}{}{}{}",
-        "",
-        field_with(0.0, 3)?,
-        field_with(0.0, 3)?,
-        field_with(down_extent, 3)?,
-        field_with(across_extent, 3)?
-    );
-    if map == MapKind::Proximal {
-        let _ = writeln!(out, "   31\n   36\n   37");
-    }
-    let _ = writeln!(out, "99999\n999999");
-
-    Ok(Imported {
-        deck: out,
-        fields,
-        value,
-        map,
-        count: n,
-        unit,
-        lines: line_count,
-        warnings,
-    })
+    let (cd, ca) = h.iter().fold((0.0, 0.0), |s, p| (s.0 + p.0, s.1 + p.1));
+    let c = (cd / h.len() as f64, ca / h.len() as f64);
+    let mut grown: Vec<P> = h
+        .iter()
+        .map(|&(d, a)| {
+            let (dd, da) = (d - c.0, a - c.1);
+            let len = (dd * dd + da * da).sqrt().max(1e-9);
+            (d + dd / len * margin * 0.6, a + da / len * margin * 0.6)
+        })
+        .collect();
+    grown.push(grown[0]);
+    Some(grown)
 }
 
 #[cfg(test)]
