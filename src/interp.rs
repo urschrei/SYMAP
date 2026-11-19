@@ -19,7 +19,63 @@
 //! 34 and 35 (initial and maximum search radius) and 36 (4 to 10 points).
 
 use crate::geom::Point;
+use rstar::RTree;
+use rstar::primitives::GeomWithData;
 use std::f64::consts::PI;
+
+/// Data points in an R-tree, each with its index.
+pub struct PointIndex {
+    tree: RTree<GeomWithData<[f64; 2], usize>>,
+}
+
+/// The R-tree's squared distances and `Point::dist` can round differently:
+/// a search continues until the tree's distance passes a bound by this factor.
+const SLACK: f64 = 1.0 + 1e-9;
+
+impl PointIndex {
+    pub fn new(points: &[Point]) -> Self {
+        let items = points
+            .iter()
+            .enumerate()
+            .map(|(i, p)| GeomWithData::new([p.down, p.across], i))
+            .collect();
+        Self {
+            tree: RTree::bulk_load(items),
+        }
+    }
+
+    /// Index of the point of `points` nearest to `p` (lowest index on ties).
+    /// `points` are those the index was made from.
+    pub fn nearest(&self, points: &[Point], p: Point) -> Option<usize> {
+        let mut best: Option<(usize, f64)> = None;
+        for (i, bound) in self.by_distance(p) {
+            if best.is_some_and(|(_, d)| bound > d * SLACK) {
+                break;
+            }
+            let candidate = (i, p.dist(points[i]));
+            if best.is_none_or(|b| by_dist(&candidate, &b).is_lt()) {
+                best = Some(candidate);
+            }
+        }
+        best.map(|(i, _)| i)
+    }
+
+    /// Point indices in order of straight-line distance from `p`, with the
+    /// tree's value of that distance.
+    fn by_distance(&self, p: Point) -> impl Iterator<Item = (usize, f64)> + '_ {
+        self.tree
+            .nearest_neighbor_iter_with_distance_2(&[p.down, p.across])
+            .map(|(x, d2)| (x.data, d2.sqrt()))
+    }
+
+    /// The lowest index of a point at exactly `p`.
+    fn at(&self, p: Point) -> Option<usize> {
+        self.tree
+            .locate_all_at_point(&[p.down, p.across])
+            .map(|x| x.data)
+            .min()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShepardParams {
@@ -63,6 +119,7 @@ impl Default for ShepardParams {
 
 pub struct Shepard {
     pts: Vec<Point>,
+    index: PointIndex,
     z: Vec<f64>,
     r0: f64,
     params: ShepardParams,
@@ -103,6 +160,7 @@ impl Shepard {
             .unwrap_or_else(|| (params.radius_factor * area / (PI * points.len() as f64)).sqrt());
         let mut s = Shepard {
             pts: points.to_vec(),
+            index: PointIndex::new(points),
             z: values.to_vec(),
             r0,
             params,
@@ -174,22 +232,29 @@ impl Shepard {
     /// Contributing points around `p` (excluding `skip` and anything coincident
     /// with it) with their effective distances, and the radius used.
     fn neighbours(&self, p: Point, skip: Option<usize>) -> (Vec<(usize, f64)>, f64) {
-        let candidates = self
-            .pts
-            .iter()
-            .enumerate()
-            .filter_map(|(i, q)| Some((i, self.effective(p, *q)?)))
-            .filter(|&(i, di)| skip.is_none_or(|s| i != s && di > 0.0));
-        // A filtered iterator gives no length: reserve it, or the vector
-        // grows in steps.
-        let mut d: Vec<(usize, f64)> = Vec::with_capacity(self.pts.len());
-        d.extend(candidates);
         let (lo, hi) = (self.params.min_points, self.params.max_points);
-        if d.len() > hi + 1 {
-            d.select_nth_unstable_by(hi, by_dist);
-            d.truncate(hi + 1);
+        // The hi + 1 nearest points by effective distance, in order. A barrier
+        // only lengthens a path, so once the straight-line distance passes
+        // the last of them, no later point can be nearer.
+        let k = hi + 1;
+        let mut d: Vec<(usize, f64)> = Vec::with_capacity(k + 1);
+        for (i, bound) in self.index.by_distance(p) {
+            if d.len() == k && bound > d[k - 1].1 * SLACK {
+                break;
+            }
+            let Some(di) = self.effective(p, self.pts[i]) else {
+                continue;
+            };
+            // Leave out the point itself, and anything coincident with it.
+            if skip.is_some_and(|s| i == s || di == 0.0) {
+                continue;
+            }
+            let at = d.partition_point(|x| by_dist(x, &(i, di)).is_lt());
+            if at < k {
+                d.insert(at, (i, di));
+                d.truncate(k);
+            }
         }
-        d.sort_by(by_dist);
         let within = d.iter().filter(|x| x.1 < self.r0).count();
         let r = if within > hi {
             d[hi].1
@@ -272,7 +337,7 @@ impl Shepard {
     /// Interpolated value at `p`, or `None` if no data point is within the
     /// maximum search radius.
     pub fn eval(&self, p: Point) -> Option<f64> {
-        if let Some(i) = self.pts.iter().position(|q| *q == p) {
+        if let Some(i) = self.index.at(p) {
             return Some(self.z[i]);
         }
         let (nb, r) = self.neighbours(p, None);
@@ -298,17 +363,6 @@ impl Shepard {
             self.z[nb[0].0]
         })
     }
-}
-
-/// Index of the nearest point (lowest index on ties).
-pub fn nearest(points: &[Point], p: Point) -> usize {
-    points
-        .iter()
-        .enumerate()
-        .map(|(i, q)| (i, p.dist(*q)))
-        .min_by(by_dist)
-        .map(|x| x.0)
-        .expect("at least one point")
 }
 
 #[cfg(test)]
@@ -542,8 +596,18 @@ mod tests {
 
     #[test]
     fn nearest_breaks_ties_low() {
-        let pts = [Point::new(0.0, 0.0), Point::new(0.0, 2.0)];
-        assert_eq!(nearest(&pts, Point::new(0.0, 1.0)), 0);
-        assert_eq!(nearest(&pts, Point::new(0.0, 1.5)), 1);
+        let pts = [
+            Point::new(0.0, 2.0),
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 2.0),
+        ];
+        let index = PointIndex::new(&pts);
+        assert_eq!(index.nearest(&pts, Point::new(0.0, 1.0)), Some(0));
+        assert_eq!(index.nearest(&pts, Point::new(0.0, 0.5)), Some(1));
+        assert_eq!(index.nearest(&pts, Point::new(0.0, 3.0)), Some(0));
+        assert_eq!(
+            PointIndex::new(&[]).nearest(&[], Point::new(0.0, 0.0)),
+            None
+        );
     }
 }

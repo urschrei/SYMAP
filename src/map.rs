@@ -7,7 +7,7 @@ use crate::elective::Elective;
 use crate::error::Error;
 use crate::frame::{Frame, Layout};
 use crate::geom::{self, Extent, Point};
-use crate::interp::{self, Shepard, ShepardParams};
+use crate::interp::{PointIndex, Shepard, ShepardParams};
 use crate::symbols::{MAX_LEVELS, Strikes, Symbolism};
 
 /// White contour and boundary lines (electives 8 and 22).
@@ -615,11 +615,12 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         }
         MapKind::Proximal => {
             let pts: Vec<Point> = valid_pts.iter().map(|x| x.0).collect();
+            let index = PointIndex::new(&pts);
             for r in 1..frame.rows {
                 for c in 1..frame.cols {
                     let p = frame.centre(r, c);
-                    if inside(p) {
-                        let v = valid_pts[interp::nearest(&pts, p)].1;
+                    if let Some(i) = index.nearest(&pts, p).filter(|_| inside(p)) {
+                        let v = valid_pts[i].1;
                         cell_value[idx(r, c)] = Some(v);
                         fill[idx(r, c)] = Fill::Value(classes.level(v));
                     }
