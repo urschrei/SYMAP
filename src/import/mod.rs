@@ -769,11 +769,12 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         }
         // Smaller rings first: the first zone to claim a character keeps
         // it, so enclaves stay distinct from the zones around them.
-        rings.sort_by(|a, b| {
-            topology::area(&a.1)
-                .abs()
-                .total_cmp(&topology::area(&b.1).abs())
-        });
+        let mut by_area: Vec<(f64, (usize, Vec<P>))> = rings
+            .into_iter()
+            .map(|r| (topology::area(&r.1).abs(), r))
+            .collect();
+        by_area.sort_by(|a, b| a.0.total_cmp(&b.0));
+        rings = by_area.into_iter().map(|(_, r)| r).collect();
     } else {
         for i in &mut items {
             i.point = grid(i.point);
