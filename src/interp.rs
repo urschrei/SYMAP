@@ -177,13 +177,16 @@ impl Shepard {
     /// Contributing points around `p` (excluding `skip` and anything coincident
     /// with it) with their effective distances, and the radius used.
     fn neighbours(&self, p: Point, skip: Option<usize>) -> (Vec<(usize, f64)>, f64) {
-        let mut d: Vec<(usize, f64)> = self
+        let candidates = self
             .pts
             .iter()
             .enumerate()
             .filter_map(|(i, q)| Some((i, self.effective(p, *q)?)))
-            .filter(|&(i, di)| skip.is_none_or(|s| i != s && di > 0.0))
-            .collect();
+            .filter(|&(i, di)| skip.is_none_or(|s| i != s && di > 0.0));
+        // A filtered iterator gives no length: reserve it, or the vector
+        // grows in steps.
+        let mut d: Vec<(usize, f64)> = Vec::with_capacity(self.pts.len());
+        d.extend(candidates);
         let (lo, hi) = (self.params.min_points, self.params.max_points);
         if d.len() > hi + 1 {
             d.select_nth_unstable_by(hi, by_dist);
