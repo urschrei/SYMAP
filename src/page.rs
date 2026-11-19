@@ -413,23 +413,28 @@ impl PrintedMap {
     /// Fortran carriage control: column 1 is `1` (new page), ` ` (next line)
     /// or `+` (overprint the line above).
     pub fn to_asa(&self) -> String {
-        let mut s = String::new();
-        for (i, l) in self.page().iter().enumerate() {
-            for (k, strike) in l.strikes.iter().enumerate() {
-                if k > 0 && strike.trim().is_empty() {
-                    continue;
-                }
-                s.push(match k {
-                    0 if i == 0 || l.eject => '1',
-                    0 => ' ',
-                    _ => '+',
-                });
-                s.push_str(strike);
-                s.push('\n');
-            }
-        }
-        s
+        asa(&self.page())
     }
+}
+
+/// The lines of a page with Fortran carriage control (see `to_asa`).
+pub(crate) fn asa(page: &[Line]) -> String {
+    let mut s = String::new();
+    for (i, l) in page.iter().enumerate() {
+        for (k, strike) in l.strikes.iter().enumerate() {
+            if k > 0 && strike.trim().is_empty() {
+                continue;
+            }
+            s.push(match k {
+                0 if i == 0 || l.eject => '1',
+                0 => ' ',
+                _ => '+',
+            });
+            s.push_str(strike);
+            s.push('\n');
+        }
+    }
+    s
 }
 
 #[cfg(test)]

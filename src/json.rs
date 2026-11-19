@@ -77,6 +77,8 @@ pub struct MapReply {
 
 impl From<&PrintedMap> for MapReply {
     fn from(m: &PrintedMap) -> Self {
+        let page = m.page();
+        let asa = crate::page::asa(&page);
         MapReply {
             kind: match m.kind {
                 MapKind::Contour => "contour",
@@ -89,8 +91,7 @@ impl From<&PrintedMap> for MapReply {
             cols_per_inch: m.frame.cols_per_inch,
             titles: m.titles.clone(),
             warnings: m.warnings.clone(),
-            lines: m
-                .page()
+            lines: page
                 .into_iter()
                 .map(|l| LineReply {
                     plain: l.plain,
@@ -99,7 +100,7 @@ impl From<&PrintedMap> for MapReply {
                 })
                 .collect(),
             values_csv: m.values_csv(),
-            asa: m.to_asa(),
+            asa,
         }
     }
 }
