@@ -59,7 +59,8 @@ impl FromStr for LineUse {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Options {
-    /// The property or column to map; the first numeric one if `None`.
+    /// The property or column to map. If `None`, the first numeric one that
+    /// is not an identifier, or else the first numeric one.
     pub value: Option<String>,
     /// Conformant for polygons and contour for points if `None`.
     pub map: Option<MapKind>,

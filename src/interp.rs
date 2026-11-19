@@ -15,8 +15,8 @@
 //! Details follow Shepard's SYMAP report (1970): the final radius is the
 //! distance to the next data point, and near neighbours are ignored when
 //! estimating slopes. SYMAP exposes these as electives: 31 (the
-//! extrapolation fraction, 0.1),
-//! 34 and 35 (initial and maximum search radius) and 36 (4 to 10 points).
+//! extrapolation fraction, 0.1), 34 and 35 (initial and maximum search
+//! radius) and 36 (4 to 10 points).
 
 use crate::deck::{Barrier, Strength};
 use crate::geom::Point;

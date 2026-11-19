@@ -8,7 +8,8 @@ const USAGE: &str = "usage: symap [--asa | --values] [DECK | -]\n\
     --values  print the computed values of maps with elective 21, as CSV\n\n\
     import reads points (CSV, GeoJSON, TopoJSON) or polygons (GeoJSON, TopoJSON)\n\
     and prints a deck that maps them.\n\
-    --value FIELD   the column or property to map (the first numeric one)\n\
+    --value FIELD   the column or property to map (the first numeric one\n\
+    \x20               that is not an identifier)\n\
     --conformant    a conformant map of the polygons (the default for polygons)\n\
     --contour       a contour map (the default for points; zones give centroids)\n\
     --proximal      a proximal map\n\

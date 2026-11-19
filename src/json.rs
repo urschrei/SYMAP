@@ -1,16 +1,26 @@
 //! The browser front end's view of a run or an import, as serde types.
 //!
-//! Shape of a run:
+//! Shape of a run (`eject` is present on lines that start a new page;
+//! `valuesCsv` only with elective 21):
 //!
 //! ```text
 //! { "ok": true,
 //!   "diagnostics": [{"line": 3, "message": "..."}],
 //!   "maps": [{ "kind": "contour", "rows": 40, "cols": 80, "linesPerInch": 8,
 //!              "colsPerInch": 10, "titles": [..3], "warnings": [..],
-//!              "lines": [{"plain": "...", "strikes": ["...", ...]}],
+//!              "lines": [{"plain": "...", "strikes": ["...", ...], "eject": true}],
 //!              "valuesCsv": "...", "asa": "..." }] }
-//! { "ok": false, "error": {"line": 12, "message": "..."} }
 //! ```
+//!
+//! Shape of an import:
+//!
+//! ```text
+//! { "ok": true, "deck": "...", "fields": ["no2", ...], "value": "no2",
+//!   "map": "contour", "count": 71, "unit": "points", "lines": 1,
+//!   "warnings": [..] }
+//! ```
+//!
+//! Either fails as `{ "ok": false, "error": {"line": 12, "message": "..."} }`.
 
 use crate::map::PrintedMap;
 use serde::{Deserialize, Serialize, Serializer};

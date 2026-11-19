@@ -195,11 +195,9 @@ fn manual_example_1_20_conformant_boundaries() {
 #[test]
 fn barriers_stop_interpolation() {
     let r = run(&deck("barrier.sym")).unwrap();
-    assert!(
-        r.maps.iter().all(|m| m.warnings.is_empty()),
-        "{:?}",
-        r.maps[0].warnings
-    );
+    for m in &r.maps {
+        assert!(m.warnings.is_empty(), "{:?}", m.warnings);
+    }
     let (with, without) = (&r.maps[0], &r.maps[1]);
     // Across the river on line 20: with the barrier the surface jumps from the
     // top level straight to the bottom; without it, it passes through between.

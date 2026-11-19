@@ -1,5 +1,5 @@
 //! Readers for the importer: CSV, GeoJSON and TopoJSON, all to features
-//! with properties and point or polygon geometry.
+//! with properties and point, line or polygon geometry.
 
 use super::csv;
 use super::topology::P;

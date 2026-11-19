@@ -810,8 +810,8 @@ mod tests {
             z.iter().map(|l| l.trim_start().to_string()).collect()
         };
         let all: Vec<Vec<String>> = zones.iter().map(coords).collect();
-        // The four grid zones each share at least three vertices (two
-        // corners and the centre) with a neighbour.
+        // Each of the four grid zones shares at least two vertices with each
+        // of at least three zones (counting itself).
         let shared = |a: &Vec<String>, b: &Vec<String>| a.iter().filter(|p| b.contains(p)).count();
         let big: Vec<&Vec<String>> = all.iter().filter(|z| z.len() > 6).collect();
         assert_eq!(big.len(), 4);

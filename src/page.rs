@@ -54,7 +54,7 @@ impl Line {
     }
 }
 
-/// Characters per panel: 13 inches at the map's pitch.
+/// The width of a panel of a wide map, in inches.
 const PANEL_INCHES: f64 = 13.0;
 
 /// Border mark at position `i`: every tenth character carries the tens
@@ -270,7 +270,6 @@ impl PrintedMap {
         out
     }
 
-    /// The full printed output for this map.
     /// The scale and the data point (or zone) table printed before the map,
     /// as in the manual's Examples 1-4 and 1-21. Elective 17 suppresses it.
     fn prelude(&self) -> Vec<Line> {
@@ -328,6 +327,7 @@ impl PrintedMap {
         out
     }
 
+    /// The full printed output for this map.
     pub fn page(&self) -> Vec<Line> {
         let rows = self.bordered();
         let mut out = if self.tabular {
@@ -361,9 +361,7 @@ impl PrintedMap {
         if self.numeric {
             out.extend(self.numeric_interpretation());
         }
-        {
-            out.extend(self.histogram());
-        }
+        out.extend(self.histogram());
         out
     }
 

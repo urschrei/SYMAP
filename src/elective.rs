@@ -52,7 +52,7 @@ pub enum Elective {
     },
     /// 16: allow maps over 72 inches.
     LargeMaps,
-    /// 17: suppress tabular output (accepted; there is none).
+    /// 17: no table of data points or zones before the map.
     NoTabular,
     /// 18: blank and minus-zero values are invalid.
     InvalidBlank,
