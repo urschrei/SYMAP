@@ -161,6 +161,9 @@ fn main() -> ExitCode {
             for d in &run.diagnostics {
                 eprintln!("warning: {d}");
             }
+            for w in run.maps.iter().flat_map(|m| &m.warnings) {
+                eprintln!("warning: {w}");
+            }
             if values {
                 let csv: Vec<String> = run.maps.iter().filter_map(|m| m.values_csv()).collect();
                 if csv.is_empty() {
@@ -171,9 +174,6 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             for (i, m) in run.maps.iter().enumerate() {
-                for w in &m.warnings {
-                    eprintln!("warning: {w}");
-                }
                 if asa {
                     print!("{}", m.to_asa());
                 } else {
