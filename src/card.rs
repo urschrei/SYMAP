@@ -61,18 +61,19 @@ pub fn fixed_pair(line: &str) -> Option<(f64, f64)> {
     Some((field(line, 0).ok()??, field(line, 1).ok()??))
 }
 
-/// The first `n` blank-separated numbers on a card.
-pub fn free_numbers(line: &str, n: usize) -> Option<Vec<f64>> {
-    let toks: Vec<&str> = line.split_whitespace().collect();
-    if toks.len() < n {
-        return None;
+/// The first `N` blank-separated numbers on a card.
+pub fn free_numbers<const N: usize>(line: &str) -> Option<[f64; N]> {
+    let mut toks = line.split_whitespace();
+    let mut out = [0.0; N];
+    for slot in &mut out {
+        *slot = finite(toks.next()?)?;
     }
-    toks[..n].iter().map(|t| finite(t)).collect()
+    Some(out)
 }
 
 /// A coordinate pair: fixed columns first, then free format.
 pub fn pair(line: &str) -> Option<(f64, f64)> {
-    fixed_pair(line).or_else(|| free_numbers(line, 2).map(|v| (v[0], v[1])))
+    fixed_pair(line).or_else(|| free_numbers(line).map(|[down, across]| (down, across)))
 }
 
 #[cfg(test)]
@@ -102,6 +103,7 @@ mod tests {
         );
         assert_eq!(int_field("   12", 1, 5), Ok(Some(12)));
         assert_eq!(int_field("  1.5", 1, 5), Err(Unreadable));
-        assert_eq!(free_numbers("nan 1", 2), None);
+        assert_eq!(free_numbers::<2>("nan 1"), None);
+        assert_eq!(free_numbers("1 2 x"), Some([1.0, 2.0]));
     }
 }

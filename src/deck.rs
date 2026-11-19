@@ -303,11 +303,20 @@ fn read_conformolines(p: &Package) -> Result<Vec<Conformoline>, Error> {
         } else {
             // Free format: [reference] A|L|P down across, or down across.
             let toks: Vec<&str> = c.split_whitespace().collect();
-            match toks
+            let letter = |t: &str| {
+                let mut chars = t.chars();
+                match (chars.next(), chars.next()) {
+                    (Some(ch), None) => shape_of(ch),
+                    _ => None,
+                }
+            };
+            let found = toks
                 .iter()
-                .position(|t| t.len() == 1 && shape_of(t.chars().next().unwrap()).is_some())
-            {
-                Some(k) if k <= 1 => {
+                .take(2)
+                .enumerate()
+                .find_map(|(k, t)| letter(t).map(|shape| (k, shape)));
+            match found {
+                Some((k, shape)) => {
                     let r =
                         if k == 1 {
                             Some(toks[0].parse::<i64>().map_err(|_| {
@@ -316,10 +325,9 @@ fn read_conformolines(p: &Package) -> Result<Vec<Conformoline>, Error> {
                         } else {
                             None
                         };
-                    let shape = shape_of(toks[k].chars().next().unwrap()).unwrap();
                     (Some((r, shape)), toks[k + 1..].join(" "))
                 }
-                _ => (None, c.to_string()),
+                None => (None, c.to_string()),
             }
         };
         let v = p.pair(l, &rest)?;
@@ -510,8 +518,8 @@ fn read_values(p: &Package) -> Result<Vec<Option<f64>>, Error> {
             match card::field(c, 0) {
                 Ok(Some(v)) => Ok(Some(v)),
                 Ok(None) if card::is_blank(card::cols(c, 1, 10)) => Ok(None),
-                Ok(None) | Err(card::Unreadable) => card::free_numbers(c, 1)
-                    .map(|v| Some(v[0]))
+                Ok(None) | Err(card::Unreadable) => card::free_numbers(c)
+                    .map(|[v]| Some(v))
                     .ok_or_else(|| Error::at(l, "expected a value in columns 11-20")),
             }
         })
