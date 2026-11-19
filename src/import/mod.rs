@@ -538,8 +538,8 @@ fn zone_rings(
     Ok((kept_items, rings))
 }
 
-/// The outline around points: their convex hull, enlarged by part of the
-/// margin and closed. `None` if the points are in a line: the hull is
+/// The outline around points: their convex hull, grown by part of the
+/// margin on every side, and closed. `None` if the points are in a line: the hull is
 /// narrower than `char_width`, one character across.
 fn point_outline(items: &[Item], margin: f64, char_width: f64) -> Option<Vec<Point>> {
     let pts: Vec<Point> = items.iter().map(|i| i.point).collect();
@@ -555,23 +555,7 @@ fn point_outline(items: &[Item], margin: f64, char_width: f64) -> Option<Vec<Poi
     if 2.0 * geometry::area(&h) < char_width * diameter {
         return None;
     }
-    let (cd, ca) = h
-        .iter()
-        .fold((0.0, 0.0), |s, p| (s.0 + p.down, s.1 + p.across));
-    let c = (cd / h.len() as f64, ca / h.len() as f64);
-    let mut grown: Vec<Point> = h
-        .iter()
-        .map(|p| {
-            let (dd, da) = (p.down - c.0, p.across - c.1);
-            let len = (dd * dd + da * da).sqrt().max(1e-9);
-            Point::new(
-                p.down + dd / len * margin * 0.6,
-                p.across + da / len * margin * 0.6,
-            )
-        })
-        .collect();
-    grown.push(grown[0]);
-    Some(grown)
+    geometry::grown(&h, margin * 0.6)
 }
 
 #[cfg(test)]
@@ -690,6 +674,48 @@ mod tests {
         );
         let e = import(&csv(170.0), &Options::default()).unwrap_err();
         assert!(e.message.contains("340 degrees"), "{e}");
+    }
+
+    #[test]
+    fn the_outline_keeps_a_margin_from_every_point() {
+        // A long, thin spread of points, with one near the middle of a long
+        // side: growing the hull outwards from its centre would leave that
+        // point almost on the outline.
+        let csv = "x,y,v\n0,0,1\n0,10,2\n100,0,3\n100,10,4\n50,10.5,5\n";
+        let imp = import(csv, &Options::default()).unwrap();
+        let cards = |head: &str| -> Vec<Point> {
+            imp.deck
+                .split(&format!("{head}\n"))
+                .nth(1)
+                .unwrap()
+                .lines()
+                .take_while(|l| *l != "99999")
+                .map(|l| {
+                    let f = |a: usize| l[a..a + 10].trim().parse::<f64>().unwrap();
+                    Point::new(f(10), f(20))
+                })
+                .collect()
+        };
+        let (outline, points) = (cards("A-OUTLINE"), cards("B-DATA POINTS"));
+        // The margin is 5% of the larger extent, and the outline 0.6 of it
+        // from the points.
+        let want = 0.05 * 100.0 * 0.6;
+        for p in &points {
+            let nearest = outline
+                .windows(2)
+                .map(|w| {
+                    let (a, b) = (w[0], w[1]);
+                    let (ab, ap) = (
+                        (b.down - a.down, b.across - a.across),
+                        (p.down - a.down, p.across - a.across),
+                    );
+                    let t =
+                        ((ap.0 * ab.0 + ap.1 * ab.1) / (ab.0 * ab.0 + ab.1 * ab.1)).clamp(0.0, 1.0);
+                    p.dist(Point::new(a.down + t * ab.0, a.across + t * ab.1))
+                })
+                .fold(f64::INFINITY, f64::min);
+            assert!(nearest > 0.99 * want, "{p:?}: {nearest}");
+        }
     }
 
     #[test]

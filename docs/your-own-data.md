@@ -64,7 +64,7 @@ data cards:
 Four packages follow, each opened by a header card and closed by `99999`.
 
 - **A-OUTLINE** encloses the area to map: here the convex hull of the
-  sites, enlarged a little. Characters outside it stay blank.
+  sites, grown on every side. Characters outside it stay blank.
 - **B-DATA POINTS** gives each site's location, measured *down* from the
   top of the map in columns 11–20 and *across* from the left in columns
   21–30, in kilometres.

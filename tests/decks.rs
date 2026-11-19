@@ -361,8 +361,8 @@ fn every_example_deck_runs() {
 
 #[test]
 fn tutorial_deck_matches_its_csv() {
-    // docs/your-own-data.md: the CSV imports to the same data cards as the
-    // finished deck, which runs with four levels from 10 to 50.
+    // docs/your-own-data.md: the CSV imports to the same outline and data
+    // cards as the finished deck, which runs with four levels from 10 to 50.
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/data");
     let csv = std::fs::read_to_string(format!("{dir}/london-no2-2025.csv")).unwrap();
     let opts = symap::import::Options {
@@ -376,7 +376,7 @@ fn tutorial_deck_matches_its_csv() {
         let end = start + d[start..].find("99999").unwrap();
         d[start..end].to_string()
     };
-    for name in ["B-DATA POINTS", "E-VALUES"] {
+    for name in ["A-OUTLINE", "B-DATA POINTS", "E-VALUES"] {
         assert_eq!(package(&imported, name), package(&finished, name));
     }
     let m = &run(&finished).unwrap().maps[0];

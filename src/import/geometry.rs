@@ -7,7 +7,11 @@
 use super::read::Ring;
 use super::topology::{self, P, arc_points};
 use crate::Point;
-use geo::{Contains, ConvexHull, InteriorPoint, LineString, MultiPoint, MultiPolygon, Polygon};
+use geo::algorithm::buffer::{BufferStyle, LineJoin};
+use geo::{
+    Buffer, Contains, ConvexHull, InteriorPoint, LineString, MultiPoint, MultiPolygon, Polygon,
+    Simplify,
+};
 
 fn pair(p: &Point) -> P {
     (p.down, p.across)
@@ -56,6 +60,19 @@ pub(crate) fn interior_point(outers: &[Vec<Point>], holes: &[Vec<Point>]) -> Opt
     MultiPolygon::new(polygons.collect())
         .interior_point()
         .map(|p| Point::new(p.x(), p.y()))
+}
+
+/// A ring grown by `distance` on every side, with mitred corners (very
+/// sharp corners are bevelled), closed. `None` if nothing is left.
+pub(crate) fn grown(ring: &[Point], distance: f64) -> Option<Vec<Point>> {
+    let polygon = Polygon::new(LineString::from(ring_pairs(ring)), vec![]);
+    // Corners sharper than about 30 degrees are bevelled, not mitred.
+    let style = BufferStyle::new(distance).line_join(LineJoin::Miter(0.5));
+    let buffered = polygon.buffer_with_style(style);
+    // Each mitred corner also has a vertex on each edge either side of it,
+    // in line with the corners: simplification removes them.
+    let exterior = buffered.0.first()?.exterior().simplify(distance * 1e-3);
+    Some(exterior.coords().map(|c| Point::new(c.x, c.y)).collect())
 }
 
 /// Unsigned area of a ring.
