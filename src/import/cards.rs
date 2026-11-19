@@ -9,6 +9,11 @@ use crate::Error;
 use crate::MapKind;
 use std::fmt::Write;
 
+/// The last part of a path.
+pub(crate) fn file_name(path: &str) -> &str {
+    path.rfind(['/', '\\']).map_or(path, |i| &path[i + 1..])
+}
+
 /// A number right-justified in a 10-column field, with at most `decimals`
 /// decimals (fewer if it would not fit), trailing zeros dropped.
 pub(crate) fn field_with(x: f64, decimals: usize) -> Result<String, Error> {
@@ -29,7 +34,7 @@ pub(crate) fn field_with(x: f64, decimals: usize) -> Result<String, Error> {
             format!("{s:>10}")
         })
         .find(|s| s.len() <= 10)
-        .ok_or_else(|| Error::general(format!("{x} does not fit in a 10-column field")))
+        .ok_or_else(|| Error::general(format!("{x:e} does not fit in a 10-column field")))
 }
 
 /// A value, with up to six decimals.
@@ -163,9 +168,7 @@ pub(crate) fn write_deck(plan: &Plan) -> Result<String, Error> {
         LineUse::Omit => None,
     };
     if let Some(how) = how {
-        let from = lines_source
-            .map(|s| s.rsplit(['/', '\\']).next().unwrap_or(s))
-            .map_or(String::new(), |s| format!(" from {s}"));
+        let from = lines_source.map_or(String::new(), |s| format!(" from {}", file_name(s)));
         let named = if clipped.names.is_empty() {
             String::new()
         } else {
@@ -305,6 +308,18 @@ mod tests {
         assert_eq!(field(0.000012).unwrap(), "  0.000012");
         assert_eq!(field(123456789.0).unwrap(), "123456789.");
         assert_eq!(field_with(2.0 / 3.0, 3).unwrap(), "     0.667");
-        assert!(field(1e12).is_err());
+        assert!(
+            field(1e12)
+                .unwrap_err()
+                .message
+                .starts_with("1e12 does not fit")
+        );
+    }
+
+    #[test]
+    fn file_names() {
+        assert_eq!(file_name("data/a/no2.csv"), "no2.csv");
+        assert_eq!(file_name("C:\\data\\no2.csv"), "no2.csv");
+        assert_eq!(file_name("no2.csv"), "no2.csv");
     }
 }

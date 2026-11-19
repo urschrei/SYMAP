@@ -186,8 +186,7 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
     let source = opts
         .source
         .as_deref()
-        .map(|s| s.rsplit(['/', '\\']).next().unwrap_or(s))
-        .unwrap_or("the imported data");
+        .map_or("the imported data", cards::file_name);
     let title = opts.title.clone().unwrap_or_else(|| {
         source
             .rsplit_once('.')

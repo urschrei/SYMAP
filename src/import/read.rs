@@ -182,8 +182,9 @@ fn positions(v: &Value, what: &str) -> Result<Vec<P>, Error> {
         .collect()
 }
 
-fn polygon(rings: &[Ring]) -> (Vec<Ring>, Vec<Ring>) {
-    let mut it = rings.iter().cloned();
+/// A polygon's rings as its outer ring and its holes.
+fn polygon(rings: impl IntoIterator<Item = Ring>) -> (Vec<Ring>, Vec<Ring>) {
+    let mut it = rings.into_iter();
     (it.next().into_iter().collect(), it.collect())
 }
 
@@ -218,10 +219,6 @@ fn read_geojson(doc: Value) -> Result<Source, Error> {
                 geom,
             })
         };
-        let polygon = |rings: &[Vec<Position>]| -> (Vec<Ring>, Vec<Ring>) {
-            let mut it = rings.iter().map(|r| coords(r));
-            (it.next().into_iter().collect(), it.collect())
-        };
         match f.geometry.map(|g| g.value) {
             Some(GeometryValue::Point { coordinates }) => push(Geom::Point(xy(&coordinates))),
             Some(GeometryValue::MultiPoint { coordinates }) => {
@@ -230,13 +227,13 @@ fn read_geojson(doc: Value) -> Result<Source, Error> {
                 }
             }
             Some(GeometryValue::Polygon { coordinates }) => {
-                let (outer, holes) = polygon(&coordinates);
+                let (outer, holes) = polygon(coordinates.iter().map(|r| coords(r)));
                 push(Geom::Polygon { outer, holes });
             }
             Some(GeometryValue::MultiPolygon { coordinates }) => {
                 let (mut outer, mut holes) = (Vec::new(), Vec::new());
                 for p in &coordinates {
-                    let (o, h) = polygon(p);
+                    let (o, h) = polygon(p.iter().map(|r| coords(r)));
                     outer.extend(o);
                     holes.extend(h);
                 }
@@ -374,7 +371,7 @@ fn read_topojson(doc: &Value, object: Option<&str>) -> Result<Source, Error> {
                 }
             }
             Some("Polygon") => {
-                let (outer, holes) = polygon(&rings(g.get("arcs").unwrap_or(&Value::Null))?);
+                let (outer, holes) = polygon(rings(g.get("arcs").unwrap_or(&Value::Null))?);
                 push(Geom::Polygon { outer, holes });
             }
             Some("MultiPolygon") => {
@@ -384,7 +381,7 @@ fn read_topojson(doc: &Value, object: Option<&str>) -> Result<Source, Error> {
                     .and_then(Value::as_array)
                     .ok_or_else(|| Error::general("TopoJSON: expected polygons"))?;
                 for p in polygons {
-                    let (o, h) = polygon(&rings(p)?);
+                    let (o, h) = polygon(rings(p)?);
                     outer.extend(o);
                     holes.extend(h);
                 }
