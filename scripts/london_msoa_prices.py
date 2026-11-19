@@ -15,11 +15,16 @@ Each output row is one 2021 MSOA in a London borough (LAD code E09*):
               year-ending period in HPSSA dataset 2 (table 1a)
     sales     number of sales, all dwellings, for the same period, from
               HPSSA dataset 1 (table 1a)
+    price_det, sales_det, price_semi, sales_semi, price_ter, sales_ter,
+    price_flat, sales_flat
+              the same for detached, semi-detached and terraced houses
+              and flats/maisonettes (tables 1b to 1e); empty where ONS
+              suppresses the value
 
 HPSSA uses 2011 MSOAs. Only the 2011 MSOAs that the exact-fit lookup marks
 as unchanged ("U") in 2021 are kept, because a split or merged area has no
 single price for its 2021 successor. Rows with a suppressed price (":",
-fewer than five sales) are dropped.
+fewer than five sales) for all dwellings are dropped.
 
     uv run scripts/london_msoa_prices.py --out examples/data/london-msoa-prices.csv
 """
@@ -35,11 +40,15 @@ HPSSA2 = "hpssa2/HPSSA Dataset 2 - Median price paid by MSOA.xls"
 HPSSA1 = "hpssa1/HPSSA Dataset 1 - Number of residential property sales by MSOA.xls"
 LOOKUP = "MSOA11_MSOA21_LAD22_EW_LU_exact.csv"
 CENTROIDS = "MSOA_2021_EW_BSC_V3.csv"
+# Suffix of the output columns and HPSSA table for each dwelling type.
+TYPES = {"det": "1b", "semi": "1c", "ter": "1d", "flat": "1e"}
 
 
-def latest(path: Path) -> tuple[str, pd.Series]:
-    """Return the label of the latest period in table 1a and its values by MSOA11 code."""
-    table = pd.read_excel(path, sheet_name="1a", header=5, engine="calamine", dtype=str)
+def latest(path: Path, sheet: str = "1a") -> tuple[str, pd.Series]:
+    """Return the label of the latest period in a table and its values by MSOA11 code."""
+    table = pd.read_excel(
+        path, sheet_name=sheet, header=5, engine="calamine", dtype=str
+    )
     table = table[table["Local authority code"].str.startswith("E09", na=False)]
     column = [c for c in table.columns if str(c).startswith("Year ending")][-1]
     values = pd.to_numeric(table[column].str.replace(",", ""), errors="coerce")
@@ -61,6 +70,13 @@ def main() -> None:
     period_sales, sales = latest(args.data / HPSSA1)
     if period != period_sales:
         raise SystemExit(f"period mismatch: {period!r} and {period_sales!r}")
+    by_type = {}
+    for suffix, sheet in TYPES.items():
+        for name, path in (("price", HPSSA2), ("sales", HPSSA1)):
+            label, values = latest(args.data / path, sheet)
+            if label != period:
+                raise SystemExit(f"period mismatch in {sheet}: {label!r}")
+            by_type[f"{name}_{suffix}"] = values
 
     lookup = pd.read_csv(args.data / LOOKUP, dtype=str)
     lookup = lookup[lookup["LAD22CD"].str.startswith("E09")]
@@ -80,24 +96,26 @@ def main() -> None:
             continue
         msoa21 = unchanged[code]
         c = centroids.loc[msoa21]
-        n = sales.get(code)
-        rows.append(
-            {
-                "msoa21cd": msoa21,
-                "name": c["MSOA21NM"],
-                "x": int(c["BNG_E"]),
-                "y": int(c["BNG_N"]),
-                "price": int(price[code]),
-                "sales": "" if pd.isna(n) else int(n),
-            }
-        )
+        row = {
+            "msoa21cd": msoa21,
+            "name": c["MSOA21NM"],
+            "x": int(c["BNG_E"]),
+            "y": int(c["BNG_N"]),
+            "price": int(price[code]),
+            "sales": sales.get(code),
+        }
+        row |= {column: values.get(code) for column, values in by_type.items()}
+        rows.append({k: "" if pd.isna(v) else v for k, v in row.items()})
 
+    for row in rows:
+        for column in ["sales", *by_type]:
+            if row[column] != "":
+                row[column] = int(row[column])
     rows.sort(key=lambda r: r["msoa21cd"])
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", newline="") as fh:
-        w = csv.DictWriter(
-            fh, fieldnames=["msoa21cd", "name", "x", "y", "price", "sales"]
-        )
+        fields = ["msoa21cd", "name", "x", "y", "price", "sales", *by_type]
+        w = csv.DictWriter(fh, fieldnames=fields)
         w.writeheader()
         w.writerows(rows)
 
@@ -109,6 +127,10 @@ def main() -> None:
     print(
         f"price min {min(prices)}, median {statistics.median(prices):.0f}, max {max(prices)}"
     )
+    for column in by_type:
+        if column.startswith("price_"):
+            present = sum(r[column] != "" for r in rows)
+            print(f"{column}: {present} of {len(rows)} rows present")
 
 
 if __name__ == "__main__":
