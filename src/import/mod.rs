@@ -689,8 +689,9 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         topo.simplify(tolerance);
         let outer_refs: Vec<Vec<i64>> = items.iter().flat_map(|i| i.outer.clone()).collect();
         let uses = topo.uses(&outer_refs);
-        let (mut small, mut filled) = (0, 0);
-        for (z, item) in items.iter_mut().enumerate() {
+        let (mut small, mut filled, mut empty) = (0, 0, 0);
+        let mut kept_items = Vec::new();
+        for mut item in items {
             let mut kept_rings = Vec::new();
             for r in &item.outer {
                 let ring: Vec<P> = topo.ring(r).into_iter().map(grid).collect();
@@ -714,13 +715,31 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
                     }
                 }
             }
-            item.point = centroid(&kept_rings).unwrap_or((0.0, 0.0));
+            let Some(point) = centroid(&kept_rings) else {
+                empty += 1;
+                continue;
+            };
+            item.point = point;
             filled += item
                 .holes
                 .iter()
                 .filter(|h| h.iter().any(|&a| uses[topology::arc_index(a)] == 0))
                 .count();
-            rings.extend(kept_rings.into_iter().map(|r| (z + 1, r)));
+            kept_items.push(item);
+            let z = kept_items.len();
+            rings.extend(kept_rings.into_iter().map(|r| (z, r)));
+        }
+        items = kept_items;
+        if empty > 0 {
+            warnings.push(format!(
+                "{empty} zones with no usable outline were left out"
+            ));
+        }
+        if items.len() < needed {
+            return Err(Error::general(format!(
+                "{} zones have a usable outline; at least {needed} are needed",
+                items.len()
+            )));
         }
         if small > 0 {
             warnings.push(format!(
@@ -1213,6 +1232,27 @@ mod tests {
         let text = m.to_text();
         let enclave_row = text.lines().find(|l| l.contains('█')).unwrap();
         assert!(enclave_row.contains('Θ'), "{text}");
+    }
+
+    #[test]
+    fn zones_without_an_outline_are_left_out() {
+        let empty = r#",{"type":"Feature","properties":{"name":"Empty","v":99},
+            "geometry":{"type":"Polygon","coordinates":[]}}]}"#;
+        let g = zones_geojson();
+        let g = format!("{}{empty}", g.strip_suffix("]}").unwrap());
+        for map in [MapType::Conformant, MapType::Contour] {
+            let opts = Options {
+                map: Some(map),
+                ..Options::default()
+            };
+            let imp = import(&g, &opts).unwrap();
+            assert_eq!(imp.count, 5);
+            assert!(
+                imp.warnings
+                    .contains(&"1 zones with no usable outline were left out".into())
+            );
+            assert!(!imp.deck.contains("99."), "{}", imp.deck);
+        }
     }
 
     #[test]
