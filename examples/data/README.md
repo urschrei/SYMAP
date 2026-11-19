@@ -27,8 +27,10 @@ public green space. `scripts/london_grid_1km.py` builds it and
 `decks/london-suitability.sym`, whose header lists the sources and
 licences.
 
-`london-msoa-prices.csv` holds the median price paid for all dwellings,
-and the number of sales, in the year ending March 2023 for the 963 London
+`london-msoa-prices.csv` holds the median price paid and the number of
+sales, for all dwellings and for each of detached, semi-detached, terraced
+houses and flats (a price is blank where ONS suppresses it, below five
+sales), in the year ending March 2023 for the 963 London
 MSOAs whose 2011 boundaries were unchanged in 2021, each placed at the
 centroid of its 2021 boundary (British National Grid metres). Sources: ONS
 House price statistics for small areas, HPSSA datasets 1 and 2 (table 1a),
