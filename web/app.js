@@ -155,6 +155,9 @@ const INK = 'rgba(30, 28, 40, 0.88)';
 const CAP_HEIGHT = 0.7;    // of the line pitch
 const GLYPH_WIDTH = 0.8;   // of the character pitch
 const SPREAD = 0.7;        // ink spread around each stroke, in pixels
+// Each further strike on a cell soaks more ink into the paper: four-strike
+// overprints (OXAV) print near-solid black, not just a darker O.
+const SPREAD_PER_STRIKE = 1.0;
 
 function hash(a, b, c) {
   let h = (a * 73856093) ^ (b * 19349663) ^ (c * 83492791);
@@ -251,10 +254,12 @@ function drawSheet(map, lines, density) {
   lines.forEach((line, i) => {
     const y = (i + TOP_LINES + 0.55) * CELL_H;
     const layers = state.overprint ? line.strikes : [line.plain];
+    const struck = new Uint8Array(Math.max(...layers.map((s) => s.length), 0));
     layers.forEach((s, k) => {
       for (let c = 0; c < s.length; c++) {
         const ch = s[c];
         if (ch === ' ') continue;
+        ctx.lineWidth = SPREAD + SPREAD_PER_STRIKE * struck[c]++;
         // A little ribbon wobble between strikes.
         const dx = state.overprint ? (hash(i, c, k) - 0.5) * 0.6 : 0;
         const dy = state.overprint ? (hash(c, i, k + 7) - 0.5) * 0.6 : 0;
