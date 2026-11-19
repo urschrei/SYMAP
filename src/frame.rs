@@ -16,8 +16,7 @@ pub const MAX_CELLS: usize = 8_000_000;
 pub struct Layout {
     pub size: (Option<f64>, Option<f64>),
     pub scale: Option<f64>,
-    /// Top, left, bottom, right border shifts in inches.
-    pub margins: [f64; 4],
+    pub margins: Margins,
     pub lines_per_inch: f64,
     pub cols_per_inch: f64,
     pub large: bool,
@@ -28,12 +27,21 @@ impl Default for Layout {
         Self {
             size: (None, None),
             scale: None,
-            margins: [0.0; 4],
+            margins: Margins::default(),
             lines_per_inch: 8.0,
             cols_per_inch: 10.0,
             large: false,
         }
     }
+}
+
+/// Elective 14: how far each border is shifted, in inches.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Margins {
+    pub top: f64,
+    pub left: f64,
+    pub bottom: f64,
+    pub right: f64,
 }
 
 /// The standard size of the larger map dimension, in inches.
@@ -65,7 +73,12 @@ impl Frame {
                 "elective 15: characters per inch must be positive",
             ));
         }
-        let [t, l, b, r] = layout.margins;
+        let Margins {
+            top: t,
+            left: l,
+            bottom: b,
+            right: r,
+        } = layout.margins;
         let eh = if extent.height() > 0.0 {
             extent.height()
         } else {
@@ -217,7 +230,12 @@ mod tests {
     fn margins_shift_borders_and_scale() {
         let layout = Layout {
             size: (Some(6.0), Some(6.0)),
-            margins: [0.5; 4],
+            margins: Margins {
+                top: 0.5,
+                left: 0.5,
+                bottom: 0.5,
+                right: 0.5,
+            },
             ..Default::default()
         };
         let (f, _) = Frame::fit(ext(10.0, 10.0), &layout).unwrap();

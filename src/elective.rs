@@ -6,6 +6,7 @@
 
 use crate::card;
 use crate::error::Error;
+use crate::frame::Margins;
 use crate::geom::Point;
 use crate::symbols::Symbolism;
 
@@ -42,8 +43,8 @@ pub enum Elective {
     Repeat,
     /// 13: inches of output map per source-map unit.
     Scale(f64),
-    /// 14: border shifts in inches (top, left, bottom, right).
-    Margins([f64; 4]),
+    /// 14: border shifts in inches.
+    Margins(Margins),
     /// 15: lines and columns per inch.
     CharsPerInch {
         rows: Option<f64>,
@@ -322,7 +323,12 @@ pub fn parse(cards: &[(usize, &str)]) -> Result<Vec<Entry>, Error> {
                 }
                 Elective::Scale(s)
             }
-            14 => Elective::Margins(std::array::from_fn(|k| get(k).unwrap_or(0.0))),
+            14 => Elective::Margins(Margins {
+                top: get(0).unwrap_or(0.0),
+                left: get(1).unwrap_or(0.0),
+                bottom: get(2).unwrap_or(0.0),
+                right: get(3).unwrap_or(0.0),
+            }),
             15 => Elective::CharsPerInch {
                 rows: get(0),
                 cols: get(1),
