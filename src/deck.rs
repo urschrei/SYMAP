@@ -332,11 +332,18 @@ fn read_legends(p: &Package) -> Result<Vec<Legend>, Error> {
         };
         let strikes = Strikes::new(&card::cols(c, 6, 9));
         match card::col(c, 10).to_ascii_uppercase() {
-            // Column 1 holds '-' for vertical text; the length is in columns 4-5.
+            // A text legend has no symbol in columns 6-9 and its length in
+            // columns 2-5 (normally 4-5); column 1 holds '-' for vertical text.
             'P' => match card::int_field(c, 2, 5) {
+                None if card::is_blank(&card::cols(c, 6, 9)) => {
+                    return Err(Error::at(
+                        l,
+                        "legend length in columns 2-5 must be a whole number",
+                    ));
+                }
                 Some(Some(n)) if card::is_blank(&card::cols(c, 6, 9)) => {
                     if !(1..=50).contains(&n) {
-                        return Err(Error::at(l, "legend length in columns 4-5 must be 1 to 50"));
+                        return Err(Error::at(l, "legend length in columns 2-5 must be 1 to 50"));
                     }
                     let Some(&(_, t)) = cards.get(i) else {
                         return Err(Error::at(
@@ -352,7 +359,7 @@ fn read_legends(p: &Package) -> Result<Vec<Legend>, Error> {
                         shift: shift()?,
                     });
                 }
-                _ => out.push(Legend::Symbol {
+                None | Some(None) | Some(Some(_)) => out.push(Legend::Symbol {
                     strikes,
                     at,
                     shift: shift()?,
@@ -684,5 +691,10 @@ mod tests {
         assert_eq!(Deck::parse("hello\n").unwrap_err().line, Some(1));
         assert!(Deck::parse("Q-NONSENSE\n99999\n").is_err());
         assert!(Deck::parse("F-MAP\nA\n99999\n").is_err());
+        // An unreadable text legend length is reported on its own card.
+        let d = "C-OTOLEGENDS\n-  x3    P       1.0       1.0\nABC\n99999\n999999\n";
+        let e = Deck::parse(d).unwrap_err();
+        assert_eq!(e.line, Some(2));
+        assert!(e.message.contains("columns 2-5"), "{e}");
     }
 }
