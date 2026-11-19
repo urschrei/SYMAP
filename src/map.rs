@@ -45,7 +45,7 @@ pub struct Options {
     pub extrapolation_max: Option<f64>,
     pub initial_radius: Option<f64>,
     pub max_radius: Option<f64>,
-    pub point_count: Option<(Option<f64>, Option<f64>)>,
+    pub point_count: Option<(Option<usize>, Option<usize>)>,
     pub independence: bool,
     /// Elective 21: keep each character's computed value.
     pub store_values: bool,
@@ -482,8 +482,8 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             };
             let (pmin, pmax) = o.point_count.unwrap_or((None, None));
             let params = ShepardParams {
-                min_points: pmin.unwrap_or(4.0) as usize,
-                max_points: pmax.unwrap_or(10.0) as usize,
+                min_points: pmin.unwrap_or(4),
+                max_points: pmax.unwrap_or(10),
                 fraction: match o.extrapolation {
                     None => 0.1,
                     Some(None) => 0.0,
@@ -495,9 +495,9 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                 slope_min_distance: 1.5 / (frame.scale * frame.cols_per_inch),
                 ..Default::default()
             };
-            if params.max_points < 1 || params.min_points > params.max_points {
+            if params.min_points > params.max_points {
                 return Err(at(
-                    "elective 36: need 1 to 10 points, minimum no more than maximum".into(),
+                    "elective 36: the minimum number of points exceeds the maximum".into(),
                 ));
             }
             if !(0.0..1.0).contains(&params.fraction) {

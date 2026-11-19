@@ -90,8 +90,8 @@ pub enum Elective {
     MaxRadius(f64),
     /// 36: minimum and maximum data points per interpolation.
     PointCount {
-        min: Option<f64>,
-        max: Option<f64>,
+        min: Option<usize>,
+        max: Option<usize>,
     },
     /// 37: compute every character independently (standard: one in six).
     Independence,
@@ -148,6 +148,31 @@ pub fn parse(cards: &[(usize, &str)]) -> Result<Vec<Entry>, Error> {
         let get = |k: usize| f.get(k).copied().flatten();
         let need = |k: usize, what: &str| {
             get(k).ok_or_else(|| Error::at(ln, format!("elective {n}: missing {what}")))
+        };
+        let positive = |k: usize, what: &str| {
+            let v = need(k, what)?;
+            if v > 0.0 {
+                Ok(v)
+            } else {
+                Err(Error::at(
+                    ln,
+                    format!("elective {n}: {what} must be positive"),
+                ))
+            }
+        };
+        let points = |k: usize| -> Result<Option<usize>, Error> {
+            get(k)
+                .map(|v| {
+                    if v.fract() == 0.0 && (1.0..=10.0).contains(&v) {
+                        Ok(v as usize)
+                    } else {
+                        Err(Error::at(
+                            ln,
+                            "elective 36: point counts must be whole numbers from 1 to 10",
+                        ))
+                    }
+                })
+                .transpose()
         };
         let e = match n {
             1 => {
@@ -254,11 +279,11 @@ pub fn parse(cards: &[(usize, &str)]) -> Result<Vec<Entry>, Error> {
             31 => Elective::Extrapolation(get(0)),
             32 => Elective::ExtrapolationMin(need(0, "minimum")?),
             33 => Elective::ExtrapolationMax(need(0, "maximum")?),
-            34 => Elective::InitialRadius(need(0, "radius")?),
-            35 => Elective::MaxRadius(need(0, "radius")?),
+            34 => Elective::InitialRadius(positive(0, "radius")?),
+            35 => Elective::MaxRadius(positive(0, "radius")?),
             36 => Elective::PointCount {
-                min: get(0),
-                max: get(1),
+                min: points(0)?,
+                max: points(1)?,
             },
             37 => Elective::Independence,
             number => Elective::Unsupported {
@@ -316,6 +341,36 @@ mod tests {
             run(&["    1       5.0       8.0"]).unwrap()
         );
         assert!(run(&["    3      11.0"]).is_err());
+    }
+
+    #[test]
+    fn point_counts_and_radii_are_checked() {
+        assert_eq!(
+            run(&["   36       3.0"]).unwrap(),
+            vec![Elective::PointCount {
+                min: Some(3),
+                max: None
+            }]
+        );
+        for card in [
+            "   36       4.0     1e30",
+            "   36       4.7",
+            "   36       0.0",
+        ] {
+            assert!(run(&[card]).unwrap_err().message.contains("from 1 to 10"));
+        }
+        assert!(
+            run(&["   35       0.0"])
+                .unwrap_err()
+                .message
+                .contains("positive")
+        );
+        assert!(
+            run(&["   34      -1.0"])
+                .unwrap_err()
+                .message
+                .contains("positive")
+        );
     }
 
     #[test]
