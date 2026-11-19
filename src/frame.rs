@@ -135,6 +135,16 @@ impl Frame {
         ))
     }
 
+    /// Print positions, borders included: `(rows + 1) x (cols + 1)`.
+    pub fn positions(&self) -> usize {
+        (self.rows + 1) * (self.cols + 1)
+    }
+
+    /// Row-major index of print position (`row`, `col`).
+    pub fn index(&self, row: usize, col: usize) -> usize {
+        row * (self.cols + 1) + col
+    }
+
     /// Fractional grid position (row, column) of a source-map location.
     pub fn grid(&self, p: Point) -> (f64, f64) {
         (

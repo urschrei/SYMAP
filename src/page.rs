@@ -371,11 +371,14 @@ impl PrintedMap {
     /// border, empty where nothing was computed. `None` without elective 21.
     pub fn values_csv(&self) -> Option<String> {
         let v = self.values.as_ref()?;
-        let w = self.width();
         let mut out = String::new();
         for r in 1..self.frame.rows {
             let row: Vec<String> = (1..self.frame.cols)
-                .map(|c| v[r * w + c].map(|x| format!("{x}")).unwrap_or_default())
+                .map(|c| {
+                    v[self.frame.index(r, c)]
+                        .map(|x| format!("{x}"))
+                        .unwrap_or_default()
+                })
                 .collect();
             out.push_str(&row.join(","));
             out.push('\n');

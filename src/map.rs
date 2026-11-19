@@ -256,11 +256,11 @@ impl PrintedMap {
     }
 
     pub fn at(&self, row: usize, col: usize) -> Strikes {
-        self.grid[row * self.width() + col]
+        self.grid[self.frame.index(row, col)]
     }
 
     pub fn level(&self, row: usize, col: usize) -> Option<Level> {
-        self.levels[row * self.width() + col]
+        self.levels[self.frame.index(row, col)]
     }
 }
 
@@ -405,22 +405,25 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
     }
 
     // Values for the items being mapped.
-    let point_refs: Vec<usize> = (1..=pk.points.len()).collect();
-    let (item_values, point_values) = if kind == MapKind::Conformant {
-        let mut zone_refs: Vec<usize> = pk.conformolines.iter().map(|z| z.reference).collect();
-        zone_refs.sort_unstable();
-        zone_refs.dedup();
-        let zv = resolve_values(pk, &zone_refs, &o, spec.line)?;
-        let lookup = move |r: usize| zv[zone_refs.binary_search(&r).unwrap()];
-        let items: Vec<Option<f64>> = pk
-            .conformolines
-            .iter()
-            .map(|z| lookup(z.reference))
-            .collect();
-        (items, Vec::new())
-    } else {
-        let v = resolve_values(pk, &point_refs, &o, spec.line)?;
-        (v.clone(), v)
+    let (item_values, point_values) = match kind {
+        MapKind::Conformant => {
+            let mut zone_refs: Vec<usize> = pk.conformolines.iter().map(|z| z.reference).collect();
+            zone_refs.sort_unstable();
+            zone_refs.dedup();
+            let zv = resolve_values(pk, &zone_refs, &o, spec.line)?;
+            let lookup = move |r: usize| zv[zone_refs.binary_search(&r).unwrap()];
+            let items: Vec<Option<f64>> = pk
+                .conformolines
+                .iter()
+                .map(|z| lookup(z.reference))
+                .collect();
+            (items, Vec::new())
+        }
+        MapKind::Contour | MapKind::Proximal => {
+            let point_refs: Vec<usize> = (1..=pk.points.len()).collect();
+            let v = resolve_values(pk, &point_refs, &o, spec.line)?;
+            (v.clone(), v)
+        }
     };
     let valid: Vec<f64> = item_values.iter().flatten().copied().collect();
     if valid.is_empty() {
@@ -438,17 +441,18 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             "between 1 and {MAX_LEVELS} levels are supported"
         )));
     }
-    let freq_values: Vec<f64> = if kind == MapKind::Conformant {
-        // One value per zone reference, not per outline.
-        let mut seen = std::collections::BTreeMap::new();
-        for (z, v) in pk.conformolines.iter().zip(&item_values) {
-            if let Some(v) = v {
-                seen.insert(z.reference, *v);
+    let freq_values: Vec<f64> = match kind {
+        MapKind::Conformant => {
+            // One value per zone reference, not per outline.
+            let mut seen = std::collections::BTreeMap::new();
+            for (z, v) in pk.conformolines.iter().zip(&item_values) {
+                if let Some(v) = v {
+                    seen.insert(z.reference, *v);
+                }
             }
+            seen.into_values().collect()
         }
-        seen.into_values().collect()
-    } else {
-        valid.clone()
+        MapKind::Contour | MapKind::Proximal => valid,
     };
     let classes = Classes::new(
         o.value_min.unwrap_or(data_range.0),
@@ -458,11 +462,10 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         &freq_values,
     )
     .map_err(|e| at(e.message))?;
-    let n = classes.levels();
     let symbolism = o
         .symbolism
         .clone()
-        .unwrap_or_else(|| Symbolism::standard(n));
+        .unwrap_or_else(|| Symbolism::standard(classes.levels()));
 
     // Frame.
     let extent = match o.extremes {
@@ -483,442 +486,45 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
     };
     let (frame, w) = Frame::fit(extent, &o.layout).map_err(|e| at(e.message))?;
     warnings.extend(w);
-    let width = frame.cols + 1;
-    let idx = |r: usize, c: usize| r * width + c;
 
-    // Fill.
-    #[derive(Clone, Copy, PartialEq)]
-    enum Fill {
-        Background,
-        NoData,
-        Value(Level),
-    }
-    let mut search_radius = None;
-    let mut fill = vec![Fill::Background; (frame.rows + 1) * width];
-    // Which conformant zone (value reference) fills each character.
-    let mut zone_of: Vec<Option<usize>> = vec![None; (frame.rows + 1) * width];
-    // Each character's computed value, before classing.
-    let mut cell_value: Vec<Option<f64>> = vec![None; (frame.rows + 1) * width];
-    let inside =
-        |p: Point| pk.outlines.is_empty() || pk.outlines.iter().any(|r| geom::in_ring(p, r));
-    let valid_pts: Vec<(Point, f64)> = pk
-        .points
-        .iter()
-        .zip(&point_values)
-        .filter_map(|(p, v)| v.map(|v| (*p, v)))
-        .collect();
-    match kind {
-        MapKind::Contour => {
-            let (pts, zs): (Vec<Point>, Vec<f64>) = valid_pts.iter().copied().unzip();
-            // The initial radius is based on "the area occupied by the data
-            // points" (Shepard 1970, note 21): their bounding rectangle.
-            let area = {
-                let e = Extent::of(&pts).unwrap();
-                (e.height() * e.width()).max(f64::MIN_POSITIVE)
-            };
-            let (min_points, max_points) = match o.point_count {
-                Some(PointCount::Given { min, max }) => (min, max),
-                Some(PointCount::Blank) | None => (4, 10),
-            };
-            let params = ShepardParams {
-                min_points,
-                max_points,
-                fraction: match o.extrapolation {
-                    None => 0.1,
-                    Some(Extrapolation::Blank) => 0.0,
-                    Some(Extrapolation::Fraction(f)) => f,
-                },
-                initial_radius: o.initial_radius,
-                max_radius: o.max_radius,
-                // 1.5 characters, in source-map units.
-                slope_min_distance: 1.5 / (frame.scale * frame.cols_per_inch),
-                ..Default::default()
-            };
-            let lo = o.extrapolation_min.unwrap_or(data_range.0);
-            let hi = o.extrapolation_max.unwrap_or(data_range.1);
-            let s = Shepard::new(&pts, &zs, area, params, &pk.barriers);
-            search_radius = Some(s.initial_radius());
-            // A location within half a character of data points takes their
-            // (average) value; elsewhere the surface is interpolated.
-            let grid_pts: Vec<((f64, f64), f64)> =
-                valid_pts.iter().map(|&(p, v)| (frame.grid(p), v)).collect();
-            let at_location = |r: usize, c: usize| -> Option<f64> {
-                // The sum starts from -0.0, as `Sum` for f64 does.
-                let (sum, n) = grid_pts
-                    .iter()
-                    .filter(|((gr, gc), _)| {
-                        (gr - r as f64).abs() <= 0.5 && (gc - c as f64).abs() <= 0.5
-                    })
-                    .fold((-0.0, 0usize), |(sum, n), x| (sum + x.1, n + 1));
-                if n == 0 {
-                    s.eval(frame.centre(r, c))
-                } else {
-                    Some(sum / n as f64)
-                }
-            };
-            // Standard SYMAP computes about one character in six (every second
-            // line, every third column) and derives the rest; elective 37
-            // computes every character independently.
-            let (sr, sc) = if o.independence { (1, 1) } else { (2, 3) };
-            let anchor = |i: usize, step: usize, n: usize| -> (usize, usize) {
-                let a = i / step * step;
-                (a, (a + step).min(n))
-            };
-            // Values at the computed characters; the others stay `None`.
-            let mut samples: Vec<Option<f64>> = vec![None; fill.len()];
-            let sample_rows = (0..=frame.rows).filter(|r| r % sr == 0 || *r == frame.rows);
-            for r in sample_rows {
-                let sample_cols = (0..=frame.cols).filter(|c| c % sc == 0 || *c == frame.cols);
-                for c in sample_cols {
-                    samples[idx(r, c)] = at_location(r, c);
-                }
-            }
-            let value = |r: usize, c: usize| -> Option<f64> {
-                let ((r0, r1), (c0, c1)) = (anchor(r, sr, frame.rows), anchor(c, sc, frame.cols));
-                let g = |r, c| samples[idx(r, c)];
-                let (a, b, cc, d) = (g(r0, c0)?, g(r0, c1)?, g(r1, c0)?, g(r1, c1)?);
-                let t = if r1 > r0 {
-                    (r - r0) as f64 / (r1 - r0) as f64
-                } else {
-                    0.0
-                };
-                let u = if c1 > c0 {
-                    (c - c0) as f64 / (c1 - c0) as f64
-                } else {
-                    0.0
-                };
-                Some((a * (1.0 - u) + b * u) * (1.0 - t) + (cc * (1.0 - u) + d * u) * t)
-            };
-            for r in 1..frame.rows {
-                for c in 1..frame.cols {
-                    let p = frame.centre(r, c);
-                    if inside(p) {
-                        fill[idx(r, c)] = match value(r, c) {
-                            Some(v) => {
-                                let v = v.clamp(lo, hi.max(lo));
-                                cell_value[idx(r, c)] = Some(v);
-                                Fill::Value(classes.level(v))
-                            }
-                            None => Fill::NoData,
-                        };
-                    }
-                }
-            }
-        }
-        MapKind::Proximal => {
-            let pts: Vec<Point> = valid_pts.iter().map(|x| x.0).collect();
-            let index = PointIndex::new(&pts);
-            for r in 1..frame.rows {
-                for c in 1..frame.cols {
-                    let p = frame.centre(r, c);
-                    if let Some(i) = index.nearest(&pts, p).filter(|_| inside(p)) {
-                        let v = valid_pts[i].1;
-                        cell_value[idx(r, c)] = Some(v);
-                        fill[idx(r, c)] = Fill::Value(classes.level(v));
-                    }
-                }
-            }
-        }
-        MapKind::Conformant => {
-            for (z, v) in pk.conformolines.iter().zip(&item_values) {
-                let Some(v) = v else { continue };
-                let f = Fill::Value(classes.level(*v));
-                match z.shape {
-                    ZoneShape::Area => {
-                        for (r, c) in cells_around(&frame, &z.vertices) {
-                            if fill[idx(r, c)] == Fill::Background
-                                && geom::in_ring(frame.centre(r, c), &z.vertices)
-                            {
-                                fill[idx(r, c)] = f;
-                                zone_of[idx(r, c)] = Some(z.reference);
-                                cell_value[idx(r, c)] = Some(*v);
-                            }
-                        }
-                    }
-                    ZoneShape::Line | ZoneShape::Point => {
-                        for (r, c) in trace(&frame, &z.vertices) {
-                            fill[idx(r, c)] = f;
-                            zone_of[idx(r, c)] = Some(z.reference);
-                            cell_value[idx(r, c)] = Some(*v);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    let levels: Vec<Option<Level>> = fill
-        .iter()
-        .map(|f| {
-            if let Fill::Value(l) = f {
-                Some(*l)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    // Symbolism, then white lines between adjacent levels.
-    let mut grid: Vec<Strikes> = fill
+    let d = Drawing {
+        pk,
+        o: &o,
+        kind,
+        frame,
+        classes: &classes,
+        symbolism: &symbolism,
+        item_values: &item_values,
+        point_values: &point_values,
+    };
+    let (surface, search_radius) = d.fill(data_range);
+    let levels: Vec<Option<Level>> = surface
+        .fill
         .iter()
         .map(|f| match f {
-            Fill::Background => symbolism.background,
-            Fill::NoData => symbolism.no_data,
-            Fill::Value(level) => symbolism.fill(*level),
+            Fill::Value(l) => Some(*l),
+            Fill::Background | Fill::NoData => None,
         })
         .collect();
-    // Elective 28: a dot map shows each zone as scattered dots instead of tone.
+    let mut grid = d.paint(&surface.fill);
     if let (Some(mode), MapKind::Conformant) = (o.dots, kind) {
-        let mut cells: std::collections::BTreeMap<usize, Vec<usize>> = Default::default();
-        for (i, z) in zone_of.iter().enumerate() {
-            if let Some(z) = z {
-                cells.entry(*z).or_default().push(i);
-                grid[i] = symbolism.background;
-            }
-        }
-        let (lo, hi) = (classes.min(), classes.max());
-        for (z, mut list) in cells {
-            let Some(v) = item_values
-                .iter()
-                .zip(&pk.conformolines)
-                .find(|(_, c)| c.reference == z)
-                .and_then(|(v, _)| *v)
-            else {
-                continue;
-            };
-            let share = match mode {
-                DotMode::PerDot(k) => (v / k).round().max(0.0) / list.len() as f64,
-                DotMode::Percent => (v - lo) / (hi - lo),
-                DotMode::ByLevel => match classes.level(v) {
-                    Level::Low => 0.0,
-                    Level::In(k) => (k as f64 + 1.0) / n as f64,
-                    Level::High => 1.0,
-                },
-            };
-            let k = ((share.clamp(0.0, 1.0) * list.len() as f64).round() as usize).min(list.len());
-            list.sort_by_key(|&i| scatter(i / width, i % width));
-            for &i in &list[..k] {
-                grid[i] = Strikes::single('.');
-            }
-        }
+        d.dot_map(&mut grid, &surface.zone_of, mode);
     }
-
     match (o.lines, kind) {
         (Lines::None, _) => {}
         (Lines::Standard | Lines::Continuous, MapKind::Conformant) => {
-            // Conformant boundaries are drawn where they run: each zone edge is
-            // traced to the nearest character on every line it crosses (or every
-            // column, for shallow edges), and a traced character becomes a line
-            // where it separates two different zones. Outer edges stay filled.
-            // (Matches Example 1-22 of the 1971 manual, including lines between
-            // zones on the same level.)
-            let zone = |r: i64, c: i64| -> Option<usize> {
-                (r >= 1 && c >= 1 && r < frame.rows as i64 && c < frame.cols as i64)
-                    .then(|| zone_of[idx(r as usize, c as usize)])
-                    .flatten()
-            };
-            for z in pk
-                .conformolines
-                .iter()
-                .filter(|z| z.shape == ZoneShape::Area)
-            {
-                let n = z.vertices.len();
-                for k in 0..n {
-                    let (p0, p1) = (
-                        frame.grid(z.vertices[k]),
-                        frame.grid(z.vertices[(k + 1) % n]),
-                    );
-                    let steep = (p1.0 - p0.0).abs() > (p1.1 - p0.1).abs();
-                    for (r, c) in raster(&frame, p0, p1) {
-                        let (r, c) = (r as i64, c as i64);
-                        let (x, y) = if steep {
-                            (zone(r, c - 1), zone(r, c + 1))
-                        } else {
-                            (zone(r - 1, c), zone(r + 1, c))
-                        };
-                        if let (Some(x), Some(y)) = (x, y) {
-                            if x != y {
-                                grid[idx(r as usize, c as usize)] = symbolism.contour;
-                            }
-                        }
-                    }
-                }
-            }
+            d.zone_boundaries(&mut grid, &surface.zone_of);
         }
         (lines @ (Lines::Standard | Lines::Continuous), MapKind::Contour | MapKind::Proximal) => {
-            // Lines are made in printing order. A character becomes a line where
-            // its level differs from the character above it, or from the one to
-            // its left unless that one is already a line. So a boundary takes
-            // one character, on whichever side the scan reaches second, rather
-            // than always the higher level. (Matches Examples 1-5, 1-16 and 1-17
-            // of the 1971 manual better than either side by level.) Standard
-            // SYMAP drops a line that would leave no symbol between it and the
-            // next; elective 22 keeps them.
-            let level = |r: usize, c: usize| levels[idx(r, c)];
-            let band = lines == Lines::Standard;
-            let mut line = vec![false; fill.len()];
-            for r in 1..frame.rows {
-                for c in 1..frame.cols {
-                    let Some(me) = level(r, c) else { continue };
-                    let differs = |(nr, nc): (usize, usize), (br, bc): (usize, usize)| {
-                        level(nr, nc).is_some_and(|x| x != me)
-                            && (!band || level(br, bc) == Some(me))
-                    };
-                    if differs((r - 1, c), (r + 1, c))
-                        || (!line[idx(r, c - 1)] && differs((r, c - 1), (r, c + 1)))
-                    {
-                        line[idx(r, c)] = true;
-                        grid[idx(r, c)] = symbolism.contour;
-                    }
-                }
-            }
+            d.level_lines(&mut grid, &levels, lines == Lines::Standard);
         }
     }
-
-    // Data points.
-    let show_points = kind != MapKind::Conformant || o.conformant_points;
-    if show_points {
-        let mut by_cell: std::collections::BTreeMap<(usize, usize), Vec<usize>> =
-            Default::default();
-        for (i, p) in pk.points.iter().enumerate() {
-            if let Some(cell) = frame.cell(*p) {
-                by_cell.entry(cell).or_default().push(i);
-            }
-        }
-        let point_level = |i: usize| -> Option<Option<Level>> {
-            if kind == MapKind::Conformant {
-                let p = pk.points[i];
-                let z =
-                    pk.conformolines.iter().zip(&item_values).find(|(z, _)| {
-                        z.shape == ZoneShape::Area && geom::in_ring(p, &z.vertices)
-                    })?;
-                Some(z.1.map(|v| classes.level(v)))
-            } else {
-                Some(point_values[i].map(|v| classes.level(v)))
-            }
-        };
-        for (&(r, c), items) in &by_cell {
-            let i = items[0];
-            let Some(level) = point_level(i) else {
-                continue;
-            };
-            if o.print_values && items.len() == 1 {
-                if let Some(v) = point_values.get(i).copied().flatten() {
-                    let s = format!("{v:.2}");
-                    let dot = s.find('.').unwrap();
-                    for (k, ch) in s.chars().enumerate() {
-                        let col = c as i64 + k as i64 - dot as i64;
-                        if (1..frame.cols as i64).contains(&col) {
-                            grid[idx(r, col as usize)] = Strikes::single(ch);
-                        }
-                    }
-                    continue;
-                }
-            }
-            grid[idx(r, c)] = if items.len() > 1 {
-                symbolism.superimposed
-            } else {
-                match level {
-                    None if o.invalid_symbol => symbolism.invalid,
-                    None => continue,
-                    Some(level) => symbolism.point_symbol(level),
-                }
-            };
-        }
+    if kind != MapKind::Conformant || o.conformant_points {
+        d.data_points(&mut grid);
     }
-
-    // Legends, on top of everything.
-    for l in &pk.legends {
-        match l {
-            Legend::Symbol { strikes, at, shift } => {
-                let (r, c) = frame.grid(*at);
-                if let Some((r, c)) = frame.cell_at(r + shift.0, c + shift.1) {
-                    grid[idx(r, c)] = *strikes;
-                }
-            }
-            Legend::Text {
-                text,
-                direction,
-                at,
-                shift,
-            } => {
-                let (r0, c0) = frame.grid(*at);
-                for (k, ch) in text.chars().enumerate() {
-                    let (dr, dc) = match direction {
-                        Direction::Down => (k as f64, 0.0),
-                        Direction::Across => (0.0, k as f64),
-                    };
-                    if let Some((r, c)) = frame.cell_at(r0 + shift.0 + dr, c0 + shift.1 + dc) {
-                        grid[idx(r, c)] = Strikes::single(ch);
-                    }
-                }
-            }
-            Legend::Line { strikes, vertices } => {
-                for (r, c) in trace(&frame, vertices) {
-                    grid[idx(r, c)] = *strikes;
-                }
-            }
-            Legend::Area { strikes, vertices } => {
-                for (r, c) in cells_around(&frame, vertices) {
-                    if geom::in_ring(frame.centre(r, c), vertices) {
-                        grid[idx(r, c)] = *strikes;
-                    }
-                }
-            }
-        }
-    }
-
-    // Frequency of data values (zones for a conformant map) by level.
-    let mut frequency = Frequency {
-        levels: vec![0; n],
-        ..Default::default()
-    };
-    for &v in &freq_values {
-        match classes.level(v) {
-            Level::Low => frequency.low += 1,
-            Level::High => frequency.high += 1,
-            Level::In(k) => frequency.levels[k as usize] += 1,
-        }
-    }
-
-    // The table printed before the map.
-    let level_of = |v: Option<f64>| v.map(|v| classes.level(v));
-    let table: Vec<TableRow> = if kind == MapKind::Conformant {
-        pk.conformolines
-            .iter()
-            .zip(&item_values)
-            .enumerate()
-            .map(|(i, (z, v))| {
-                let (r, c) = frame.grid(centre_of(z));
-                TableRow {
-                    number: i + 1,
-                    shape: Some(z.shape),
-                    row: (r + 0.5).floor() as i64,
-                    col: (c + 0.5).floor() as i64,
-                    datum: datum(pk, z.reference),
-                    value: *v,
-                    level: level_of(*v),
-                }
-            })
-            .collect()
-    } else {
-        pk.points
-            .iter()
-            .zip(&point_values)
-            .enumerate()
-            .map(|(i, (p, v))| {
-                let (r, c) = frame.grid(*p);
-                TableRow {
-                    number: i + 1,
-                    shape: None,
-                    row: (r + 0.5).floor() as i64,
-                    col: (c + 0.5).floor() as i64,
-                    datum: datum(pk, i + 1),
-                    value: *v,
-                    level: level_of(*v),
-                }
-            })
-            .collect()
-    };
+    d.legends(&mut grid);
+    let frequency = frequency(&classes, &freq_values);
+    let table = d.table();
 
     Ok(PrintedMap {
         kind,
@@ -934,11 +540,518 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         numeric: o.numeric,
         bars: o.bars,
         warnings,
-        values: o.store_values.then_some(cell_value),
+        values: o.store_values.then_some(surface.value),
         table,
         tabular: o.tabular,
         search_radius,
     })
+}
+
+/// What fills a print position before lines, points and legends.
+#[derive(Clone, Copy, PartialEq)]
+enum Fill {
+    Background,
+    NoData,
+    Value(Level),
+}
+
+/// The fill of every print position, row-major.
+struct Surface {
+    fill: Vec<Fill>,
+    /// Which conformant zone (value reference) fills each position.
+    zone_of: Vec<Option<usize>>,
+    /// Each position's computed value, before classing.
+    value: Vec<Option<f64>>,
+}
+
+impl Surface {
+    /// Fill position `i` with a zone's value.
+    fn set_zone(&mut self, i: usize, reference: usize, value: f64, level: Level) {
+        self.fill[i] = Fill::Value(level);
+        self.zone_of[i] = Some(reference);
+        self.value[i] = Some(value);
+    }
+}
+
+/// One map's settings and data, resolved, for the stages of drawing it.
+struct Drawing<'a> {
+    pk: &'a Packages,
+    o: &'a Options,
+    kind: MapKind,
+    frame: Frame,
+    classes: &'a Classes,
+    symbolism: &'a Symbolism,
+    /// Values per item mapped: data points, or zone outlines.
+    item_values: &'a [Option<f64>],
+    /// Values per data point; empty for a conformant map.
+    point_values: &'a [Option<f64>],
+}
+
+impl Drawing<'_> {
+    /// Fill every position inside the outlines (or zones), and give the
+    /// initial search radius of a contour map.
+    fn fill(&self, data_range: (f64, f64)) -> (Surface, Option<f64>) {
+        let n = self.frame.positions();
+        let mut s = Surface {
+            fill: vec![Fill::Background; n],
+            zone_of: vec![None; n],
+            value: vec![None; n],
+        };
+        let valid_pts: Vec<(Point, f64)> = self
+            .pk
+            .points
+            .iter()
+            .zip(self.point_values)
+            .filter_map(|(p, v)| v.map(|v| (*p, v)))
+            .collect();
+        let mut search_radius = None;
+        match self.kind {
+            MapKind::Contour => {
+                search_radius = Some(self.fill_contour(&mut s, &valid_pts, data_range))
+            }
+            MapKind::Proximal => self.fill_proximal(&mut s, &valid_pts),
+            MapKind::Conformant => self.fill_conformant(&mut s),
+        }
+        (s, search_radius)
+    }
+
+    /// Whether a location is inside the A-OUTLINE rings (or there are none).
+    fn inside(&self, p: Point) -> bool {
+        self.pk.outlines.is_empty() || self.pk.outlines.iter().any(|r| geom::in_ring(p, r))
+    }
+
+    fn fill_contour(
+        &self,
+        s: &mut Surface,
+        valid_pts: &[(Point, f64)],
+        data_range: (f64, f64),
+    ) -> f64 {
+        let (o, frame) = (self.o, &self.frame);
+        let (pts, zs): (Vec<Point>, Vec<f64>) = valid_pts.iter().copied().unzip();
+        // The initial radius is based on "the area occupied by the data
+        // points" (Shepard 1970, note 21): their bounding rectangle.
+        let area = {
+            let e = Extent::of(&pts).unwrap();
+            (e.height() * e.width()).max(f64::MIN_POSITIVE)
+        };
+        let (min_points, max_points) = match o.point_count {
+            Some(PointCount::Given { min, max }) => (min, max),
+            Some(PointCount::Blank) | None => (4, 10),
+        };
+        let params = ShepardParams {
+            min_points,
+            max_points,
+            fraction: match o.extrapolation {
+                None => 0.1,
+                Some(Extrapolation::Blank) => 0.0,
+                Some(Extrapolation::Fraction(f)) => f,
+            },
+            initial_radius: o.initial_radius,
+            max_radius: o.max_radius,
+            // 1.5 characters, in source-map units.
+            slope_min_distance: 1.5 / (frame.scale * frame.cols_per_inch),
+            ..Default::default()
+        };
+        let lo = o.extrapolation_min.unwrap_or(data_range.0);
+        let hi = o.extrapolation_max.unwrap_or(data_range.1);
+        let shepard = Shepard::new(&pts, &zs, area, params, &self.pk.barriers);
+        // A location within half a character of data points takes their
+        // (average) value; elsewhere the surface is interpolated.
+        let grid_pts: Vec<((f64, f64), f64)> =
+            valid_pts.iter().map(|&(p, v)| (frame.grid(p), v)).collect();
+        let at_location = |r: usize, c: usize| -> Option<f64> {
+            // The sum starts from -0.0, as `Sum` for f64 does.
+            let (sum, n) = grid_pts
+                .iter()
+                .filter(|((gr, gc), _)| {
+                    (gr - r as f64).abs() <= 0.5 && (gc - c as f64).abs() <= 0.5
+                })
+                .fold((-0.0, 0usize), |(sum, n), x| (sum + x.1, n + 1));
+            if n == 0 {
+                shepard.eval(frame.centre(r, c))
+            } else {
+                Some(sum / n as f64)
+            }
+        };
+        // Standard SYMAP computes about one character in six (every second
+        // line, every third column) and derives the rest; elective 37
+        // computes every character independently.
+        let (sr, sc) = if o.independence { (1, 1) } else { (2, 3) };
+        let anchor = |i: usize, step: usize, n: usize| -> (usize, usize) {
+            let a = i / step * step;
+            (a, (a + step).min(n))
+        };
+        // Values at the computed characters; the others stay `None`.
+        let mut samples: Vec<Option<f64>> = vec![None; frame.positions()];
+        let sample_rows = (0..=frame.rows).filter(|r| r % sr == 0 || *r == frame.rows);
+        for r in sample_rows {
+            let sample_cols = (0..=frame.cols).filter(|c| c % sc == 0 || *c == frame.cols);
+            for c in sample_cols {
+                samples[frame.index(r, c)] = at_location(r, c);
+            }
+        }
+        let value = |r: usize, c: usize| -> Option<f64> {
+            let ((r0, r1), (c0, c1)) = (anchor(r, sr, frame.rows), anchor(c, sc, frame.cols));
+            let g = |r, c| samples[frame.index(r, c)];
+            let (a, b, cc, d) = (g(r0, c0)?, g(r0, c1)?, g(r1, c0)?, g(r1, c1)?);
+            let t = if r1 > r0 {
+                (r - r0) as f64 / (r1 - r0) as f64
+            } else {
+                0.0
+            };
+            let u = if c1 > c0 {
+                (c - c0) as f64 / (c1 - c0) as f64
+            } else {
+                0.0
+            };
+            Some((a * (1.0 - u) + b * u) * (1.0 - t) + (cc * (1.0 - u) + d * u) * t)
+        };
+        for r in 1..frame.rows {
+            for c in 1..frame.cols {
+                if self.inside(frame.centre(r, c)) {
+                    let i = frame.index(r, c);
+                    s.fill[i] = match value(r, c) {
+                        Some(v) => {
+                            let v = v.clamp(lo, hi.max(lo));
+                            s.value[i] = Some(v);
+                            Fill::Value(self.classes.level(v))
+                        }
+                        None => Fill::NoData,
+                    };
+                }
+            }
+        }
+        shepard.initial_radius()
+    }
+
+    fn fill_proximal(&self, s: &mut Surface, valid_pts: &[(Point, f64)]) {
+        let frame = &self.frame;
+        let pts: Vec<Point> = valid_pts.iter().map(|x| x.0).collect();
+        let index = PointIndex::new(&pts);
+        for r in 1..frame.rows {
+            for c in 1..frame.cols {
+                let p = frame.centre(r, c);
+                if let Some(k) = index.nearest(&pts, p).filter(|_| self.inside(p)) {
+                    let v = valid_pts[k].1;
+                    let i = frame.index(r, c);
+                    s.value[i] = Some(v);
+                    s.fill[i] = Fill::Value(self.classes.level(v));
+                }
+            }
+        }
+    }
+
+    /// Fill each zone in deck order: an area keeps the positions it claims
+    /// first; lines and points are drawn over what is there.
+    fn fill_conformant(&self, s: &mut Surface) {
+        let frame = &self.frame;
+        for (z, v) in self.pk.conformolines.iter().zip(self.item_values) {
+            let Some(v) = v else { continue };
+            let level = self.classes.level(*v);
+            match z.shape {
+                ZoneShape::Area => {
+                    for (r, c) in cells_around(frame, &z.vertices) {
+                        let i = frame.index(r, c);
+                        if s.fill[i] == Fill::Background
+                            && geom::in_ring(frame.centre(r, c), &z.vertices)
+                        {
+                            s.set_zone(i, z.reference, *v, level);
+                        }
+                    }
+                }
+                ZoneShape::Line | ZoneShape::Point => {
+                    for (r, c) in trace(frame, &z.vertices) {
+                        s.set_zone(frame.index(r, c), z.reference, *v, level);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The symbolism of every position.
+    fn paint(&self, fill: &[Fill]) -> Vec<Strikes> {
+        let s = self.symbolism;
+        fill.iter()
+            .map(|f| match f {
+                Fill::Background => s.background,
+                Fill::NoData => s.no_data,
+                Fill::Value(level) => s.fill(*level),
+            })
+            .collect()
+    }
+
+    /// Elective 28: each zone as scattered dots instead of tone.
+    fn dot_map(&self, grid: &mut [Strikes], zone_of: &[Option<usize>], mode: DotMode) {
+        let width = self.frame.cols + 1;
+        let mut cells: std::collections::BTreeMap<usize, Vec<usize>> = Default::default();
+        for (i, z) in zone_of.iter().enumerate() {
+            if let Some(z) = z {
+                cells.entry(*z).or_default().push(i);
+                grid[i] = self.symbolism.background;
+            }
+        }
+        let (lo, hi) = (self.classes.min(), self.classes.max());
+        let n = self.classes.levels();
+        for (z, mut list) in cells {
+            let Some(v) = self
+                .item_values
+                .iter()
+                .zip(&self.pk.conformolines)
+                .find(|(_, c)| c.reference == z)
+                .and_then(|(v, _)| *v)
+            else {
+                continue;
+            };
+            let share = match mode {
+                DotMode::PerDot(k) => (v / k).round().max(0.0) / list.len() as f64,
+                DotMode::Percent => (v - lo) / (hi - lo),
+                DotMode::ByLevel => match self.classes.level(v) {
+                    Level::Low => 0.0,
+                    Level::In(k) => (k as f64 + 1.0) / n as f64,
+                    Level::High => 1.0,
+                },
+            };
+            let k = ((share.clamp(0.0, 1.0) * list.len() as f64).round() as usize).min(list.len());
+            list.sort_by_key(|&i| scatter(i / width, i % width));
+            for &i in &list[..k] {
+                grid[i] = Strikes::single('.');
+            }
+        }
+    }
+
+    /// Conformant boundaries are drawn where they run: each zone edge is
+    /// traced to the nearest character on every line it crosses (or every
+    /// column, for shallow edges), and a traced character becomes a line
+    /// where it separates two different zones. Outer edges stay filled.
+    /// (Matches Example 1-22 of the 1971 manual, including lines between
+    /// zones on the same level.)
+    fn zone_boundaries(&self, grid: &mut [Strikes], zone_of: &[Option<usize>]) {
+        let frame = &self.frame;
+        let zone = |r: i64, c: i64| -> Option<usize> {
+            (r >= 1 && c >= 1 && r < frame.rows as i64 && c < frame.cols as i64)
+                .then(|| zone_of[frame.index(r as usize, c as usize)])
+                .flatten()
+        };
+        let areas = self
+            .pk
+            .conformolines
+            .iter()
+            .filter(|z| z.shape == ZoneShape::Area);
+        for z in areas {
+            let n = z.vertices.len();
+            for k in 0..n {
+                let (p0, p1) = (
+                    frame.grid(z.vertices[k]),
+                    frame.grid(z.vertices[(k + 1) % n]),
+                );
+                let steep = (p1.0 - p0.0).abs() > (p1.1 - p0.1).abs();
+                for (r, c) in raster(frame, p0, p1) {
+                    let (r, c) = (r as i64, c as i64);
+                    let (x, y) = if steep {
+                        (zone(r, c - 1), zone(r, c + 1))
+                    } else {
+                        (zone(r - 1, c), zone(r + 1, c))
+                    };
+                    if let (Some(x), Some(y)) = (x, y) {
+                        if x != y {
+                            grid[frame.index(r as usize, c as usize)] = self.symbolism.contour;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Lines are made in printing order. A character becomes a line where
+    /// its level differs from the character above it, or from the one to
+    /// its left unless that one is already a line. So a boundary takes one
+    /// character, on whichever side the scan reaches second, rather than
+    /// always the higher level. (Matches Examples 1-5, 1-16 and 1-17 of the
+    /// 1971 manual better than either side by level.) With `band`, as in
+    /// standard SYMAP, a line that would leave no symbol between it and the
+    /// next is dropped; elective 22 keeps them.
+    fn level_lines(&self, grid: &mut [Strikes], levels: &[Option<Level>], band: bool) {
+        let frame = &self.frame;
+        let level = |r: usize, c: usize| levels[frame.index(r, c)];
+        let mut line = vec![false; levels.len()];
+        for r in 1..frame.rows {
+            for c in 1..frame.cols {
+                let Some(me) = level(r, c) else { continue };
+                let differs = |(nr, nc): (usize, usize), (br, bc): (usize, usize)| {
+                    level(nr, nc).is_some_and(|x| x != me) && (!band || level(br, bc) == Some(me))
+                };
+                if differs((r - 1, c), (r + 1, c))
+                    || (!line[frame.index(r, c - 1)] && differs((r, c - 1), (r, c + 1)))
+                {
+                    line[frame.index(r, c)] = true;
+                    grid[frame.index(r, c)] = self.symbolism.contour;
+                }
+            }
+        }
+    }
+
+    /// Data point symbols, or their values (elective 11).
+    fn data_points(&self, grid: &mut [Strikes]) {
+        let (pk, frame, o) = (self.pk, &self.frame, self.o);
+        let mut by_cell: std::collections::BTreeMap<(usize, usize), Vec<usize>> =
+            Default::default();
+        for (i, p) in pk.points.iter().enumerate() {
+            if let Some(cell) = frame.cell(*p) {
+                by_cell.entry(cell).or_default().push(i);
+            }
+        }
+        let point_level = |i: usize| -> Option<Option<Level>> {
+            match self.kind {
+                MapKind::Conformant => {
+                    let p = pk.points[i];
+                    let z = pk
+                        .conformolines
+                        .iter()
+                        .zip(self.item_values)
+                        .find(|(z, _)| {
+                            z.shape == ZoneShape::Area && geom::in_ring(p, &z.vertices)
+                        })?;
+                    Some(z.1.map(|v| self.classes.level(v)))
+                }
+                MapKind::Contour | MapKind::Proximal => {
+                    Some(self.point_values[i].map(|v| self.classes.level(v)))
+                }
+            }
+        };
+        for (&(r, c), items) in &by_cell {
+            let i = items[0];
+            let Some(level) = point_level(i) else {
+                continue;
+            };
+            if o.print_values && items.len() == 1 {
+                if let Some(v) = self.point_values.get(i).copied().flatten() {
+                    let s = format!("{v:.2}");
+                    let dot = s.find('.').unwrap();
+                    for (k, ch) in s.chars().enumerate() {
+                        let col = c as i64 + k as i64 - dot as i64;
+                        if (1..frame.cols as i64).contains(&col) {
+                            grid[frame.index(r, col as usize)] = Strikes::single(ch);
+                        }
+                    }
+                    continue;
+                }
+            }
+            grid[frame.index(r, c)] = if items.len() > 1 {
+                self.symbolism.superimposed
+            } else {
+                match level {
+                    None if o.invalid_symbol => self.symbolism.invalid,
+                    None => continue,
+                    Some(level) => self.symbolism.point_symbol(level),
+                }
+            };
+        }
+    }
+
+    /// C-OTOLEGENDS, on top of everything.
+    fn legends(&self, grid: &mut [Strikes]) {
+        let frame = &self.frame;
+        for l in &self.pk.legends {
+            match l {
+                Legend::Symbol { strikes, at, shift } => {
+                    let (r, c) = frame.grid(*at);
+                    if let Some((r, c)) = frame.cell_at(r + shift.0, c + shift.1) {
+                        grid[frame.index(r, c)] = *strikes;
+                    }
+                }
+                Legend::Text {
+                    text,
+                    direction,
+                    at,
+                    shift,
+                } => {
+                    let (r0, c0) = frame.grid(*at);
+                    for (k, ch) in text.chars().enumerate() {
+                        let (dr, dc) = match direction {
+                            Direction::Down => (k as f64, 0.0),
+                            Direction::Across => (0.0, k as f64),
+                        };
+                        if let Some((r, c)) = frame.cell_at(r0 + shift.0 + dr, c0 + shift.1 + dc) {
+                            grid[frame.index(r, c)] = Strikes::single(ch);
+                        }
+                    }
+                }
+                Legend::Line { strikes, vertices } => {
+                    for (r, c) in trace(frame, vertices) {
+                        grid[frame.index(r, c)] = *strikes;
+                    }
+                }
+                Legend::Area { strikes, vertices } => {
+                    for (r, c) in cells_around(frame, vertices) {
+                        if geom::in_ring(frame.centre(r, c), vertices) {
+                            grid[frame.index(r, c)] = *strikes;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The table printed before the map: zones for a conformant map,
+    /// otherwise data points.
+    fn table(&self) -> Vec<TableRow> {
+        let (pk, frame) = (self.pk, &self.frame);
+        let level_of = |v: Option<f64>| v.map(|v| self.classes.level(v));
+        match self.kind {
+            MapKind::Conformant => pk
+                .conformolines
+                .iter()
+                .zip(self.item_values)
+                .enumerate()
+                .map(|(i, (z, v))| {
+                    let (r, c) = frame.grid(centre_of(z));
+                    TableRow {
+                        number: i + 1,
+                        shape: Some(z.shape),
+                        row: (r + 0.5).floor() as i64,
+                        col: (c + 0.5).floor() as i64,
+                        datum: datum(pk, z.reference),
+                        value: *v,
+                        level: level_of(*v),
+                    }
+                })
+                .collect(),
+            MapKind::Contour | MapKind::Proximal => pk
+                .points
+                .iter()
+                .zip(self.point_values)
+                .enumerate()
+                .map(|(i, (p, v))| {
+                    let (r, c) = frame.grid(*p);
+                    TableRow {
+                        number: i + 1,
+                        shape: None,
+                        row: (r + 0.5).floor() as i64,
+                        col: (c + 0.5).floor() as i64,
+                        datum: datum(pk, i + 1),
+                        value: *v,
+                        level: level_of(*v),
+                    }
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Counts of data values (zones, for a conformant map) by level.
+fn frequency(classes: &Classes, values: &[f64]) -> Frequency {
+    let mut frequency = Frequency {
+        levels: vec![0; classes.levels()],
+        ..Default::default()
+    };
+    for &v in values {
+        match classes.level(v) {
+            Level::Low => frequency.low += 1,
+            Level::High => frequency.high += 1,
+            Level::In(k) => frequency.levels[k as usize] += 1,
+        }
+    }
+    frequency
 }
 
 #[cfg(test)]
