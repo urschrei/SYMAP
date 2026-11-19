@@ -88,8 +88,6 @@ pub struct ShepardParams {
     pub radius_factor: f64,
     pub min_points: usize,
     pub max_points: usize,
-    pub direction: bool,
-    pub slope: bool,
     /// Elective 31: how far the slope term may reach, as a fraction of the data range.
     pub fraction: f64,
     /// Elective 34: initial search radius (otherwise from `radius_factor`).
@@ -107,8 +105,6 @@ impl Default for ShepardParams {
             radius_factor: 24.0,
             min_points: 4,
             max_points: 10,
-            direction: true,
-            slope: true,
             fraction: 0.1,
             initial_radius: None,
             max_radius: None,
@@ -123,13 +119,25 @@ pub struct Shepard {
     z: Vec<f64>,
     r0: f64,
     params: ShepardParams,
-    grad: Vec<(f64, f64)>,
-    /// Slope damping distance; zero disables the slope term.
-    v: f64,
-    /// Total range of the data values.
-    range: f64,
+    /// The slope correction, unless elective 31 turns it off or the data
+    /// have no gradient.
+    slope: Option<Slope>,
     /// D-BARRIERS: polylines with a strength at each vertex (-1 impermeable).
     barriers: Vec<Vec<(Point, f64)>>,
+}
+
+/// Each data point's gradient, and the distance that damps extrapolation
+/// along it.
+struct Slope {
+    gradients: Vec<Gradient>,
+    damping: f64,
+}
+
+/// Rates of change of the value across and down.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Gradient {
+    across: f64,
+    down: f64,
 }
 
 /// Twice the signed area of triangle (a, b, c), in (across, down) coordinates.
@@ -164,9 +172,7 @@ impl Shepard {
             z: values.to_vec(),
             r0,
             params,
-            grad: vec![(0.0, 0.0); points.len()],
-            v: 0.0,
-            range: 0.0,
+            slope: None,
             barriers: barriers.to_vec(),
         };
         let (lo, hi) = values
@@ -174,13 +180,18 @@ impl Shepard {
             .fold((f64::INFINITY, f64::NEG_INFINITY), |(l, h), &v| {
                 (l.min(v), h.max(v))
             });
-        s.range = hi - lo;
-        if params.slope && params.fraction > 0.0 && points.len() > 1 {
-            let grads: Vec<_> = (0..points.len()).map(|i| s.gradient(i)).collect();
-            let gmax = grads.iter().map(|(a, b)| a.hypot(*b)).fold(0.0, f64::max);
-            if gmax > 0.0 && s.range > 0.0 {
-                s.v = params.fraction * s.range / gmax;
-                s.grad = grads;
+        let range = hi - lo;
+        if params.fraction > 0.0 && points.len() > 1 {
+            let gradients: Vec<Gradient> = (0..points.len()).map(|i| s.gradient(i)).collect();
+            let steepest = gradients
+                .iter()
+                .map(|g| g.across.hypot(g.down))
+                .fold(0.0, f64::max);
+            if steepest > 0.0 && range > 0.0 {
+                s.slope = Some(Slope {
+                    gradients,
+                    damping: params.fraction * range / steepest,
+                });
             }
         }
         s
@@ -286,9 +297,6 @@ impl Shepard {
                 }
             })
             .collect();
-        if !self.params.direction {
-            return s.iter().map(|x| x * x).collect();
-        }
         let ssum: f64 = s.iter().sum();
         nb.iter()
             .zip(&s)
@@ -313,13 +321,16 @@ impl Shepard {
             .collect()
     }
 
-    /// Weighted mean of directional derivatives towards neighbours: (d/dacross, d/ddown).
-    fn gradient(&self, i: usize) -> (f64, f64) {
+    /// Weighted mean of directional derivatives towards neighbours.
+    fn gradient(&self, i: usize) -> Gradient {
         let p = self.pts[i];
         let (mut nb, r) = self.neighbours(p, Some(i));
         nb.retain(|x| x.1 >= self.params.slope_min_distance);
         if nb.is_empty() {
-            return (0.0, 0.0);
+            return Gradient {
+                across: 0.0,
+                down: 0.0,
+            };
         }
         let w = self.weights(p, &nb, r);
         let (mut a, mut b, mut ws) = (0.0, 0.0, 0.0);
@@ -331,7 +342,10 @@ impl Shepard {
             b += wj * dz * (q.down - p.down);
             ws += wj;
         }
-        (a / ws, b / ws)
+        Gradient {
+            across: a / ws,
+            down: b / ws,
+        }
     }
 
     /// Interpolated value at `p`, or `None` if no data point is within the
@@ -348,10 +362,11 @@ impl Shepard {
         let (mut num, mut den) = (0.0, 0.0);
         for (&(i, d), &wi) in nb.iter().zip(&w) {
             let mut zi = self.z[i];
-            if self.v > 0.0 {
-                let (a, b) = self.grad[i];
+            if let Some(Slope { gradients, damping }) = &self.slope {
+                let g = gradients[i];
                 let q = self.pts[i];
-                zi += (a * (p.across - q.across) + b * (p.down - q.down)) * self.v / (self.v + d);
+                zi += (g.across * (p.across - q.across) + g.down * (p.down - q.down)) * damping
+                    / (damping + d);
             }
             num += wi * zi;
             den += wi;
