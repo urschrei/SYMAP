@@ -151,7 +151,9 @@ impl Shepard {
                 let ((a, sa), (b, sb)) = (w[0], w[1]);
                 let (o1, o2) = (orient(p, q, a), orient(p, q, b));
                 let (o3, o4) = (orient(a, b, p), orient(a, b, q));
-                if o1 * o2 < 0.0 && o3 * o4 < 0.0 {
+                // Half-open: a line through a vertex crosses one of the two
+                // segments that meet there, not both and not neither.
+                if (o1 > 0.0) != (o2 > 0.0) && o3 * o4 < 0.0 {
                     crossings += 1;
                     if sa < 0.0 || sb < 0.0 {
                         blocked = true;
@@ -469,6 +471,27 @@ mod tests {
         }
         let right = s.eval(Point::new(0.0, 3.1)).unwrap();
         assert!(right > 40.0, "{right}");
+    }
+
+    #[test]
+    fn barrier_vertex_on_the_line_between_points() {
+        // The line through the data points passes through the wall's middle
+        // vertex. The wall must still separate the surfaces.
+        let pts = [
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 6.0),
+            Point::new(0.0, 10.0),
+        ];
+        let z = [0.0, 50.0, 100.0];
+        let wall = vec![
+            (Point::new(-50.0, 3.0), -1.0),
+            (Point::new(0.0, 3.0), -1.0),
+            (Point::new(50.0, 3.0), -1.0),
+        ];
+        let s = Shepard::with_barriers(&pts, &z, 10.0, ShepardParams::default(), &[wall]);
+        for p in [Point::new(0.0, 2.0), Point::new(0.001, 2.0)] {
+            assert_eq!(s.eval(p), Some(0.0), "{p:?}");
+        }
     }
 
     #[test]
