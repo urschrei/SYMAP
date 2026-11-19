@@ -8,7 +8,7 @@ use crate::error::Error;
 use crate::frame::{Frame, Layout};
 use crate::geom::{self, Extent, Point};
 use crate::interp::{PointIndex, Shepard, ShepardParams};
-use crate::symbols::{MAX_LEVELS, Strikes, Symbolism};
+use crate::symbols::{Strikes, Symbolism};
 
 /// White contour and boundary lines (electives 8 and 22).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -434,11 +434,6 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         });
 
     // Levels.
-    if !(1..=MAX_LEVELS).contains(&o.levels) {
-        return Err(at(format!(
-            "between 1 and {MAX_LEVELS} levels are supported"
-        )));
-    }
     let freq_values: Vec<f64> = match kind {
         MapKind::Conformant => {
             // One value per zone reference, not per outline.

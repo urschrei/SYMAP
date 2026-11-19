@@ -8,7 +8,7 @@ use crate::card;
 use crate::error::Error;
 use crate::frame::Margins;
 use crate::geom::Point;
-use crate::symbols::Symbolism;
+use crate::symbols::{MAX_LEVELS, Symbolism};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Elective {
@@ -22,7 +22,7 @@ pub enum Elective {
         min: Point,
         max: Point,
     },
-    /// 3: number of levels.
+    /// 3: number of levels, from 1 to `MAX_LEVELS`.
     Levels(usize),
     /// 4, 5: value range limits.
     ValueMin(f64),
@@ -62,8 +62,6 @@ pub enum Elective {
     /// 21: keep every character's computed value (the original wrote them to
     /// tape for other programs; here they can be downloaded).
     StoreValues,
-    /// 28: dot conformant map.
-    DotMap(DotMode),
     /// 22: keep contour lines even where they crowd out symbolism.
     ContinuousContours,
     /// 23: no symbol at invalid data points.
@@ -76,6 +74,8 @@ pub enum Elective {
     OverprintAlignment,
     /// 27: contour map even when conformolines are present.
     ForceContour,
+    /// 28: dot conformant map.
+    DotMap(DotMode),
     /// 31: fraction of the value range the surface may overshoot a local extreme.
     Extrapolation(Extrapolation),
     /// 32, 33: absolute limits of extrapolation.
@@ -255,10 +255,10 @@ pub fn parse(cards: &[(usize, &str)]) -> Result<Vec<Entry>, Error> {
             },
             3 => {
                 let v = need(0, "number of levels")?;
-                if v.fract() != 0.0 || !(1.0..=10.0).contains(&v) {
+                if v.fract() != 0.0 || !(1.0..=MAX_LEVELS as f64).contains(&v) {
                     return Err(Error::at(
                         ln,
-                        "elective 3: levels must be a whole number from 1 to 10",
+                        format!("elective 3: levels must be a whole number from 1 to {MAX_LEVELS}"),
                     ));
                 }
                 Elective::Levels(v as usize)
@@ -339,6 +339,12 @@ pub fn parse(cards: &[(usize, &str)]) -> Result<Vec<Entry>, Error> {
             19 => Elective::InvalidMin(need(0, "minimum")?),
             20 => Elective::InvalidMax(need(0, "maximum")?),
             21 => Elective::StoreValues,
+            22 => Elective::ContinuousContours,
+            23 => Elective::NoInvalidSymbol,
+            24 => Elective::NoNumericInterpretation,
+            25 => Elective::NoDataPoints,
+            26 => Elective::OverprintAlignment,
+            27 => Elective::ForceContour,
             28 => Elective::DotMap(
                 match (get(0).is_some_and(|v| v > 0.0), get(1).filter(|v| *v > 0.0)) {
                     (_, Some(k)) => DotMode::PerDot(k),
@@ -346,12 +352,6 @@ pub fn parse(cards: &[(usize, &str)]) -> Result<Vec<Entry>, Error> {
                     (false, None) => DotMode::ByLevel,
                 },
             ),
-            22 => Elective::ContinuousContours,
-            23 => Elective::NoInvalidSymbol,
-            24 => Elective::NoNumericInterpretation,
-            25 => Elective::NoDataPoints,
-            26 => Elective::OverprintAlignment,
-            27 => Elective::ForceContour,
             31 => Elective::Extrapolation(match get(0) {
                 None => Extrapolation::Blank,
                 Some(f) if (0.0..1.0).contains(&f) => Extrapolation::Fraction(f),
