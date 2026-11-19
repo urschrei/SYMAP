@@ -213,10 +213,20 @@ shows fare zones this way.
 
 ### A river as a barrier
 
-The importer leaves lines out, so a barrier is written by hand, as a
-D-BARRIERS package of vertices: down in columns 11–20, across in 21–30, and
-the strength in 31–40 (`-1.` for a barrier that interpolation cannot
-cross). Repeating the last vertex ends a barrier.
+```bash
+cargo run -- import examples/data/london-no2-2025.csv \
+  --lines-from examples/data/thames.geojson --lines both --line-symbol "~" > no2.sym
+```
+
+The river is drawn as a line legend of `~` and written as a barrier that
+interpolation cannot cross, so values on one bank do not spread to the
+other. `examples/data/thames.geojson` holds the river as a MultiLineString
+in longitude and latitude, as the data are. A barrier has no effect on a conformant map.
+
+Barriers can also be written by hand, as a D-BARRIERS package of vertices:
+down in columns 11–20, across in 21–30, and the strength in 31–40 (`-1.`
+for a barrier that interpolation cannot cross). Repeating the last vertex
+ends a barrier.
 
 ```text
 D-BARRIERS

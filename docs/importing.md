@@ -28,8 +28,9 @@ those, from `easting`, `east` or `x` and `northing`, `north` or `y`. Commas,
 semicolons or tabs separate fields, and fields may be quoted.
 
 **GeoJSON** holds a FeatureCollection (or a single Feature) of Point,
-MultiPoint, Polygon or MultiPolygon features; their properties supply the
-values. Lines are left out, with a warning.
+MultiPoint, Polygon, MultiPolygon, LineString or MultiLineString features;
+their properties supply the values. Lines are drawn on the map (see
+[Lines](#lines)).
 
 **TopoJSON** holds the same geometries in a topology, whose arcs already
 record which borders are shared. The first object is used unless
@@ -82,6 +83,29 @@ value goes on E-VALUES.
 With `--contour` or `--proximal`, each zone's value is placed at its
 centroid as a data point instead, and the zones themselves become the
 outline, so the map stops at the edge of the data.
+
+## Lines
+
+Lines (LineString and MultiLineString features) carry no values. They are
+drawn on a map of points or polygons, from the same file or from a second
+one given with `--lines-from` (in the browser, "Lines from another file"):
+
+```bash
+cargo run -- import stations.csv --lines-from thames.geojson --lines both --line-symbol "~" > no2.sym
+```
+
+- **Use.** `--lines legend` (the default) draws them as line legends in a
+  C-OTOLEGENDS package; `--lines barrier` writes them as impermeable
+  barriers to interpolation in a D-BARRIERS package; `--lines both` does
+  both; `--lines none` leaves them out. Barriers have no effect on a
+  conformant map, so none are written for one.
+- **Symbol.** `--line-symbol` sets the line legends' symbol: up to four
+  characters, struck over one another (`-` unless given).
+- **Placement.** Lines use the data's projection and frame; they do not
+  change the map's extent. They are simplified to within half a character,
+  and cut a character beyond the map's edges. A lines file must use the same
+  coordinates as the data: longitude and latitude for both, or the same
+  projection.
 
 ## Points
 

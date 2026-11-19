@@ -622,7 +622,7 @@ function wireLayout() {
 
 // Imports are occasional, so they use their own instance on the main thread.
 let importer = null;
-const pending = { text: '', name: '', result: null };
+const pending = { text: '', name: '', linesText: '', linesName: '', result: null };
 
 // `auto` lets the importer choose the map: conformant for polygons,
 // contour for points.
@@ -635,6 +635,10 @@ function importRequest(auto) {
     width: Number($('import-width').value) || 8,
     title: $('import-title').value.trim(),
     outline: $('import-outline').checked,
+    lines: $('import-lines').value,
+    lineSymbol: $('import-line-symbol').value,
+    linesText: pending.linesText,
+    linesName: pending.linesName,
   };
 }
 
@@ -654,8 +658,10 @@ function refreshImport(auto = false) {
   }
   sel.value = r.value;
   $('import-map').value = r.map;
+  $('import-lines-options').hidden = !(r.lines > 0 || pending.linesText);
   const notes = r.warnings.length ? ` ${r.warnings.map((w) => w[0].toUpperCase() + w.slice(1)).join('. ')}.` : '';
-  summary.textContent = `${r.count} ${r.unit}, mapping ${r.value}.${notes}`;
+  const lines = r.lines ? ` ${r.lines} ${r.lines === 1 ? 'line' : 'lines'}.` : '';
+  summary.textContent = `${r.count} ${r.unit}, mapping ${r.value}.${lines}${notes}`;
 }
 
 async function openImport(file) {
@@ -684,6 +690,9 @@ async function openImport(file) {
   $('import-source').textContent = file.name;
   $('import-value').replaceChildren();
   $('import-title').value = '';
+  pending.linesText = '';
+  pending.linesName = '';
+  $('import-lines-file').value = '';
   refreshImport(true);
   $('import-dialog').showModal();
 }
@@ -692,7 +701,13 @@ function wireImport() {
   const input = $('import-file');
   $('import').addEventListener('click', () => input.click());
   input.addEventListener('change', () => { if (input.files[0]) openImport(input.files[0]); input.value = ''; });
-  for (const id of ['import-value', 'import-map', 'import-width', 'import-title', 'import-outline']) {
+  $('import-lines-file').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    pending.linesText = f ? await f.text() : '';
+    pending.linesName = f ? f.name : '';
+    refreshImport();
+  });
+  for (const id of ['import-value', 'import-map', 'import-width', 'import-title', 'import-outline', 'import-lines', 'import-line-symbol']) {
     $(id).addEventListener('change', () => refreshImport());
   }
   $('import-cancel').addEventListener('click', () => $('import-dialog').close('cancel'));

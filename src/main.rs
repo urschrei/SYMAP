@@ -13,6 +13,9 @@ const USAGE: &str = "usage: symap [--asa | --values] [DECK | -]\n\
     --contour       a contour map (the default for points; zones give centroids)\n\
     --proximal      a proximal map\n\
     --object NAME   the TopoJSON object to read (the first)\n\
+    --lines-from F  lines (GeoJSON or TopoJSON) to add from a second file\n\
+    --lines USE     legend (the default), barrier, both or none\n\
+    --line-symbol S the line legends' symbol, up to four characters (-)\n\
     --width INCHES  printed width of the map (8)\n\
     --title TEXT    first title card (the file's name)\n\
     --no-outline    map the whole rectangle, not just around the points";
@@ -30,6 +33,7 @@ fn read_input(path: Option<&str>) -> std::io::Result<String> {
 fn import(args: &[String]) -> ExitCode {
     let mut opts = symap::import::Options::default();
     let mut path: Option<String> = None;
+    let mut lines_from: Option<String> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let mut next = |name: &str| {
@@ -46,6 +50,13 @@ fn import(args: &[String]) -> ExitCode {
                     .map_err(|_| format!("--width: '{v}' is not a number"))
             }),
             "--object" => next("--object").map(|v| opts.object = Some(v)),
+            "--lines-from" => next("--lines-from").map(|v| lines_from = Some(v)),
+            "--line-symbol" => next("--line-symbol").map(|v| opts.line_symbol = v),
+            "--lines" => next("--lines").and_then(|v| {
+                symap::import::LineUse::parse(&v)
+                    .map(|l| opts.lines = l)
+                    .ok_or_else(|| format!("--lines: '{v}' is not legend, barrier, both or none"))
+            }),
             "--contour" | "--proximal" | "--conformant" => {
                 opts.map = symap::import::MapType::parse(&a[2..]);
                 Ok(())
@@ -66,6 +77,18 @@ fn import(args: &[String]) -> ExitCode {
         }
     }
     opts.source = path.clone().filter(|p| p != "-");
+    if let Some(f) = &lines_from {
+        match std::fs::read_to_string(f) {
+            Ok(t) => {
+                opts.lines_text = Some(t);
+                opts.lines_source = Some(f.clone());
+            }
+            Err(e) => {
+                eprintln!("symap import: {f}: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
     let text = match read_input(path.as_deref()) {
         Ok(t) => t,
         Err(e) => {

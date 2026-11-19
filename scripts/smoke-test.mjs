@@ -60,11 +60,15 @@ const points = 'name,lat,lon,value\nA,51.52,-0.15,48\nB,51.52,-0.12,28\nC,51.45,
 await page.setInputFiles('#import-file', { name: 'points.csv', mimeType: 'text/csv', buffer: Buffer.from(points) });
 await page.waitForSelector('#import-dialog[open]', { timeout: 10000 });
 const summary = await page.textContent('#import-summary');
+const river = '{"type":"Feature","properties":{"name":"River"},"geometry":{"type":"LineString","coordinates":[[-0.4,51.45],[-0.12,51.5],[0.1,51.47]]}}';
+await page.setInputFiles('#import-lines-file', { name: 'river.geojson', mimeType: 'application/geo+json', buffer: Buffer.from(river) });
+await page.waitForFunction(() => document.getElementById('import-summary').textContent.includes('1 line'), null, { timeout: 10000 });
 await page.click('#import-create');
 await page.waitForFunction(() => document.getElementById('deck').value.startsWith('# Made by symap import'), null, { timeout: 10000 });
 await page.waitForTimeout(500);
 const imported = await page.$$eval('#messages li.error', (l) => l.length);
-check(summary.startsWith('4 points, mapping value') && imported === 0, `points import into a deck that runs (${summary.trim()})`);
+const withLines = await page.$eval('#deck', (d) => d.value.includes('C-OTOLEGENDS'));
+check(summary.startsWith('4 points, mapping value') && imported === 0 && withLines, `points and a lines file import into a deck that runs (${summary.trim()})`);
 
 const square = (x, v) => `{"type":"Feature","properties":{"name":"Z${v}","v":${v}},"geometry":{"type":"Polygon","coordinates":[[[${x},51.4],[${x + 0.1},51.4],[${x + 0.1},51.5],[${x},51.5],[${x},51.4]]]}}`;
 const zones = `{"type":"FeatureCollection","features":[${square(-0.2, 1)},${square(-0.1, 2)}]}`;

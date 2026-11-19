@@ -51,6 +51,9 @@ pub enum Geom {
         outer: Vec<Ring>,
         holes: Vec<Ring>,
     },
+    /// The parts of a LineString or MultiLineString (open paths, held as
+    /// rings are).
+    Line(Vec<Ring>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -228,12 +231,16 @@ fn read_geojson(doc: &Value) -> Result<Source, Error> {
                 }
                 push(Geom::Polygon { outer, holes });
             }
+            (Some("LineString"), Some(c)) => {
+                push(Geom::Line(vec![Ring::Coords(positions(c, &what)?)]));
+            }
+            (Some("MultiLineString"), Some(c)) => push(Geom::Line(rings(c)?)),
             _ => other += 1,
         }
     }
     if other > 0 {
         src.warnings.push(format!(
-            "{other} features that are neither points nor polygons were left out"
+            "{other} features without point, line or polygon geometry were left out"
         ));
     }
     Ok(src)
@@ -363,12 +370,20 @@ fn read_topojson(doc: &Value, object: Option<&str>) -> Result<Source, Error> {
                 }
                 push(Geom::Polygon { outer, holes });
             }
+            Some("LineString") => {
+                push(Geom::Line(vec![ring(
+                    g.get("arcs").unwrap_or(&Value::Null),
+                )?]));
+            }
+            Some("MultiLineString") => {
+                push(Geom::Line(rings(g.get("arcs").unwrap_or(&Value::Null))?));
+            }
             _ => other += 1,
         }
     }
     if other > 0 {
         src.warnings.push(format!(
-            "{other} geometries that are neither points nor polygons were left out"
+            "{other} geometries without point, line or polygon geometry were left out"
         ));
     }
     if objects.len() > 1 && object.is_none() {

@@ -28,7 +28,8 @@ struck darker tones. `--values` writes the values computed for maps that use
 elective 21, as CSV.
 
 `symap import` makes a deck from points or polygons with values, in CSV,
-GeoJSON or TopoJSON:
+GeoJSON or TopoJSON, with lines such as rivers drawn on the map or used as
+barriers:
 
 ```bash
 cargo run -- import stations.csv --value no2 > no2.sym

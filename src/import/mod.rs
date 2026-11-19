@@ -48,6 +48,47 @@ impl MapType {
     }
 }
 
+/// What to do with lines (LineString features).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineUse {
+    /// Line legends (C-OTOLEGENDS), drawn on the map.
+    Legend,
+    /// Impermeable barriers to interpolation (D-BARRIERS).
+    Barrier,
+    Both,
+    /// Left out.
+    Omit,
+}
+
+impl LineUse {
+    pub fn name(self) -> &'static str {
+        match self {
+            LineUse::Legend => "legend",
+            LineUse::Barrier => "barrier",
+            LineUse::Both => "both",
+            LineUse::Omit => "none",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<LineUse> {
+        match s {
+            "legend" => Some(LineUse::Legend),
+            "barrier" => Some(LineUse::Barrier),
+            "both" => Some(LineUse::Both),
+            "none" => Some(LineUse::Omit),
+            _ => None,
+        }
+    }
+
+    fn draws(self) -> bool {
+        matches!(self, LineUse::Legend | LineUse::Both)
+    }
+
+    fn bars(self) -> bool {
+        matches!(self, LineUse::Barrier | LineUse::Both)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Options {
     /// The property or column to map; the first numeric one if `None`.
@@ -66,6 +107,14 @@ pub struct Options {
     pub source: Option<String>,
     /// The TopoJSON object to read; the first if `None`.
     pub object: Option<String>,
+    /// What to do with lines, in the file or in `lines_text`.
+    pub lines: LineUse,
+    /// The line legends' symbol: up to four characters, struck over one
+    /// another.
+    pub line_symbol: String,
+    /// Lines from a second file (GeoJSON or TopoJSON), and its name.
+    pub lines_text: Option<String>,
+    pub lines_source: Option<String>,
 }
 
 impl Default for Options {
@@ -78,6 +127,10 @@ impl Default for Options {
             outline: true,
             source: None,
             object: None,
+            lines: LineUse::Legend,
+            line_symbol: "-".into(),
+            lines_text: None,
+            lines_source: None,
         }
     }
 }
@@ -94,6 +147,8 @@ pub struct Imported {
     /// How many points or zones were mapped, and which.
     pub count: usize,
     pub unit: &'static str,
+    /// How many line features were used.
+    pub lines: usize,
     pub warnings: Vec<String>,
 }
 
@@ -272,6 +327,56 @@ fn card_text(s: &str) -> String {
         .to_uppercase()
 }
 
+/// A ring or path's coordinates: given directly, or joined from arcs.
+fn path(arcs: &[Vec<P>], r: &Ring) -> Vec<P> {
+    match r {
+        Ring::Coords(c) => c.clone(),
+        Ring::Arcs(refs) => {
+            let mut out: Vec<P> = Vec::new();
+            for &a in refs {
+                let arc = &arcs[topology::arc_index(a)];
+                let pts: Box<dyn Iterator<Item = &P>> = if a < 0 {
+                    Box::new(arc.iter().rev())
+                } else {
+                    Box::new(arc.iter())
+                };
+                for &p in pts {
+                    if out.last() != Some(&p) {
+                        out.push(p);
+                    }
+                }
+            }
+            out
+        }
+    }
+}
+
+/// The parts of a path (in grid coordinates) that fall within `bounds`
+/// (down and across, from 0), each keeping the vertex beyond the edge so
+/// that it reaches the edge.
+fn clip(pts: &[P], (down, across): P) -> Vec<Vec<P>> {
+    let inside = |p: P| p.0 >= 0.0 && p.0 <= down && p.1 >= 0.0 && p.1 <= across;
+    let overlaps = |a: P, b: P| {
+        a.0.min(b.0) <= down && a.0.max(b.0) >= 0.0 && a.1.min(b.1) <= across && a.1.max(b.1) >= 0.0
+    };
+    let mut parts: Vec<Vec<P>> = Vec::new();
+    let mut cur: Vec<P> = Vec::new();
+    for w in pts.windows(2) {
+        if inside(w[0]) || inside(w[1]) || overlaps(w[0], w[1]) {
+            if cur.is_empty() {
+                cur.push(w[0]);
+            }
+            cur.push(w[1]);
+        } else if !cur.is_empty() {
+            parts.push(std::mem::take(&mut cur));
+        }
+    }
+    if cur.len() >= 2 {
+        parts.push(cur);
+    }
+    parts
+}
+
 /// One mapped item: a point, or a zone's rings (arc references).
 struct Item {
     value: f64,
@@ -285,11 +390,80 @@ struct Item {
 /// that maps them.
 pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
     let src = read::read(text, opts.object.as_deref())?;
-    let mut warnings = src.warnings;
-    let (polys, points): (Vec<&Feature>, Vec<&Feature>) = src
+    let mut warnings = src.warnings.clone();
+    let (line_features, mapped): (Vec<&Feature>, Vec<&Feature>) = src
         .features
         .iter()
+        .partition(|f| matches!(f.geom, Geom::Line(_)));
+    let (polys, points): (Vec<&Feature>, Vec<&Feature>) = mapped
+        .into_iter()
         .partition(|f| matches!(f.geom, Geom::Polygon { .. }));
+    if polys.is_empty() && points.is_empty() {
+        return Err(Error::general(if line_features.is_empty() {
+            "the file has no points or polygons to map".to_string()
+        } else {
+            "the file has only lines; lines are drawn on a map of points or polygons, \
+             given as a second file"
+                .to_string()
+        }));
+    }
+    // Lines, as paths in source coordinates, with their names: from this
+    // file and from a second one.
+    let mut lines: Vec<(Option<String>, Vec<P>)> = Vec::new();
+    let line_name = |f: &Feature| {
+        name_field(&[f]).and_then(|k| {
+            f.props
+                .iter()
+                .find(|(n, _)| *n == k)
+                .and_then(|(_, p)| match p {
+                    Prop::Text(t) => Some(t.clone()),
+                    _ => None,
+                })
+        })
+    };
+    for f in &line_features {
+        if let Geom::Line(parts) = &f.geom {
+            for r in parts {
+                lines.push((line_name(f), path(&src.arcs, r)));
+            }
+        }
+    }
+    let mut line_count = line_features.len();
+    let mut lines_geographic: Option<bool> = None;
+    if let Some(t) = &opts.lines_text {
+        let other = read::read(t, None)?;
+        let n = other.features.len();
+        let mut used = 0;
+        let mut in_range = true;
+        for f in &other.features {
+            if let Geom::Line(parts) = &f.geom {
+                used += 1;
+                for r in parts {
+                    let p = path(&other.arcs, r);
+                    in_range &= p.iter().all(|q| q.0.abs() <= 180.0 && q.1.abs() <= 90.0);
+                    lines.push((line_name(f), p));
+                }
+            }
+        }
+        if used < n {
+            warnings.push(format!(
+                "{} features in the lines file that are not lines were left out",
+                n - used
+            ));
+        }
+        if used == 0 {
+            return Err(Error::general("the lines file has no lines"));
+        }
+        line_count += used;
+        lines_geographic = Some(in_range);
+    }
+    if opts.lines == LineUse::Omit {
+        if line_count > 0 {
+            warnings.push(format!("{line_count} lines were left out"));
+        }
+        lines.clear();
+        line_count = 0;
+    }
     let zonal = !polys.is_empty();
     if zonal && !points.is_empty() {
         warnings.push(format!(
@@ -378,6 +552,8 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
                     }
                 }
             }
+            // Lines are drawn on the map but do not set its extent.
+            Geom::Line(_) => {}
         }
     }
     for (arc, _) in src.arcs.iter().zip(&used_arcs).filter(|(_, u)| **u) {
@@ -391,6 +567,13 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
              projected coordinates"
                 .into(),
         );
+    }
+    if lines_geographic.is_some_and(|g| g != geographic) {
+        return Err(Error::general(if geographic {
+            "the lines file is not in longitude and latitude, as the data are"
+        } else {
+            "the lines file is in longitude and latitude, but the data are projected"
+        }));
     }
     let (lo, hi) = raw.iter().fold(
         ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN)),
@@ -586,6 +769,47 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         }
     }
 
+    // Lines: projected, simplified to half a character, and clipped to a
+    // character beyond the map's edges.
+    let symbol: String = opts.line_symbol.chars().take(4).collect();
+    if opts.lines.draws() && symbol.chars().any(|c| c.is_control()) {
+        return Err(Error::general(
+            "the line symbol must be printable characters",
+        ));
+    }
+    let mut line_parts: Vec<Vec<P>> = Vec::new();
+    for (_, pts) in &lines {
+        let projected: Vec<P> = pts.iter().map(|&p| project(p)).collect();
+        let simple = topology::douglas_peucker(&projected, tolerance);
+        let on_grid: Vec<P> = simple
+            .into_iter()
+            .map(grid)
+            .map(|(d, a)| (d + char_width, a + char_width))
+            .collect();
+        for part in clip(
+            &on_grid,
+            (
+                down_extent + 2.0 * char_width,
+                across_extent + 2.0 * char_width,
+            ),
+        ) {
+            line_parts.push(
+                part.into_iter()
+                    .map(|(d, a)| (d - char_width, a - char_width))
+                    .collect(),
+            );
+        }
+    }
+    if !lines.is_empty() && line_parts.is_empty() {
+        warnings.push("the lines all lie outside the map".into());
+    }
+    let barriers = opts.lines.bars() && !line_parts.is_empty();
+    if barriers && map == MapType::Conformant {
+        warnings.push("barriers have no effect on a conformant map, so none were written".into());
+    }
+    let barriers = barriers && map != MapType::Conformant;
+    let legends = opts.lines.draws() && !line_parts.is_empty();
+
     // The deck.
     let source = opts
         .source
@@ -620,6 +844,35 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
                 "Each zone's value is placed at its centroid as a data point.",
             );
         }
+    }
+    if legends || barriers {
+        let from = opts
+            .lines_source
+            .as_deref()
+            .map(|s| s.rsplit(['/', '\\']).next().unwrap_or(s))
+            .map_or(String::new(), |s| format!(" from {s}"));
+        let how = match (legends, barriers) {
+            (true, true) => format!(
+                "drawn as line legends ({symbol}) and written as impermeable barriers \
+                 (strength -1)"
+            ),
+            (true, false) => format!("drawn as line legends ({symbol})"),
+            _ => "written as impermeable barriers (strength -1)".into(),
+        };
+        let mut names: Vec<&str> = lines.iter().filter_map(|(n, _)| n.as_deref()).collect();
+        names.dedup();
+        let named = if names.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", names.join(", "))
+        };
+        comment(
+            &mut out,
+            &format!(
+                "{line_count} lines{from}{named} are {how}, simplified to within {tolerance:.3} \
+                 and cut a character beyond the map's edges."
+            ),
+        );
     }
     for w in &warnings {
         comment(&mut out, &format!("Note: {w}."));
@@ -688,6 +941,23 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         }
         let _ = writeln!(out, "99999");
     }
+    if legends {
+        let _ = writeln!(out, "C-OTOLEGENDS");
+        for part in &line_parts {
+            write_ring(&mut out, &format!("     {symbol:<4}L"), part)?;
+        }
+        let _ = writeln!(out, "99999");
+    }
+    if barriers {
+        // Repeating a barrier's last vertex ends it.
+        let _ = writeln!(out, "D-BARRIERS");
+        for part in &line_parts {
+            for &p in part.iter().chain(part.last()) {
+                let _ = writeln!(out, "{}{}", coordinate_card("", p)?, field_with(-1.0, 1)?);
+            }
+        }
+        let _ = writeln!(out, "99999");
+    }
     let _ = writeln!(out, "E-VALUES");
     for i in &items {
         let _ = writeln!(out, "{:10}{}", "", field(i.value)?);
@@ -745,6 +1015,7 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         map,
         count: n,
         unit,
+        lines: line_count,
         warnings,
     })
 }
@@ -829,9 +1100,13 @@ mod tests {
         };
         let imp = import(gj, &opts).unwrap();
         assert_eq!(imp.count, 4);
-        assert_eq!(
-            imp.warnings,
-            ["1 features that are neither points nor polygons were left out"]
+        // The Liffey is a line, drawn as a line legend.
+        assert!(imp.warnings.is_empty(), "{:?}", imp.warnings);
+        assert_eq!(imp.lines, 1);
+        assert!(imp.deck.contains("\nC-OTOLEGENDS\n     -   L"));
+        assert!(
+            imp.deck
+                .contains("1 lines (Liffey) are drawn as line legends (-)")
         );
         assert!(imp.deck.contains("   31\n   36\n   37\n"));
         let run = crate::run(&imp.deck).unwrap();
@@ -1020,6 +1295,131 @@ mod tests {
         assert_eq!((imp.count, imp.map), (2, MapType::Conformant));
         let m = &crate::run(&imp.deck).unwrap().maps[0];
         assert!(m.to_text().contains("CONFORMANT MAP"));
+    }
+
+    /// A river across the CSV's sites, west to east, as GeoJSON.
+    const RIVER: &str = r#"{"type": "FeatureCollection", "features": [
+      {"type": "Feature", "properties": {"name": "River"},
+       "geometry": {"type": "LineString", "coordinates":
+         [[-0.40, 51.45], [-0.25, 51.47], [-0.12, 51.50], [0.00, 51.49], [0.20, 51.47]]}},
+      {"type": "Feature", "properties": {"name": "Far"},
+       "geometry": {"type": "LineString", "coordinates": [[5.0, 48.0], [5.1, 48.1]]}},
+      {"type": "Feature", "properties": {"name": "Gauge"},
+       "geometry": {"type": "Point", "coordinates": [-0.1, 51.5]}}
+    ]}"#;
+
+    #[test]
+    fn lines_from_a_second_file() {
+        let mut opts = Options {
+            lines_text: Some(RIVER.into()),
+            lines_source: Some("river.geojson".into()),
+            line_symbol: "~".into(),
+            ..Options::default()
+        };
+        let imp = import(CSV, &opts).unwrap();
+        assert_eq!(imp.lines, 2);
+        assert!(
+            imp.deck
+                .contains("from river.geojson (River, Far) are drawn as line legends (~)")
+        );
+        assert!(imp.deck.contains("\nC-OTOLEGENDS\n     ~   L"));
+        assert!(!imp.deck.contains("D-BARRIERS"));
+        assert!(
+            imp.warnings
+                .contains(&"1 features in the lines file that are not lines were left out".into())
+        );
+        // The far line is clipped away; the river crosses the map.
+        let legends = imp.deck.lines().filter(|l| l.starts_with("     ~   L"));
+        assert_eq!(legends.count(), 1);
+        let m = &crate::run(&imp.deck).unwrap().maps[0];
+        assert!(m.to_text().contains('~'));
+
+        opts.lines = LineUse::Barrier;
+        let imp = import(CSV, &opts).unwrap();
+        assert!(!imp.deck.contains("C-OTOLEGENDS"));
+        let bars: Vec<&str> = imp
+            .deck
+            .split("D-BARRIERS\n")
+            .nth(1)
+            .unwrap()
+            .lines()
+            .take_while(|l| *l != "99999")
+            .collect();
+        assert!(bars.iter().all(|l| l.ends_with("-1.0")));
+        // Repeating the last vertex ends the barrier.
+        assert_eq!(bars[bars.len() - 1], bars[bars.len() - 2]);
+        crate::run(&imp.deck).unwrap();
+
+        opts.lines = LineUse::Omit;
+        let imp = import(CSV, &opts).unwrap();
+        assert!(!imp.deck.contains("C-OTOLEGENDS") && !imp.deck.contains("D-BARRIERS"));
+        assert!(imp.warnings.contains(&"2 lines were left out".into()));
+    }
+
+    #[test]
+    fn lines_must_match_the_data() {
+        let projected = r#"{"type": "Feature", "properties": {},
+          "geometry": {"type": "LineString", "coordinates": [[530000, 180000], [531000, 181000]]}}"#;
+        let opts = Options {
+            lines_text: Some(projected.into()),
+            ..Options::default()
+        };
+        assert!(
+            import(CSV, &opts)
+                .unwrap_err()
+                .message
+                .contains("not in longitude and latitude")
+        );
+        // A file of lines alone has nothing to map.
+        assert!(
+            import(
+                RIVER.replace("Point", "LineString").as_str(),
+                &Options::default()
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn barriers_are_left_off_conformant_maps() {
+        let opts = Options {
+            lines_text: Some(RIVER.into()),
+            lines: LineUse::Both,
+            ..Options::default()
+        };
+        let imp = import(&zones_geojson(), &opts).unwrap();
+        assert!(imp.deck.contains("C-OTOLEGENDS") && !imp.deck.contains("D-BARRIERS"));
+        assert!(
+            imp.warnings
+                .iter()
+                .any(|w| w.starts_with("barriers have no effect"))
+        );
+        crate::run(&imp.deck).unwrap();
+    }
+
+    #[test]
+    fn topojson_lines() {
+        let t = r#"{"type": "Topology",
+          "objects": {"sites": {"type": "GeometryCollection", "geometries": [
+            {"type": "Point", "coordinates": [-0.2, 51.4], "properties": {"v": 1}},
+            {"type": "Point", "coordinates": [0.0, 51.6], "properties": {"v": 2}},
+            {"type": "Point", "coordinates": [-0.1, 51.5], "properties": {"v": 3}},
+            {"type": "LineString", "arcs": [0, 1], "properties": {"name": "Brook"}}
+          ]}},
+          "arcs": [[[-0.2, 51.5], [-0.1, 51.45]], [[-0.1, 51.45], [0.0, 51.5]]]}"#;
+        let imp = import(t, &Options::default()).unwrap();
+        assert_eq!((imp.count, imp.lines), (3, 1));
+        let legend: Vec<&str> = imp
+            .deck
+            .split("C-OTOLEGENDS\n")
+            .nth(1)
+            .unwrap()
+            .lines()
+            .take_while(|l| *l != "99999")
+            .collect();
+        // The two arcs join into one line of three vertices.
+        assert_eq!(legend.len(), 3);
+        crate::run(&imp.deck).unwrap();
     }
 
     #[test]

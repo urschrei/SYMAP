@@ -372,3 +372,25 @@ fn tutorial_deck_matches_its_csv() {
     assert!(text.contains(" MINIMUM         10.00      20.00      30.00      40.00\n"));
     assert!(text.contains("SCALE:"));
 }
+
+#[test]
+fn tutorial_river_as_a_barrier() {
+    // docs/your-own-data.md, "A river as a barrier".
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/data");
+    let csv = std::fs::read_to_string(format!("{dir}/london-no2-2025.csv")).unwrap();
+    let opts = symap::import::Options {
+        lines_text: Some(std::fs::read_to_string(format!("{dir}/thames.geojson")).unwrap()),
+        lines_source: Some("thames.geojson".into()),
+        lines: symap::import::LineUse::Both,
+        line_symbol: "~".into(),
+        ..Default::default()
+    };
+    let imp = symap::import::import(&csv, &opts).unwrap();
+    assert!(
+        imp.deck
+            .contains("(River Thames) are drawn as line legends (~)")
+    );
+    assert!(imp.deck.contains("\nD-BARRIERS\n"));
+    let m = &run(&imp.deck).unwrap().maps[0];
+    assert!(m.to_text().contains('~'));
+}

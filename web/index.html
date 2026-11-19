@@ -170,7 +170,7 @@
       <p class="import-help">Points (CSV, GeoJSON or TopoJSON) or polygons (GeoJSON or TopoJSON)
         with a numeric value become ordinary cards, which you can then edit: polygons become
         zones whose shared borders are simplified together, and points become data points
-        with an outline around them.</p>
+        with an outline around them. Lines become line legends or barriers.</p>
       <label>Value to map <select id="import-value"></select></label>
       <label>Map
         <select id="import-map">
@@ -182,6 +182,19 @@
       <label>Width in inches <input id="import-width" type="number" min="2" max="30" step="0.5" value="8"></label>
       <label>Title <input id="import-title" type="text" maxlength="80"></label>
       <label class="check"><input id="import-outline" type="checkbox" checked> Outline around the points (contour and proximal maps)</label>
+      <label>Lines from another file (GeoJSON or TopoJSON, optional)
+        <input id="import-lines-file" type="file" accept=".geojson,.topojson,.json"></label>
+      <div class="import-lines" id="import-lines-options" hidden>
+        <label>Use the lines as
+          <select id="import-lines">
+            <option value="legend" selected>Lines drawn on the map</option>
+            <option value="barrier">Barriers to interpolation</option>
+            <option value="both">Both</option>
+            <option value="none">Left out</option>
+          </select>
+        </label>
+        <label>Symbol <input id="import-line-symbol" type="text" maxlength="4" value="-" size="4"></label>
+      </div>
       <p class="import-summary" id="import-summary" aria-live="polite"></p>
       <div class="import-actions">
         <button id="import-cancel" type="button">Cancel</button>
