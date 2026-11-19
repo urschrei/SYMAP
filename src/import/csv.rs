@@ -1,22 +1,29 @@
 //! A CSV reader for the importer: a header row, then one record per line.
 //! Commas, semicolons or tabs separate fields (whichever the header uses
-//! most); fields may be quoted, with `""` for a quote.
+//! most, with commas first on a tie); fields may be quoted, with `""` for a
+//! quote. Lines end with LF, CRLF or CR.
 
 use crate::Error;
 
 pub struct Table {
     pub header: Vec<String>,
+    /// The line the header is on.
+    pub header_line: usize,
     /// Each record with the line it starts on.
     pub rows: Vec<(usize, Vec<String>)>,
 }
 
 pub fn parse(text: &str) -> Result<Table, Error> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-    let first = text.lines().next().unwrap_or("");
+    let first = text
+        .split(['\n', '\r'])
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("");
     let sep = [',', ';', '\t']
         .into_iter()
-        .max_by_key(|&c| first.matches(c).count())
-        .unwrap_or(',');
+        .enumerate()
+        .max_by_key(|&(i, c)| (first.matches(c).count(), std::cmp::Reverse(i)))
+        .map_or(',', |(_, c)| c);
     let mut records = Vec::new();
     let mut field = String::new();
     let mut record = Vec::new();
@@ -40,8 +47,8 @@ pub fn parse(text: &str) -> Result<Table, Error> {
                 field.push('\n');
             }
             c if c == sep && !quoted => record.push(std::mem::take(&mut field)),
-            '\r' if !quoted => {}
-            '\n' => {
+            '\r' if !quoted && chars.peek() == Some(&'\n') => {}
+            '\n' | '\r' if !quoted => {
                 record.push(std::mem::take(&mut field));
                 records.push((start, std::mem::take(&mut record)));
                 line += 1;
@@ -59,12 +66,13 @@ pub fn parse(text: &str) -> Result<Table, Error> {
     }
     records.retain(|(_, r)| r.iter().any(|f| !f.trim().is_empty()));
     let mut records = records.into_iter();
-    let Some((_, header)) = records.next() else {
+    let Some((header_line, header)) = records.next() else {
         return Err(Error::general("CSV: the file is empty"));
     };
     let header = header.into_iter().map(|h| h.trim().to_string()).collect();
     Ok(Table {
         header,
+        header_line,
         rows: records.collect(),
     })
 }
@@ -91,5 +99,18 @@ mod tests {
         let t = parse("a;b\n1,5;2\n").unwrap();
         assert_eq!(t.rows[0].1, ["1,5", "2"]);
         assert!(parse("a,b\n\"open,1\n").is_err());
+    }
+
+    #[test]
+    fn blank_first_line_and_cr_line_ends() {
+        let t = parse("\nx,y,v\n0,0,5\n").unwrap();
+        assert_eq!((t.header_line, t.header.len()), (2, 3));
+        let t = parse("x,y,v\r0,0,5\r1,1,2\r").unwrap();
+        assert_eq!(t.header, ["x", "y", "v"]);
+        assert_eq!(t.rows[1], (3, vec!["1".into(), "1".into(), "2".into()]));
+        let t = parse("a,b\r\"x\ry\",2\r").unwrap();
+        assert_eq!(t.rows[0].1, ["x\ry", "2"]);
+        // A tie in separator counts goes to the comma.
+        assert_eq!(parse("a,b;c\n1,2;3\n").unwrap().header, ["a", "b;c"]);
     }
 }

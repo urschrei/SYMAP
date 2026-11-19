@@ -109,7 +109,7 @@ fn read_csv(text: &str) -> Result<Source, Error> {
             (Some(x), Some(y)) => (x, y, false),
             _ => {
                 return Err(Error::at(
-                    1,
+                    t.header_line,
                     format!(
                         "CSV: no coordinate columns; expected longitude and latitude \
                          (lon, lat) or easting and northing (x, y), found: {}",
