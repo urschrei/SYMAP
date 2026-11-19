@@ -18,6 +18,7 @@
 //! extrapolation fraction, 0.1),
 //! 34 and 35 (initial and maximum search radius) and 36 (4 to 10 points).
 
+use crate::deck::{Barrier, Strength};
 use crate::geom::Point;
 use rstar::RTree;
 use rstar::primitives::GeomWithData;
@@ -122,8 +123,7 @@ pub struct Shepard {
     /// The slope correction, unless elective 31 turns it off or the data
     /// have no gradient.
     slope: Option<Slope>,
-    /// D-BARRIERS: polylines with a strength at each vertex (-1 impermeable).
-    barriers: Vec<Vec<(Point, f64)>>,
+    barriers: Vec<Barrier>,
 }
 
 /// Each data point's gradient, and the distance that damps extrapolation
@@ -158,7 +158,7 @@ impl Shepard {
         values: &[f64],
         area: f64,
         params: ShepardParams,
-        barriers: &[Vec<(Point, f64)>],
+        barriers: &[Barrier],
     ) -> Self {
         assert_eq!(points.len(), values.len());
         assert!(!points.is_empty());
@@ -213,7 +213,7 @@ impl Shepard {
         let mut extra = 0.0;
         for barrier in &self.barriers {
             let (mut crossings, mut strength, mut blocked) = (0, 0.0_f64, false);
-            for w in barrier.windows(2) {
+            for w in barrier.vertices.windows(2) {
                 let ((a, sa), (b, sb)) = (w[0], w[1]);
                 let (o1, o2) = (orient(p, q, a), orient(p, q, b));
                 let (o3, o4) = (orient(a, b, p), orient(a, b, q));
@@ -221,12 +221,13 @@ impl Shepard {
                 // segments that meet there, not both and not neither.
                 if (o1 > 0.0) != (o2 > 0.0) && o3 * o4 < 0.0 {
                     crossings += 1;
-                    if sa < 0.0 || sb < 0.0 {
-                        blocked = true;
-                    } else {
-                        // Strength varies linearly between vertices.
-                        let t = o1 / (o1 - o2);
-                        strength = strength.max(sa + t * (sb - sa));
+                    match (sa, sb) {
+                        (Strength::Permeable(sa), Strength::Permeable(sb)) => {
+                            // Strength varies linearly between vertices.
+                            let t = o1 / (o1 - o2);
+                            strength = strength.max(sa + t * (sb - sa));
+                        }
+                        (Strength::Impermeable, _) | (_, Strength::Impermeable) => blocked = true,
                     }
                 }
             }
@@ -531,10 +532,16 @@ mod tests {
         ];
         let z = [0.0, 50.0, 100.0];
         let wall = vec![
-            (Point::new(-50.0, 3.0), -1.0),
-            (Point::new(50.0, 3.0), -1.0),
+            (Point::new(-50.0, 3.0), Strength::Impermeable),
+            (Point::new(50.0, 3.0), Strength::Impermeable),
         ];
-        let s = Shepard::new(&pts, &z, 10.0, ShepardParams::default(), &[wall]);
+        let s = Shepard::new(
+            &pts,
+            &z,
+            10.0,
+            ShepardParams::default(),
+            &[Barrier { vertices: wall }],
+        );
         for x in [0.5, 1.5, 2.5, 2.9] {
             assert_eq!(s.eval(Point::new(0.0, x)), Some(0.0), "x = {x}");
         }
@@ -553,11 +560,17 @@ mod tests {
         ];
         let z = [0.0, 50.0, 100.0];
         let wall = vec![
-            (Point::new(-50.0, 3.0), -1.0),
-            (Point::new(0.0, 3.0), -1.0),
-            (Point::new(50.0, 3.0), -1.0),
+            (Point::new(-50.0, 3.0), Strength::Impermeable),
+            (Point::new(0.0, 3.0), Strength::Impermeable),
+            (Point::new(50.0, 3.0), Strength::Impermeable),
         ];
-        let s = Shepard::new(&pts, &z, 10.0, ShepardParams::default(), &[wall]);
+        let s = Shepard::new(
+            &pts,
+            &z,
+            10.0,
+            ShepardParams::default(),
+            &[Barrier { vertices: wall }],
+        );
         for p in [Point::new(0.0, 2.0), Point::new(0.001, 2.0)] {
             assert_eq!(s.eval(p), Some(0.0), "{p:?}");
         }
@@ -569,12 +582,18 @@ mod tests {
         let z = [0.0, 100.0];
         let at = |strength: f64| {
             let wall = vec![
-                (Point::new(-50.0, 3.0), strength),
-                (Point::new(50.0, 3.0), strength),
+                (Point::new(-50.0, 3.0), Strength::Permeable(strength)),
+                (Point::new(50.0, 3.0), Strength::Permeable(strength)),
             ];
-            Shepard::new(&pts, &z, 10.0, ShepardParams::default(), &[wall])
-                .eval(Point::new(0.0, 2.0))
-                .unwrap()
+            Shepard::new(
+                &pts,
+                &z,
+                10.0,
+                ShepardParams::default(),
+                &[Barrier { vertices: wall }],
+            )
+            .eval(Point::new(0.0, 2.0))
+            .unwrap()
         };
         let none = Shepard::new(&pts, &z, 10.0, ShepardParams::default(), &[])
             .eval(Point::new(0.0, 2.0))
@@ -584,13 +603,19 @@ mod tests {
         // Crossing twice (a loop the line enters and leaves) has no effect.
         let pts2 = [Point::new(0.0, 0.0), Point::new(0.0, 6.0)];
         let loop_ = vec![
-            (Point::new(-1.0, 2.0), -1.0),
-            (Point::new(-1.0, 4.0), -1.0),
-            (Point::new(1.0, 4.0), -1.0),
-            (Point::new(1.0, 2.0), -1.0),
-            (Point::new(-1.0, 2.0), -1.0),
+            (Point::new(-1.0, 2.0), Strength::Impermeable),
+            (Point::new(-1.0, 4.0), Strength::Impermeable),
+            (Point::new(1.0, 4.0), Strength::Impermeable),
+            (Point::new(1.0, 2.0), Strength::Impermeable),
+            (Point::new(-1.0, 2.0), Strength::Impermeable),
         ];
-        let s = Shepard::new(&pts2, &z, 10.0, ShepardParams::default(), &[loop_]);
+        let s = Shepard::new(
+            &pts2,
+            &z,
+            10.0,
+            ShepardParams::default(),
+            &[Barrier { vertices: loop_ }],
+        );
         assert_eq!(
             s.eval(Point::new(0.0, 1.0)),
             Shepard::new(&pts2, &z, 10.0, ShepardParams::default(), &[]).eval(Point::new(0.0, 1.0))

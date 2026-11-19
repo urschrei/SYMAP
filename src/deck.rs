@@ -67,10 +67,19 @@ pub enum Legend {
     },
 }
 
-/// One D-BARRIERS barrier: vertices and strengths (-1 is impermeable).
+/// One D-BARRIERS barrier: vertices and their strengths.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Barrier {
-    pub vertices: Vec<(Point, f64)>,
+    pub vertices: Vec<(Point, Strength)>,
+}
+
+/// A barrier vertex's strength. A negative strength on a card (normally -1)
+/// is impermeable.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Strength {
+    Impermeable,
+    /// Added, squared, to the squared distance across the barrier.
+    Permeable(f64),
 }
 
 /// The packages in effect when a map is drawn.
@@ -394,20 +403,26 @@ fn read_legends(p: &Package) -> Result<Vec<Legend>, Error> {
 
 /// A barrier vertex's strength: columns 31-40, or the third number of a
 /// free-format card. Blank is 0.
-fn barrier_strength(l: usize, c: &str) -> Result<f64, Error> {
+fn barrier_strength(l: usize, c: &str) -> Result<Strength, Error> {
     let bad = || Error::at(l, "unreadable barrier strength");
-    if card::fixed_pair(c).is_some() {
-        return Ok(card::field(c, 2).ok_or_else(bad)?.unwrap_or(0.0));
-    }
-    match c.split_whitespace().nth(2) {
-        None => Ok(0.0),
-        Some(t) => card::real_field(t).flatten().ok_or_else(bad),
-    }
+    let s = if card::fixed_pair(c).is_some() {
+        card::field(c, 2).ok_or_else(bad)?.unwrap_or(0.0)
+    } else {
+        match c.split_whitespace().nth(2) {
+            None => 0.0,
+            Some(t) => card::real_field(t).flatten().ok_or_else(bad)?,
+        }
+    };
+    Ok(if s < 0.0 {
+        Strength::Impermeable
+    } else {
+        Strength::Permeable(s)
+    })
 }
 
 fn read_barriers(p: &Package) -> Result<Vec<Barrier>, Error> {
     let mut out = Vec::new();
-    let mut cur: Vec<(Point, f64)> = Vec::new();
+    let mut cur: Vec<(Point, Strength)> = Vec::new();
     for (l, c) in p.data_cards() {
         let at = p.pair(l, c)?;
         let s = barrier_strength(l, c)?;
@@ -729,8 +744,15 @@ mod tests {
                  6 3\n\
                  99999\nF-MAP\n\n\n\n99999\n999999\n";
         let b = &Deck::parse(d).unwrap().maps[0].packages.barriers;
-        let s: Vec<f64> = b[0].vertices.iter().map(|v| v.1).collect();
-        assert_eq!(s, [-1.0, -1.0, 0.0]);
+        let s: Vec<Strength> = b[0].vertices.iter().map(|v| v.1).collect();
+        assert_eq!(
+            s,
+            [
+                Strength::Impermeable,
+                Strength::Impermeable,
+                Strength::Permeable(0.0)
+            ]
+        );
         for card in ["\x20                0.0       1.0       -1x", "5 2 x"] {
             let d = format!("D-BARRIERS\n{card}\n99999\n999999\n");
             let e = Deck::parse(&d).unwrap_err();
