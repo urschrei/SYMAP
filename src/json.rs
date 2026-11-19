@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn import_request() {
         let reply = to_json(&import(request(json!({
-            "text": "lon,lat,v\n-0.1,51.5,1\n-0.2,51.6,2\n0.0,51.4,3\n",
+            "text": "lon,lat,v\n-0.1,51.5,1\n-0.2,51.6,2\n0.0,51.6,3\n",
             "name": "a.csv", "map": "proximal", "width": 6
         }))));
         let deck = reply["deck"].as_str().unwrap();

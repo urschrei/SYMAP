@@ -115,7 +115,9 @@ cargo run -- import stations.csv --lines-from thames.geojson --lines both --line
 Points make a contour map by default, or a proximal map with `--proximal`.
 They become B-DATA POINTS to the nearest metre, with an A-OUTLINE around
 them: their convex hull, enlarged a little so that the outermost points are
-not on the line. `--no-outline` maps the whole rectangle instead.
+not on the line. `--no-outline` maps the whole rectangle instead. Points
+that lie within a character of a straight line get no outline, with a
+warning.
 
 ## What else the deck contains
 

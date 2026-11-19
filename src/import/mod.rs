@@ -247,7 +247,7 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         (lines, _, false) => lines,
     };
     let point_outline = if opts.outline && unit == Unit::Points {
-        let outline = point_outline(&items, sheet.margin);
+        let outline = point_outline(&items, sheet.margin, sheet.char_width);
         if outline.is_none() {
             warnings.push("the points are in a line, so no outline was drawn".into());
         }
@@ -533,11 +533,20 @@ fn zone_rings(
 }
 
 /// The outline around points: their convex hull, enlarged by part of the
-/// margin and closed. `None` if the points are in a line.
-fn point_outline(items: &[Item], margin: f64) -> Option<Vec<Point>> {
+/// margin and closed. `None` if the points are in a line: the hull is
+/// narrower than `char_width`, one character across.
+fn point_outline(items: &[Item], margin: f64, char_width: f64) -> Option<Vec<Point>> {
     let pts: Vec<Point> = items.iter().map(|i| i.point).collect();
     let h = hull(&pts);
     if h.len() < 3 {
+        return None;
+    }
+    // Width across the hull's longest diagonal.
+    let diameter = h
+        .iter()
+        .flat_map(|p| h.iter().map(move |q| p.dist(*q)))
+        .fold(0.0, f64::max);
+    if 2.0 * geometry::area(&h) < char_width * diameter {
         return None;
     }
     let (cd, ca) = h
@@ -679,12 +688,21 @@ mod tests {
 
     #[test]
     fn points_in_a_line_are_noted_in_the_deck() {
-        let imp = import("x,y,v\n0,0,1\n1,0,2\n2,0,3\n", &Options::default()).unwrap();
-        assert!(!imp.deck.contains("A-OUTLINE"));
-        assert!(
-            imp.deck
-                .contains("# Note: the points are in a line, so no outline was drawn.")
-        );
+        // Exactly in a line, then nearly: the hull is a sliver narrower than
+        // a character.
+        for csv in [
+            "x,y,v\n0,0,1\n1,0,2\n2,0,3\n",
+            "x,y,v\n0,0,1\n1,1,2\n2,2,3\n",
+        ] {
+            let imp = import(csv, &Options::default()).unwrap();
+            assert!(!imp.deck.contains("A-OUTLINE"), "{}", imp.deck);
+            assert!(
+                imp.deck
+                    .contains("# Note: the points are in a line, so no outline was drawn.")
+            );
+        }
+        let imp = import("x,y,v\n0,0,1\n1,1,2\n2,0,3\n", &Options::default()).unwrap();
+        assert!(imp.deck.contains("A-OUTLINE"));
     }
 
     #[test]
