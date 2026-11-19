@@ -1,10 +1,11 @@
 //! Readers for the importer: CSV, GeoJSON and TopoJSON, all to features
 //! with properties and point or polygon geometry.
 
+use super::csv;
 use super::topology::P;
-use super::{csv, json};
 use crate::Error;
-use json::Value;
+use geojson::{GeoJson, GeometryValue, Position};
+use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Prop {
@@ -28,7 +29,7 @@ impl Prop {
 
     fn from_json(v: &Value) -> Prop {
         match v {
-            Value::Number(n) => Prop::Number(*n),
+            Value::Number(n) => n.as_f64().map_or(Prop::Missing, Prop::Number),
             Value::String(s) => Prop::from_text(s),
             Value::Bool(b) => Prop::Text(b.to_string()),
             _ => Prop::Missing,
@@ -89,10 +90,11 @@ pub fn read(text: &str, object: Option<&str>) -> Result<Source, Error> {
     if !t.starts_with('{') {
         return read_csv(text);
     }
-    let doc = json::parse(t)?;
+    let doc: Value =
+        serde_json::from_str(t).map_err(|e| Error::at(e.line(), format!("JSON: {e}")))?;
     match doc.get("type").and_then(Value::as_str) {
         Some("Topology") => read_topojson(&doc, object),
-        Some("FeatureCollection" | "Feature") => read_geojson(&doc),
+        Some("FeatureCollection" | "Feature") => read_geojson(doc),
         _ => Err(Error::general(
             "expected GeoJSON (a FeatureCollection or a Feature) or TopoJSON (a Topology)",
         )),
@@ -178,63 +180,67 @@ fn polygon(rings: &[Ring]) -> (Vec<Ring>, Vec<Ring>) {
     (it.next().into_iter().collect(), it.collect())
 }
 
-fn read_geojson(doc: &Value) -> Result<Source, Error> {
-    let features: Vec<&Value> = match doc.get("type").and_then(Value::as_str) {
-        Some("FeatureCollection") => doc
-            .get("features")
-            .and_then(Value::as_array)
-            .ok_or_else(|| Error::general("GeoJSON: a FeatureCollection needs a features array"))?
-            .iter()
-            .collect(),
-        _ => vec![doc],
+fn xy(p: &Position) -> P {
+    (p[0], p[1])
+}
+
+fn coords(ps: &[Position]) -> Ring {
+    Ring::Coords(ps.iter().map(xy).collect())
+}
+
+fn read_geojson(doc: Value) -> Result<Source, Error> {
+    let features = match serde_json::from_value::<GeoJson>(doc)
+        .map_err(|e| Error::general(format!("GeoJSON: {e}")))?
+    {
+        GeoJson::FeatureCollection(fc) => fc.features,
+        GeoJson::Feature(f) => vec![f],
+        GeoJson::Geometry(_) => unreachable!("the type was checked"),
     };
     let mut src = Source::default();
     let mut other = 0;
-    for (k, f) in features.iter().enumerate() {
-        let what = format!("GeoJSON feature {}", k + 1);
-        let props = props_of(f.get("properties"));
-        let g = f.get("geometry");
-        let coords = g.and_then(|g| g.get("coordinates"));
-        let rings = |v: &Value| -> Result<Vec<Ring>, Error> {
-            v.as_array()
-                .ok_or_else(|| Error::general(format!("{what}: expected rings")))?
-                .iter()
-                .map(|r| positions(r, &what).map(Ring::Coords))
-                .collect()
-        };
+    for f in features {
+        let props: Vec<(String, Prop)> = f
+            .properties
+            .iter()
+            .flatten()
+            .map(|(k, v)| (k.clone(), Prop::from_json(v)))
+            .collect();
         let mut push = |geom| {
             src.features.push(Feature {
                 props: props.clone(),
                 geom,
             })
         };
-        match (
-            g.and_then(|g| g.get("type")).and_then(Value::as_str),
-            coords,
-        ) {
-            (Some("Point"), Some(c)) => push(Geom::Point(position(c, &what)?)),
-            (Some("MultiPoint"), Some(c)) => {
-                for p in positions(c, &what)? {
-                    push(Geom::Point(p));
+        let polygon = |rings: &[Vec<Position>]| -> (Vec<Ring>, Vec<Ring>) {
+            let mut it = rings.iter().map(|r| coords(r));
+            (it.next().into_iter().collect(), it.collect())
+        };
+        match f.geometry.map(|g| g.value) {
+            Some(GeometryValue::Point { coordinates }) => push(Geom::Point(xy(&coordinates))),
+            Some(GeometryValue::MultiPoint { coordinates }) => {
+                for p in &coordinates {
+                    push(Geom::Point(xy(p)));
                 }
             }
-            (Some("Polygon"), Some(c)) => {
-                let (outer, holes) = polygon(&rings(c)?);
+            Some(GeometryValue::Polygon { coordinates }) => {
+                let (outer, holes) = polygon(&coordinates);
                 push(Geom::Polygon { outer, holes });
             }
-            (Some("MultiPolygon"), Some(Value::Array(ps))) => {
+            Some(GeometryValue::MultiPolygon { coordinates }) => {
                 let (mut outer, mut holes) = (Vec::new(), Vec::new());
-                for p in ps {
-                    let (o, h) = polygon(&rings(p)?);
+                for p in &coordinates {
+                    let (o, h) = polygon(p);
                     outer.extend(o);
                     holes.extend(h);
                 }
                 push(Geom::Polygon { outer, holes });
             }
-            (Some("LineString"), Some(c)) => {
-                push(Geom::Line(vec![Ring::Coords(positions(c, &what)?)]));
+            Some(GeometryValue::LineString { coordinates }) => {
+                push(Geom::Line(vec![coords(&coordinates)]));
             }
-            (Some("MultiLineString"), Some(c)) => push(Geom::Line(rings(c)?)),
+            Some(GeometryValue::MultiLineString { coordinates }) => {
+                push(Geom::Line(coordinates.iter().map(|l| coords(l)).collect()));
+            }
             _ => other += 1,
         }
     }
@@ -252,14 +258,14 @@ fn read_topojson(doc: &Value, object: Option<&str>) -> Result<Source, Error> {
         _ => return Err(Error::general("TopoJSON: the topology has no objects")),
     };
     let (name, obj) = match object {
-        Some(n) => objects.iter().find(|(k, _)| k == n).ok_or_else(|| {
+        Some(n) => objects.get_key_value(n).ok_or_else(|| {
             let names: Vec<&str> = objects.iter().map(|(k, _)| k.as_str()).collect();
             Error::general(format!(
                 "TopoJSON: no object '{n}'; objects: {}",
                 names.join(", ")
             ))
         })?,
-        None => &objects[0],
+        None => objects.iter().next().expect("objects is not empty"),
     };
     // Quantized topologies store positions as integers to be scaled and
     // translated, and arcs as deltas.
@@ -279,7 +285,7 @@ fn read_topojson(doc: &Value, object: Option<&str>) -> Result<Source, Error> {
     for (i, arc) in doc
         .get("arcs")
         .and_then(Value::as_array)
-        .unwrap_or(&[])
+        .map_or(&[][..], Vec::as_slice)
         .iter()
         .enumerate()
     {
@@ -363,7 +369,11 @@ fn read_topojson(doc: &Value, object: Option<&str>) -> Result<Source, Error> {
             }
             Some("MultiPolygon") => {
                 let (mut outer, mut holes) = (Vec::new(), Vec::new());
-                for p in g.get("arcs").and_then(Value::as_array).unwrap_or(&[]) {
+                for p in g
+                    .get("arcs")
+                    .and_then(Value::as_array)
+                    .map_or(&[][..], Vec::as_slice)
+                {
                     let (o, h) = polygon(&rings(p)?);
                     outer.extend(o);
                     holes.extend(h);

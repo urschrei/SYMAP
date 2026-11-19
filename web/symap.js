@@ -1,38 +1,14 @@
-// Loader for symap.wasm: a dependency-free module exporting
-// symap_alloc / symap_run / symap_import / symap_result_ptr (see src/wasm.rs).
+// Loader for the SYMAP WebAssembly module. The bindings in pkg/ are made
+// by wasm-bindgen (see scripts/build-web.sh and src/wasm.rs).
+import init, { run, importData } from './pkg/symap.js';
 
-export async function loadSymap(url) {
-  let instance;
-  try {
-    ({ instance } = await WebAssembly.instantiateStreaming(fetch(url), {}));
-  } catch {
-    // Servers that send the wrong MIME type for .wasm.
-    const bytes = await (await fetch(url)).arrayBuffer();
-    ({ instance } = await WebAssembly.instantiate(bytes, {}));
-  }
-  const w = instance.exports;
-  const enc = new TextEncoder();
-  const dec = new TextDecoder();
-  return {
-    /** Run a deck; returns the parsed JSON result. */
-    run(text) {
-      const input = enc.encode(text);
-      const ptr = w.symap_alloc(input.length);
-      new Uint8Array(w.memory.buffer, ptr, input.length).set(input);
-      const n = w.symap_run(ptr, input.length);
-      const out = new Uint8Array(w.memory.buffer, w.symap_result_ptr(), n);
-      return JSON.parse(dec.decode(out));
-    },
-    /** Make a deck from points: see json::import for the request. */
-    importData(request) {
-      const input = enc.encode(JSON.stringify(request));
-      const ptr = w.symap_alloc(input.length);
-      new Uint8Array(w.memory.buffer, ptr, input.length).set(input);
-      const n = w.symap_import(ptr, input.length);
-      const out = new Uint8Array(w.memory.buffer, w.symap_result_ptr(), n);
-      return JSON.parse(dec.decode(out));
-    },
-  };
+/**
+ * Load the module. `run(text)` runs a deck; `importData(request)` makes a
+ * deck from data (see json::ImportRequest). Both return plain objects.
+ */
+export async function loadSymap() {
+  await init();
+  return { run, importData };
 }
 
 /**
@@ -40,12 +16,12 @@ export async function loadSymap(url) {
  * flight: while one runs, only the latest request waits, so typing never
  * queues up stale work. Falls back to the main thread without workers.
  */
-export async function createRunner(wasmUrl) {
+export async function createRunner() {
   let worker;
   try {
     worker = new Worker(new URL('worker.js', import.meta.url), { type: 'module' });
   } catch {
-    const symap = await loadSymap(wasmUrl);
+    const symap = await loadSymap();
     return { run: async (text) => symap.run(text) };
   }
   let nextId = 0;

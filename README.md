@@ -6,7 +6,7 @@ Computer Graphics and Spatial Analysis by Howard Fisher and Betty Benson. It
 reads SYMAP card decks and prints maps made of overprinted characters,
 following the 1971 program manual.
 
-The core is written in Rust with no dependencies. It runs from the command
+The core is written in Rust. It runs from the command
 line, or compiled to WebAssembly in the browser at
 <https://urschrei.github.io/SYMAP/>.
 

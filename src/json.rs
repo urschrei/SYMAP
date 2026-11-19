@@ -1,231 +1,260 @@
-//! A JSON rendering of a run, for the browser front end.
+//! The browser front end's view of a run or an import, as serde types.
 //!
-//! The crate has no dependencies, so this is a small hand-written encoder.
-//! Shape:
+//! Shape of a run:
 //!
 //! ```text
 //! { "ok": true,
 //!   "diagnostics": [{"line": 3, "message": "..."}],
-//!   "maps": [{ "kind": "contour", "titles": [..3], "warnings": [..],
-//!              "rows": 40, "cols": 80, "linesPerInch": 8, "colsPerInch": 10,
+//!   "maps": [{ "kind": "contour", "rows": 40, "cols": 80, "linesPerInch": 8,
+//!              "colsPerInch": 10, "titles": [..3], "warnings": [..],
 //!              "lines": [{"plain": "...", "strikes": ["...", ...]}],
-//!              "asa": "..." }] }
+//!              "valuesCsv": "...", "asa": "..." }] }
 //! { "ok": false, "error": {"line": 12, "message": "..."} }
 //! ```
 
 use crate::deck::MapKind;
 use crate::map::PrintedMap;
-use std::fmt::Write;
+use serde::{Deserialize, Serialize};
 
-fn string(out: &mut String, s: &str) {
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", c as u32);
-            }
-            c => out.push(c),
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum Reply<T> {
+    Ok(T),
+    Err { ok: bool, error: ErrorReply },
+}
+
+#[derive(Serialize)]
+pub struct ErrorReply {
+    pub line: Option<usize>,
+    pub message: String,
+}
+
+impl<T> From<Result<T, crate::Error>> for Reply<T> {
+    fn from(r: Result<T, crate::Error>) -> Self {
+        match r {
+            Ok(v) => Reply::Ok(v),
+            Err(e) => Reply::Err {
+                ok: false,
+                error: ErrorReply {
+                    line: e.line,
+                    message: e.message,
+                },
+            },
         }
     }
-    out.push('"');
 }
 
-fn list<T>(
-    out: &mut String,
-    items: impl IntoIterator<Item = T>,
-    mut f: impl FnMut(&mut String, T),
-) {
-    out.push('[');
-    for (i, item) in items.into_iter().enumerate() {
-        if i > 0 {
-            out.push(',');
+#[derive(Serialize)]
+pub struct RunReply {
+    pub ok: bool,
+    pub diagnostics: Vec<ErrorReply>,
+    pub maps: Vec<MapReply>,
+}
+
+#[derive(Serialize)]
+pub struct LineReply {
+    pub plain: String,
+    pub strikes: Vec<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub eject: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MapReply {
+    pub kind: &'static str,
+    pub rows: usize,
+    pub cols: usize,
+    pub lines_per_inch: f64,
+    pub cols_per_inch: f64,
+    pub titles: [String; 3],
+    pub warnings: Vec<String>,
+    pub lines: Vec<LineReply>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub values_csv: Option<String>,
+    pub asa: String,
+}
+
+impl From<&PrintedMap> for MapReply {
+    fn from(m: &PrintedMap) -> Self {
+        MapReply {
+            kind: match m.kind {
+                MapKind::Contour => "contour",
+                MapKind::Proximal => "proximal",
+                MapKind::Conformant => "conformant",
+            },
+            rows: m.frame.rows,
+            cols: m.frame.cols,
+            lines_per_inch: m.frame.lines_per_inch,
+            cols_per_inch: m.frame.cols_per_inch,
+            titles: m.titles.clone(),
+            warnings: m.warnings.clone(),
+            lines: m
+                .page()
+                .into_iter()
+                .map(|l| LineReply {
+                    plain: l.plain,
+                    strikes: l.strikes,
+                    eject: l.eject,
+                })
+                .collect(),
+            values_csv: m.values_csv(),
+            asa: m.to_asa(),
         }
-        f(out, item);
-    }
-    out.push(']');
-}
-
-fn line_no(out: &mut String, line: Option<usize>) {
-    match line {
-        Some(n) => {
-            let _ = write!(out, "{n}");
-        }
-        None => out.push_str("null"),
     }
 }
 
-fn map(out: &mut String, m: &PrintedMap) {
-    let kind = match m.kind {
-        MapKind::Contour => "contour",
-        MapKind::Proximal => "proximal",
-        MapKind::Conformant => "conformant",
-    };
-    let _ = write!(
-        out,
-        "{{\"kind\":\"{kind}\",\"rows\":{},\"cols\":{},\"linesPerInch\":{},\"colsPerInch\":{},\"titles\":",
-        m.frame.rows, m.frame.cols, m.frame.lines_per_inch, m.frame.cols_per_inch
-    );
-    list(out, &m.titles, |o, t| string(o, t));
-    out.push_str(",\"warnings\":");
-    list(out, &m.warnings, |o, w| string(o, w));
-    out.push_str(",\"lines\":");
-    list(out, m.page(), |o, l| {
-        o.push_str("{\"plain\":");
-        string(o, &l.plain);
-        o.push_str(",\"strikes\":");
-        list(o, &l.strikes, |o, s| string(o, s));
-        if l.eject {
-            o.push_str(",\"eject\":true");
-        }
-        o.push('}');
-    });
-    if let Some(csv) = m.values_csv() {
-        out.push_str(",\"valuesCsv\":");
-        string(out, &csv);
-    }
-    out.push_str(",\"asa\":");
-    string(out, &m.to_asa());
-    out.push('}');
+/// Run a deck. Never fails: errors become `{"ok": false, ...}`.
+pub fn run(text: &str) -> Reply<RunReply> {
+    crate::run(text)
+        .map(|r| RunReply {
+            ok: true,
+            diagnostics: r
+                .diagnostics
+                .into_iter()
+                .map(|d| ErrorReply {
+                    line: Some(d.line),
+                    message: d.message,
+                })
+                .collect(),
+            maps: r.maps.iter().map(MapReply::from).collect(),
+        })
+        .into()
 }
 
-/// Run a deck and describe the result as JSON. Never fails: errors become
-/// `{"ok": false, ...}`.
-pub fn run(text: &str) -> String {
-    let mut out = String::new();
-    match crate::run(text) {
-        Ok(r) => {
-            out.push_str("{\"ok\":true,\"diagnostics\":");
-            list(&mut out, &r.diagnostics, |o, d| {
-                o.push_str("{\"line\":");
-                line_no(o, Some(d.line));
-                o.push_str(",\"message\":");
-                string(o, &d.message);
-                o.push('}');
-            });
-            out.push_str(",\"maps\":");
-            list(&mut out, &r.maps, map);
-            out.push('}');
-        }
-        Err(e) => error(&mut out, &e),
-    }
-    out
+/// An import request; only `text` is required.
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ImportRequest {
+    pub text: Option<String>,
+    pub name: Option<String>,
+    pub value: Option<String>,
+    /// "contour", "proximal" or "conformant".
+    pub map: Option<String>,
+    pub width: Option<f64>,
+    pub title: Option<String>,
+    pub outline: Option<bool>,
+    /// The TopoJSON object.
+    pub object: Option<String>,
+    /// "legend", "barrier", "both" or "none".
+    pub lines: Option<String>,
+    pub line_symbol: Option<String>,
+    pub lines_text: Option<String>,
+    pub lines_name: Option<String>,
 }
 
-fn error(out: &mut String, e: &crate::Error) {
-    out.push_str("{\"ok\":false,\"error\":{\"line\":");
-    line_no(out, e.line);
-    out.push_str(",\"message\":");
-    string(out, &e.message);
-    out.push_str("}}");
+#[derive(Serialize)]
+pub struct ImportReply {
+    pub ok: bool,
+    pub deck: String,
+    pub fields: Vec<String>,
+    pub value: String,
+    pub map: &'static str,
+    pub count: usize,
+    /// "points" or "zones".
+    pub unit: &'static str,
+    pub lines: usize,
+    pub warnings: Vec<String>,
 }
 
-/// Import points or zones and describe the deck made as JSON. The request
-/// is a JSON object: `{"text": "...", "name": "file.csv", "value": "no2",
-/// "map": "contour" | "proximal" | "conformant", "width": 8, "title": "...",
-/// "outline": true, "object": "...", "lines": "legend" | "barrier" | "both" |
-/// "none", "lineSymbol": "~", "linesText": "...", "linesName": "river.geojson"};
-/// only `text` is required. The reply is `{"ok": true, "deck": "...",
-/// "fields": [...], "value": "...", "map": "...", "count": n,
-/// "unit": "points" | "zones", "lines": n, "warnings": [...]}` or an error as
-/// for `run`.
-pub fn import(request: &str) -> String {
-    use crate::import::{self, json::Value};
-    let mut out = String::new();
-    let result = import::json::parse(request).and_then(|req| {
+/// Import points, zones and lines, and describe the deck made.
+pub fn import(req: ImportRequest) -> Reply<ImportReply> {
+    use crate::import;
+    let some = |v: Option<String>| v.filter(|v| !v.is_empty());
+    let result = (|| {
         let text = req
-            .get("text")
-            .and_then(Value::as_str)
+            .text
             .ok_or_else(|| crate::Error::general("the request has no text"))?;
-        let s = |k| req.get(k).and_then(Value::as_str).map(str::to_string);
         let mut opts = import::Options {
-            value: s("value").filter(|v| !v.is_empty()),
-            title: s("title").filter(|v| !v.is_empty()),
-            source: s("name"),
-            object: s("object").filter(|v| !v.is_empty()),
-            map: s("map").as_deref().and_then(import::MapType::parse),
-            lines_text: s("linesText").filter(|v| !v.is_empty()),
-            lines_source: s("linesName"),
+            value: some(req.value),
+            title: some(req.title),
+            source: req.name,
+            object: some(req.object),
+            map: req.map.as_deref().and_then(import::MapType::parse),
+            lines_text: some(req.lines_text),
+            lines_source: req.lines_name,
             ..import::Options::default()
         };
-        if let Some(l) = s("lines").as_deref().and_then(import::LineUse::parse) {
+        if let Some(l) = req.lines.as_deref().and_then(import::LineUse::parse) {
             opts.lines = l;
         }
-        if let Some(sym) = s("lineSymbol").filter(|v| !v.is_empty()) {
+        if let Some(sym) = some(req.line_symbol) {
             opts.line_symbol = sym;
         }
-        if let Some(w) = req.get("width").and_then(Value::as_f64) {
+        if let Some(w) = req.width {
             opts.width = w;
         }
-        if let Some(Value::Bool(b)) = req.get("outline") {
-            opts.outline = *b;
+        if let Some(b) = req.outline {
+            opts.outline = b;
         }
-        import::import(text, &opts)
-    });
-    match result {
-        Ok(imp) => {
-            out.push_str("{\"ok\":true,\"deck\":");
-            string(&mut out, &imp.deck);
-            out.push_str(",\"fields\":");
-            list(&mut out, &imp.fields, |o, f| string(o, f));
-            out.push_str(",\"value\":");
-            string(&mut out, &imp.value);
-            let _ = write!(
-                out,
-                ",\"map\":\"{}\",\"count\":{},\"unit\":\"{}\",\"lines\":{},\"warnings\":",
-                imp.map.name(),
-                imp.count,
-                imp.unit,
-                imp.lines
-            );
-            list(&mut out, &imp.warnings, |o, w| string(o, w));
-            out.push('}');
-        }
-        Err(e) => error(&mut out, &e),
-    }
-    out
+        import::import(&text, &opts)
+    })();
+    result
+        .map(|imp| ImportReply {
+            ok: true,
+            deck: imp.deck,
+            fields: imp.fields,
+            value: imp.value,
+            map: imp.map.name(),
+            count: imp.count,
+            unit: imp.unit,
+            lines: imp.lines,
+            warnings: imp.warnings,
+        })
+        .into()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::{Value, json};
 
-    #[test]
-    fn import_request() {
-        let req = r#"{"text": "lon,lat,v\n-0.1,51.5,1\n-0.2,51.6,2\n0.0,51.4,3\n", "name": "a.csv", "map": "proximal", "width": 6}"#;
-        let reply = import(req);
-        assert!(reply.starts_with("{\"ok\":true,\"deck\":\"# Made by symap import from a.csv"));
-        assert!(reply.contains(
-            "\"fields\":[\"v\"],\"value\":\"v\",\"map\":\"proximal\",\"count\":3,\"unit\":\"points\",\"lines\":0,\"warnings\":[]}"
-        ));
-        assert!(reply.contains("   31\\n   36\\n   37"));
-        let parsed = crate::import::json::parse(&reply).unwrap();
-        let deck = parsed.get("deck").unwrap().as_str().unwrap();
-        crate::run(deck).unwrap();
-        assert!(import("{}").contains("\"message\":\"the request has no text\""));
-        assert!(import("not json").starts_with("{\"ok\":false"));
+    fn to_json<T: Serialize>(v: &T) -> Value {
+        serde_json::to_value(v).unwrap()
+    }
+
+    fn request(v: Value) -> ImportRequest {
+        serde_json::from_value(v).unwrap()
     }
 
     #[test]
-    fn escapes() {
-        let mut s = String::new();
-        string(&mut s, "a\"b\\c\nd\u{1}é█");
-        assert_eq!(s, r#""a\"b\\c\nd\u0001é█""#);
+    fn import_request() {
+        let reply = to_json(&import(request(json!({
+            "text": "lon,lat,v\n-0.1,51.5,1\n-0.2,51.6,2\n0.0,51.4,3\n",
+            "name": "a.csv", "map": "proximal", "width": 6
+        }))));
+        let deck = reply["deck"].as_str().unwrap();
+        assert!(deck.starts_with("# Made by symap import from a.csv"));
+        assert!(deck.contains("   31\n   36\n   37"));
+        assert_eq!(
+            reply,
+            json!({"ok": true, "deck": deck, "fields": ["v"], "value": "v",
+                   "map": "proximal", "count": 3, "unit": "points", "lines": 0,
+                   "warnings": []})
+        );
+        crate::run(deck).unwrap();
+        assert_eq!(
+            to_json(&import(request(json!({})))),
+            json!({"ok": false, "error": {"line": null, "message": "the request has no text"}})
+        );
     }
 
     #[test]
     fn success_and_error_shapes() {
         let deck = "B-DATA POINTS\n0 0\n0 10\n10 0\n10 10\n99999\nE-VALUES\n1\n2\n3\n4\n99999\n\
                     F-MAP\nT\n\n\n    1       1.0       1.0\n99999\n999999\n";
-        let j = run(deck);
-        assert!(j.starts_with("{\"ok\":true,\"diagnostics\":[],\"maps\":[{\"kind\":\"contour\",\"rows\":8,\"cols\":10,"));
-        assert!(j.contains("\"strikes\":[") && j.contains("\"asa\":\"1MAP SCALE"));
+        let j = to_json(&run(deck));
+        assert_eq!(j["ok"], true);
+        assert_eq!(j["diagnostics"], json!([]));
+        let m = &j["maps"][0];
         assert_eq!(
-            run("hello\n"),
+            (m["kind"].as_str(), m["rows"].as_u64(), m["cols"].as_u64()),
+            (Some("contour"), Some(8), Some(10))
+        );
+        assert!(m["lines"][0]["strikes"].is_array());
+        assert!(m["asa"].as_str().unwrap().starts_with("1MAP SCALE"));
+        assert_eq!(
+            serde_json::to_string(&run("hello\n")).unwrap(),
             r#"{"ok":false,"error":{"line":1,"message":"expected a package header, found \"hello\""}}"#
         );
     }

@@ -1,7 +1,7 @@
 // Runs SYMAP off the main thread. Messages: {id, text} -> {id, result}.
 import { loadSymap } from './symap.js';
 
-const ready = loadSymap(new URL('symap.wasm', import.meta.url));
+const ready = loadSymap();
 
 self.onmessage = async ({ data }) => {
   try {

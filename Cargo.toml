@@ -8,6 +8,15 @@ license = "BlueOak-1.0.0"
 publish = false
 
 [dependencies]
+geojson = { version = "1.0.0", default-features = false }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+
+# The browser boundary. wasm-bindgen is pinned exactly: the wasm-bindgen CLI
+# that builds the site (scripts/build-web.sh, CI) must be the same version.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.130"
+serde-wasm-bindgen = "0.6.5"
 
 [lib]
 name = "symap"
@@ -25,4 +34,6 @@ opt-level = "s"
 lto = true
 codegen-units = 1
 panic = "abort"
-strip = true
+# wasm-bindgen needs the target_features section; it strips the rest.
+strip = false
+debug = false
