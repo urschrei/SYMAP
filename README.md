@@ -83,6 +83,9 @@ its sources, licences and simplifications.
 
 ## Documentation
 
+The first two guides are also published with the
+[browser version](https://urschrei.github.io/SYMAP/docs/your-own-data.html).
+
 - [Mapping your own data](docs/your-own-data.md): a worked example from a
   CSV file to a printed map, and recipes for other kinds of data.
 - [Writing decks](docs/decks.md): packages, electives and symbolism.

@@ -89,6 +89,13 @@ const selected = await page.$eval('#deck', (d) => d.value.slice(d.selectionStart
 check(selected === 'not a card', 'an error links to its card');
 
 check(errors.length === 0, `no console or page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+for (const doc of ['importing', 'your-own-data']) {
+  const res = await page.goto(new URL(`docs/${doc}.html`, base).href);
+  const heading = res.ok() ? await page.$eval('main h1', (h) => h.textContent) : '';
+  const css = await page.$eval('main', (m) => getComputedStyle(m).maxWidth);
+  check(res.ok() && heading.length > 0 && css !== 'none', `docs/${doc}.html: "${heading}"`);
+}
+
 await browser.close();
 if (failures.length) {
   console.error(`${failures.length} check(s) failed`);
