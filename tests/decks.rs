@@ -321,6 +321,18 @@ fn elective_28_dot_maps() {
 }
 
 #[test]
+fn electives_that_do_not_apply_are_reported() {
+    let m = run(&square(["1", "2", "3", "4"], "   28\n"))
+        .unwrap()
+        .maps
+        .remove(0);
+    assert!(m.warnings.iter().any(|w| w.contains("elective 28")));
+    let d = deck("example-1-20.sym").replace("    2            0.0", "   11\n    2            0.0");
+    let m = run(&d).unwrap().maps.remove(0);
+    assert!(m.warnings.iter().any(|w| w.contains("elective 11")));
+}
+
+#[test]
 fn legends_draw_map_furniture() {
     let m = &run(&deck("furniture.sym")).unwrap().maps[0];
     let text = m.to_text();

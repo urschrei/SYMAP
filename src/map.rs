@@ -365,6 +365,16 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
     } else {
         MapKind::Contour
     };
+    match kind {
+        MapKind::Conformant if o.print_values => warnings.push(
+            "elective 11 prints the values of data points, which a conformant map does not \
+             have; ignored"
+                .into(),
+        ),
+        MapKind::Contour | MapKind::Proximal if o.dots.is_some() => warnings
+            .push("elective 28 makes a dot map of conformant zones; ignored on this map".into()),
+        MapKind::Contour | MapKind::Proximal | MapKind::Conformant => {}
+    }
     if kind != MapKind::Conformant && pk.points.is_empty() {
         return Err(at(
             "a contour or proximal map needs a B-DATA POINTS package".into(),
