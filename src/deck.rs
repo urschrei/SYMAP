@@ -168,13 +168,21 @@ enum Kind {
     Map,
 }
 
-fn header(card: &str) -> Option<Result<Kind, String>> {
+/// What a card outside a package is.
+enum Header {
+    Known(Kind),
+    /// Shaped like a header (`X-NAME` or `X1-NAME`) but not one SYMAP has.
+    Unknown(String),
+    Other,
+}
+
+fn header(card: &str) -> Header {
     let name: String = card::cols(card, 1, 22)
         .chars()
         .filter(|c| !c.is_whitespace())
         .collect::<String>()
         .to_ascii_uppercase();
-    Some(Ok(match name.as_str() {
+    Header::Known(match name.as_str() {
         "A-OUTLINE" => Kind::Outline,
         "A-CONFORMOLINES" => Kind::Conformolines,
         "B-DATAPOINTS" => Kind::DataPoints,
@@ -185,16 +193,18 @@ fn header(card: &str) -> Option<Result<Kind, String>> {
         "F-MAP" => Kind::Map,
         _ => {
             let b = name.as_bytes();
-            let dash = b.iter().position(|&c| c == b'-')?;
-            if (1..=2).contains(&dash)
-                && b[0].is_ascii_uppercase()
-                && b.get(dash + 1).is_some_and(u8::is_ascii_uppercase)
-            {
-                return Some(Err(card.trim().to_string()));
-            }
-            return None;
+            let shaped = b.iter().position(|&c| c == b'-').is_some_and(|dash| {
+                (1..=2).contains(&dash)
+                    && b[0].is_ascii_uppercase()
+                    && b.get(dash + 1).is_some_and(u8::is_ascii_uppercase)
+            });
+            return if shaped {
+                Header::Unknown(card.trim().to_string())
+            } else {
+                Header::Other
+            };
         }
-    }))
+    })
 }
 
 fn is_terminator(card: &str) -> bool {
@@ -563,7 +573,7 @@ impl Deck {
                         continue;
                     }
                     match header(c) {
-                        Some(Ok(kind)) => {
+                        Header::Known(kind) => {
                             let per_unit = match (card::field(c, 2), card::field(c, 3)) {
                                 (Ok(Some(r)), Ok(Some(k))) if r > 0.0 && k > 0.0 => (r, k),
                                 (Ok(None), Ok(None)) => (1.0, 1.0),
@@ -585,10 +595,10 @@ impl Deck {
                                 cards: Vec::new(),
                             });
                         }
-                        Some(Err(name)) => {
+                        Header::Unknown(name) => {
                             return Err(Error::at(ln, format!("unknown package {name:?}")));
                         }
-                        None => {
+                        Header::Other => {
                             return Err(Error::at(
                                 ln,
                                 format!("expected a package header, found {:?}", c.trim()),
