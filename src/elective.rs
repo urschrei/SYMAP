@@ -171,11 +171,11 @@ impl Elective {
 
 /// Read the elective number and fields of one card, fixed or free format.
 fn number_and_fields(card: &str) -> Option<(u32, Vec<Option<f64>>)> {
-    if let Some(Some(n)) = card::int_field(card, 1, 5) {
+    if let Ok(Some(n)) = card::int_field(card, 1, 5) {
         if card::is_blank(card::cols(card, 6, 10)) {
-            if let Some(mut f) = (0..7)
+            if let Ok(mut f) = (0..7)
                 .map(|i| card::field(card, i))
-                .collect::<Option<Vec<_>>>()
+                .collect::<Result<Vec<_>, _>>()
             {
                 while f.last() == Some(&None) {
                     f.pop();
@@ -270,9 +270,10 @@ pub fn parse(cards: &[(usize, &str)]) -> Result<Vec<Entry>, Error> {
                 if v.len() == 6 && i < cards.len() {
                     let (_, next) = cards[i];
                     if card::is_blank(card::cols(next, 1, 10)) && !card::is_blank(next) {
-                        let more: Option<Vec<_>> = (0..4).map(|k| card::field(next, k)).collect();
-                        let more = more
-                            .ok_or_else(|| Error::at(cards[i].0, "unreadable elective 6 card"))?;
+                        let more: Result<Vec<_>, _> =
+                            (0..4).map(|k| card::field(next, k)).collect();
+                        let more =
+                            more.map_err(|_| Error::at(cards[i].0, "unreadable elective 6 card"))?;
                         v.extend(more.into_iter().map_while(|x| x));
                         i += 1;
                     }

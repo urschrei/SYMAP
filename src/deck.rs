@@ -286,7 +286,7 @@ fn read_conformolines(p: &Package) -> Result<Vec<Conformoline>, Error> {
             shape_of(card::col(c, 10)).filter(|_| card::is_blank(card::cols(c, 6, 9)))
         {
             let r = card::int_field(c, 1, 5)
-                .ok_or_else(|| Error::at(l, "zone reference must be a whole number"))?;
+                .map_err(|_| Error::at(l, "zone reference must be a whole number"))?;
             (Some((r, shape)), c.to_string())
         } else if card::is_blank(card::cols(c, 1, 10)) {
             (None, c.to_string())
@@ -384,7 +384,7 @@ fn read_legends(p: &Package) -> Result<Vec<Legend>, Error> {
         }
         let at = p.pair(l, c)?;
         let shift = || -> Result<(f64, f64), Error> {
-            let f = |k| card::field(c, k).ok_or_else(|| Error::at(l, "unreadable displacement"));
+            let f = |k| card::field(c, k).map_err(|_| Error::at(l, "unreadable displacement"));
             Ok((f(2)?.unwrap_or(0.0), f(3)?.unwrap_or(0.0)))
         };
         let strikes = Strikes::new(card::cols(c, 6, 9));
@@ -392,13 +392,13 @@ fn read_legends(p: &Package) -> Result<Vec<Legend>, Error> {
             // A text legend has no symbol in columns 6-9 and its length in
             // columns 2-5 (normally 4-5); column 1 holds '-' for vertical text.
             'P' => match card::int_field(c, 2, 5) {
-                None if card::is_blank(card::cols(c, 6, 9)) => {
+                Err(card::Unreadable) if card::is_blank(card::cols(c, 6, 9)) => {
                     return Err(Error::at(
                         l,
                         "legend length in columns 2-5 must be a whole number",
                     ));
                 }
-                Some(Some(n)) if card::is_blank(card::cols(c, 6, 9)) => {
+                Ok(Some(n)) if card::is_blank(card::cols(c, 6, 9)) => {
                     if !(1..=50).contains(&n) {
                         return Err(Error::at(l, "legend length in columns 2-5 must be 1 to 50"));
                     }
@@ -420,7 +420,7 @@ fn read_legends(p: &Package) -> Result<Vec<Legend>, Error> {
                         shift: shift()?,
                     });
                 }
-                None | Some(None) | Some(Some(_)) => out.push(Legend::Symbol {
+                Err(card::Unreadable) | Ok(None | Some(_)) => out.push(Legend::Symbol {
                     strikes,
                     at,
                     shift: shift()?,
@@ -455,11 +455,11 @@ fn read_legends(p: &Package) -> Result<Vec<Legend>, Error> {
 fn barrier_strength(l: usize, c: &str) -> Result<Strength, Error> {
     let bad = || Error::at(l, "unreadable barrier strength");
     let s = if card::fixed_pair(c).is_some() {
-        card::field(c, 2).ok_or_else(bad)?.unwrap_or(0.0)
+        card::field(c, 2).map_err(|_| bad())?.unwrap_or(0.0)
     } else {
         match c.split_whitespace().nth(2) {
             None => 0.0,
-            Some(t) => card::real_field(t).flatten().ok_or_else(bad)?,
+            Some(t) => card::real_field(t).ok().flatten().ok_or_else(bad)?,
         }
     };
     Ok(if s < 0.0 {
@@ -498,9 +498,9 @@ fn read_values(p: &Package) -> Result<Vec<Option<f64>>, Error> {
                 return Ok(None);
             }
             match card::field(c, 0) {
-                Some(Some(v)) => Ok(Some(v)),
-                Some(None) if card::is_blank(card::cols(c, 1, 10)) => Ok(None),
-                _ => card::free_numbers(c, 1)
+                Ok(Some(v)) => Ok(Some(v)),
+                Ok(None) if card::is_blank(card::cols(c, 1, 10)) => Ok(None),
+                Ok(None) | Err(card::Unreadable) => card::free_numbers(c, 1)
                     .map(|v| Some(v[0]))
                     .ok_or_else(|| Error::at(l, "expected a value in columns 11-20")),
             }
@@ -514,8 +514,8 @@ fn read_index(p: &Package) -> Result<Vec<(usize, Option<usize>)>, Error> {
     // A card with columns 1-5 blank (even an entirely blank one) marks a missing value.
     for &(l, c) in &p.cards {
         let bad = || Error::at(l, "expected reference numbers in columns 1-5 and 6-10");
-        let from = card::int_field(c, 1, 5).ok_or_else(bad)?;
-        let to = card::int_field(c, 6, 10).ok_or_else(bad)?;
+        let from = card::int_field(c, 1, 5).map_err(|_| bad())?;
+        let to = card::int_field(c, 6, 10).map_err(|_| bad())?;
         match from {
             None => {
                 cur += 1;
@@ -565,8 +565,8 @@ impl Deck {
                     match header(c) {
                         Some(Ok(kind)) => {
                             let per_unit = match (card::field(c, 2), card::field(c, 3)) {
-                                (Some(Some(r)), Some(Some(k))) if r > 0.0 && k > 0.0 => (r, k),
-                                (Some(None), Some(None)) => (1.0, 1.0),
+                                (Ok(Some(r)), Ok(Some(k))) if r > 0.0 && k > 0.0 => (r, k),
+                                (Ok(None), Ok(None)) => (1.0, 1.0),
                                 _ => {
                                     warn(
                                         &mut deck,

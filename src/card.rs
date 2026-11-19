@@ -28,34 +28,37 @@ fn finite(t: &str) -> Option<f64> {
     t.parse::<f64>().ok().filter(|v| v.is_finite())
 }
 
-/// Parse a Fortran-style real field: blank is `Some(None)`, junk is `None`.
-pub fn real_field(s: &str) -> Option<Option<f64>> {
+/// A field that is neither blank nor a number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unreadable;
+
+/// A Fortran-style real field; blank is `Ok(None)`.
+pub fn real_field(s: &str) -> Result<Option<f64>, Unreadable> {
     let t = s.trim();
     if t.is_empty() {
-        return Some(None);
+        return Ok(None);
     }
-    finite(t).map(Some)
+    finite(t).map(Some).ok_or(Unreadable)
 }
 
 /// The `i`-th 10-column field from column 11 (`i = 0` is columns 11-20).
-pub fn field(line: &str, i: usize) -> Option<Option<f64>> {
+pub fn field(line: &str, i: usize) -> Result<Option<f64>, Unreadable> {
     real_field(cols(line, 11 + 10 * i, 20 + 10 * i))
 }
 
-/// Integer in columns `from..=to`; blank is `Some(None)`.
-pub fn int_field(line: &str, from: usize, to: usize) -> Option<Option<i64>> {
-    let t = cols(line, from, to);
-    let t = t.trim();
+/// Integer in columns `from..=to`; blank is `Ok(None)`.
+pub fn int_field(line: &str, from: usize, to: usize) -> Result<Option<i64>, Unreadable> {
+    let t = cols(line, from, to).trim();
     if t.is_empty() {
-        Some(None)
+        Ok(None)
     } else {
-        t.parse().ok().map(Some)
+        t.parse().map(Some).map_err(|_| Unreadable)
     }
 }
 
 /// A coordinate pair (down, across) from columns 11-20 and 21-30.
 pub fn fixed_pair(line: &str) -> Option<(f64, f64)> {
-    Some((field(line, 0)??, field(line, 1)??))
+    Some((field(line, 0).ok()??, field(line, 1).ok()??))
 }
 
 /// The first `n` blank-separated numbers on a card.
@@ -92,8 +95,13 @@ mod tests {
         assert_eq!(fixed_pair(&card), Some((1.9, -16.6)));
         assert_eq!(pair("  1.0   1.6"), Some((1.0, 1.6)));
         assert_eq!(pair("x y"), None);
-        assert_eq!(field("", 3), Some(None));
-        assert_eq!(int_field("   12", 1, 5), Some(Some(12)));
+        assert_eq!(field("", 3), Ok(None));
+        assert_eq!(
+            field(&format!("{:10}{:>10}", "", "1.x"), 0),
+            Err(Unreadable)
+        );
+        assert_eq!(int_field("   12", 1, 5), Ok(Some(12)));
+        assert_eq!(int_field("  1.5", 1, 5), Err(Unreadable));
         assert_eq!(free_numbers("nan 1", 2), None);
     }
 }
