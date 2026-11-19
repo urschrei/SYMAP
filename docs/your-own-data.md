@@ -1,6 +1,6 @@
 # Mapping your own data
 
-This page takes one dataset from a CSV file to a printed map, then gives
+This page shows a worked example of transforming one dataset from a CSV file to a printed map. It then gives
 shorter recipes for other kinds of data. The example is the annual mean
 concentration of nitrogen dioxide (NO2) at 71 monitoring sites in and
 around London in 2025, in `examples/data/london-no2-2025.csv`. The finished
@@ -8,7 +8,7 @@ deck is `examples/data/london-no2-2025.sym`.
 
 ## Choosing the map
 
-SYMAP draws three kinds of map, and the data decide which one fits.
+SYMAP draws three kinds of map. You should choose the type according to your data:
 
 | Your data | Map | What it shows |
 |-----------|-----|---------------|
@@ -18,7 +18,7 @@ SYMAP draws three kinds of map, and the data decide which one fits.
 
 NO2 is measured at points and varies continuously, so the example is a
 contour map. A conformant map of the same data would need areas, and a
-proximal map would show which site is nearest, not how the concentration
+proximal map would show which site is nearest, rather than how the concentration
 varies.
 
 ## Importing the data
@@ -39,7 +39,7 @@ numeric field, `no2`:
 cargo run -- import examples/data/london-no2-2025.csv > no2.sym
 ```
 
-In the browser, Import data (or dropping the file on the editor) does the
+In the browser, choosing "Import data" (or dropping the file on the editor) does the
 same, with a choice of field, map type, width and title. [Importing
 data](importing.md) describes what the importer accepts.
 
@@ -114,7 +114,7 @@ symbols; [Writing decks](decks.md) lists the rest.
 
 ## Adding a north arrow and a scale
 
-SYMAP printed no arrow or scale of its own: the deck draws them as legends,
+SYMAP did not have a notion of north arrow or map scale: the deck draws them as legends,
 in a C-OTOLEGENDS package placed anywhere before F-MAP. The bottom left of
 this map is empty, so the arrow goes there, with the scale beside it.
 
@@ -172,7 +172,7 @@ can differ by a character.
 
 ## Printing
 
-In the browser, Export saves each map as a PNG image at 300 DPI, which
+In the browser, Export saves the map as a PNG image at 300 DPI, which
 prints at the original size, or as a line printer file (ASA) or plain text.
 From the command line, `--asa` writes the line printer file. The PNG
 includes the deck unless you turn that off in the Export menu.
@@ -187,7 +187,7 @@ cargo run -- import wards.geojson --value density > wards.sym
 
 Polygons make a conformant map. Each feature becomes a zone, and borders
 shared by two zones are simplified together, so the white boundary lines
-stay continuous. You should map rates or densities, not counts, since a
+stay continuous. You should map rates or densities, **not** counts, since a
 large area with a large count looks more important than it is.
 
 ### Values for areas as a surface
@@ -237,7 +237,7 @@ D-BARRIERS
 99999
 ```
 
-The vertices are in the deck's own units. The table before the map gives
+The vertices are in the deck's units. The table before the map gives
 the conversion: `ROW = DOWN COORDINATE * 0.9871` means one kilometre down
 is about one line, so a location can be read from the printed border's
 row and column marks and converted back. `examples/decks/barrier.sym` maps
@@ -252,7 +252,7 @@ sideways, as the Laboratory's report maps were often printed.
 
 ### A deck written by hand
 
-A deck needs no importer. Locations can be in any units, as long as
+A deck does not require an importer. Locations can be in any units, as long as
 elective 2 gives their extent:
 
 ```text

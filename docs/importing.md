@@ -17,40 +17,40 @@ cargo run -- wards.sym
 ```
 
 In the browser, the Import data button (or dropping a file on the editor)
-opens the same importer, with a choice of field, map type, width and title.
+opens the importer, with a choice of field, map type, width and title.
 [Mapping your own data](your-own-data.md) works through an example.
 
 ## Input
 
-**CSV** holds points. It needs a header row. Coordinates come from columns
-named `lon`, `lng`, `long` or `longitude` and `lat` or `latitude`; failing
-those, from `easting`, `east` or `x` and `northing`, `north` or `y`. Commas,
-semicolons or tabs separate fields, and fields may be quoted.
+**CSV** contains points. It needs a header row. Coordinates come from
+columns named `lon`, `lng`, `long` or `longitude` and `lat` or `latitude`;
+failing those, from `easting`, `east` or `x` and `northing`, `north` or `y`.
+Commas, semicolons or tabs separate fields, and fields may be quoted.
 
-**GeoJSON** holds a FeatureCollection (or a single Feature) of Point,
+**GeoJSON** contains a FeatureCollection (or a single Feature) of Point,
 MultiPoint, Polygon, MultiPolygon, LineString or MultiLineString features;
 their properties supply the values. Lines are drawn on the map (see
 [Lines](#lines)).
 
-**TopoJSON** holds the same geometries in a topology, whose arcs already
+**TopoJSON** contains the same geometries in a topology, whose arcs
 record which borders are shared. The first object is used unless
 `--object` names another.
 
-A field can be mapped if it holds numbers and no text. Without `--value`,
-the first such field is used, passing over identifiers (`id`, `objectid`,
-and names ending in `_id` or `_code`, for example). Items without a value
-for the field are left out, with a warning. A text field called `name`,
-`label`, `title`, `site`, `station` or `place` (or else one whose name
-contains "name" or ends in "desc") is listed in the deck's comments, so that
-each point or zone can be identified.
+A field can be mapped if it contains numbers without text. Without
+`--value`, the first such field is used, passing over identifiers (`id`,
+`objectid`, and names ending in `_id` or `_code`, for example). Items
+without a value for the field are left out, with a warning. A text field
+called `name`, `label`, `title`, `site`, `station` or `place` (or else one
+whose name contains "name" or ends in "desc") is listed in the deck's
+comments, so that each point or zone can be identified.
 
-When a file holds both, polygons are mapped and points are left out.
+When a file contains both, polygons are mapped and points are left out.
 
 ## Coordinates
 
 Longitude and latitude are projected with a transverse Mercator on WGS84,
-centred on the data, in kilometres. Over a city or a county this distorts
-nothing that a line printer can show. Projected coordinates are used as
+centred on the data, in kilometres. Over a city or a county the distortion
+is acceptable at line printer resolution. Projected coordinates are used as
 given; when they span more than 1,000 units they are taken to be metres and
 given in kilometres. GeoJSON and TopoJSON whose coordinates fall outside
 longitude and latitude ranges are treated as projected (older GeoJSON files
@@ -78,7 +78,7 @@ value goes on E-VALUES.
 - **Holes and enclaves.** The first zone on the cards to claim a character
   keeps it, so smaller rings are written first, and a zone inside another
   zone's hole keeps its own level. A hole with no zone inside it (a lake,
-  say) is filled by the zone around it, with a warning.
+  for example) is filled by the zone around it, with a warning.
 
 With `--contour` or `--proximal`, each zone's value is placed at its
 centroid as a data point instead, and the zones themselves become the
