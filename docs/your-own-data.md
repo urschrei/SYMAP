@@ -170,10 +170,51 @@ I           I------I-----I                                       ........1.     
 Each legend falls on the nearest character, so the two halves of the bar
 can differ by a character.
 
+## Tones and overprinting
+
+SYMAP shades a map by striking up to four characters on the same position,
+so the darkest levels are overprints: `O`+`-`, `O`+`X` and `O`+`X`+`A`+`V`.
+The browser shows these as they were printed by default (Overprint). Single
+replaces each overprint with one stand-in character (`Θ`, `⊗`, `█`); it is
+easier to read which level a position holds, but it does not show the tones.
+You should judge a map, and export it as PNG, in Overprint.
+
+The number of levels decides which of the ten standard symbols are used, and
+not every pair of them is easy to tell apart on screen. The approximate
+share of each position covered by ink in the browser is:
+
+| Symbol | `.` | `'` | `-` | `=` | `+` | `X` | `O` | `O`+`-` | `O`+`X` | `O`+`X`+`A`+`V` |
+|--------|-----|-----|-----|-----|-----|-----|-----|---------|---------|-----------------|
+| Ink    | 0.06 | 0.09 | 0.09 | 0.27 | 0.23 | 0.38 | 0.43 | 0.49 | 0.69 | 0.87 |
+
+Each further strike on a position spreads more ink, as a ribbon did on
+paper, so `O`+`X`+`A`+`V` prints almost solid and `O`+`X` remains visibly
+lighter. The figures depend on the font and the zoom, so they are a guide
+rather than a measurement of the original printouts.
+
+- **Six levels** give the most even steps: `.` `+` `X` `O`+`-` `O`+`X`
+  `O`+`X`+`A`+`V`. Both London examples use six.
+- **Four levels** (`.` `+` `O` `O`+`X`+`A`+`V`) are also well separated.
+- **Five levels** use both `O` and `O`+`-`, which differ by a single dash
+  and are hard to distinguish. If you need five, you should consider
+  elective 7 to replace one of them.
+- **Seven or more levels** add `'`, which is close to `.`; eight or more
+  add `O` between `X` and `O`+`-`, close to both; and with nine or ten
+  levels `=` prints slightly darker than `+`, which sits above it. In my opinion more than
+  six levels is only worthwhile where the reader will check values against
+  the legend rather than read the tones.
+
+Where the top levels cover large areas, the white contour lines between
+them break the dark fill into bands. Elective 8 turns the white lines off,
+which leaves a continuous tone; the London house price example uses it.
+
 ## Printing
 
 In the browser, Export saves the map as a PNG image at 300 DPI, which
 prints at the original size, or as a line printer file (ASA) or plain text.
+The PNG keeps the overprinted tones. The ASA file keeps the overprint lines,
+so a line printer, or a program that reads Fortran carriage control, strikes
+the same tones; plain text has the single stand-in characters instead.
 From the command line, `--asa` writes the line printer file. The PNG
 includes the deck unless you turn that off in the Export menu.
 

@@ -48,7 +48,9 @@ characters and 8 lines to the inch.
   about three quarters of a cell wide, so it is narrowed to match.
 - **Overprinting.** Every strike is printed into the same cell in
   translucent ink, with a small offset between strikes, so overprints
-  darken. This is the default, as in the original: the standard symbolism
+  darken. Each further strike on a cell is stroked a pixel wider, as more
+  ink soaked into the paper, so `O`+`X`+`A`+`V` prints almost solid and
+  stays distinct from `O`+`X`. This is the default, as in the original: the standard symbolism
   is built from overprints, and the manual (§5.4.2) describes the program
   printing each map line followed by up to three overprint lines. The
   Single mode shows one character per position, with modern stand-ins
