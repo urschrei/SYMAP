@@ -38,11 +38,12 @@ record which borders are shared. The first object is used unless
 
 A field can be mapped if it contains numbers without text. Without
 `--value`, the first such field is used, passing over identifiers (`id`,
-`objectid`, and names ending in `_id` or `_code`, for example). Items
-without a value for the field are left out, with a warning. A text field
-called `name`, `label`, `title`, `site`, `station` or `place` (or else one
-whose name contains "name" or ends in "desc") is listed in the deck's
-comments, so that each point or zone can be identified.
+`objectid`, and names ending in `_id` or `_code`, for example). `NA`, `N/A`,
+`NaN` and `null` count as no value. Items without a value for the field are
+left out, with a warning. A text field called `name`, `label`, `title`,
+`site`, `station` or `place` (or else one whose name contains "name" or ends
+in "desc") is listed in the deck's comments, so that each point or zone can
+be identified.
 
 When a file contains both, polygons are mapped and points are left out.
 

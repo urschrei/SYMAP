@@ -14,10 +14,13 @@ pub enum Prop {
     Missing,
 }
 
+/// Text that marks a missing value in a numeric column.
+const MISSING: &[&str] = &["na", "n/a", "nan", "null"];
+
 impl Prop {
     pub fn from_text(s: &str) -> Prop {
         let t = s.trim();
-        if t.is_empty() {
+        if t.is_empty() || MISSING.iter().any(|m| t.eq_ignore_ascii_case(m)) {
             Prop::Missing
         } else {
             match t.parse::<f64>() {
@@ -455,6 +458,15 @@ mod tests {
                 .message
                 .contains("objects: zones")
         );
+    }
+
+    #[test]
+    fn missing_value_markers() {
+        for t in ["", " NA ", "n/a", "NaN", "null"] {
+            assert_eq!(Prop::from_text(t), Prop::Missing, "{t:?}");
+        }
+        assert_eq!(Prop::from_text("Nantes"), Prop::Text("Nantes".into()));
+        assert_eq!(Prop::from_text("2.5"), Prop::Number(2.5));
     }
 
     #[test]
