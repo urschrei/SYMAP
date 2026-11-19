@@ -61,13 +61,8 @@ pub enum Elective {
     /// 21: keep every character's computed value (the original wrote them to
     /// tape for other programs; here they can be downloaded).
     StoreValues,
-    /// 28: dot conformant map. Blank: dot each zone to a density matching its
-    /// level; `percent`: dots as a share of the total value range; `per_dot`:
-    /// each dot stands for this much.
-    DotMap {
-        percent: bool,
-        per_dot: Option<f64>,
-    },
+    /// 28: dot conformant map.
+    DotMap(DotMode),
     /// 22: keep contour lines even where they crowd out symbolism.
     ContinuousContours,
     /// 23: no symbol at invalid data points.
@@ -81,7 +76,7 @@ pub enum Elective {
     /// 27: contour map even when conformolines are present.
     ForceContour,
     /// 31: fraction of the value range the surface may overshoot a local extreme.
-    Extrapolation(Option<f64>),
+    Extrapolation(Extrapolation),
     /// 32, 33: absolute limits of extrapolation.
     ExtrapolationMin(f64),
     ExtrapolationMax(f64),
@@ -89,17 +84,89 @@ pub enum Elective {
     InitialRadius(f64),
     MaxRadius(f64),
     /// 36: minimum and maximum data points per interpolation.
-    PointCount {
-        min: Option<usize>,
-        max: Option<usize>,
-    },
+    PointCount(PointCount),
     /// 37: compute every character independently (standard: one in six).
     Independence,
-    /// 38, 39 (Version 6 extras) and unknown numbers.
+    /// 29, 30, 38, 39 (Version 6 extras) and unknown numbers.
     Unsupported {
         number: u32,
         fields: Vec<Option<f64>>,
     },
+}
+
+/// How elective 28 sets the number of dots in a zone.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DotMode {
+    /// A density matching the zone's level (all fields blank).
+    ByLevel,
+    /// A share of the zone matching its place in the value range (field 1).
+    Percent,
+    /// One dot for each this much of the value (field 2).
+    PerDot(f64),
+}
+
+/// Elective 31's field.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Extrapolation {
+    /// Blank: no slope correction, and with blank electives 36 and 37 a
+    /// proximal map.
+    Blank,
+    /// At least 0 and less than 1.
+    Fraction(f64),
+}
+
+/// Elective 36's fields.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointCount {
+    /// Blank: with blank electives 31 and 37, a proximal map.
+    Blank,
+    /// From 1 to 10, `min` no more than `max`; a blank field takes the
+    /// standard 4 or 10.
+    Given { min: usize, max: usize },
+}
+
+impl Elective {
+    /// The elective's number in the manual.
+    pub fn number(&self) -> u32 {
+        match self {
+            Elective::Size { .. } => 1,
+            Elective::Extremes { .. } => 2,
+            Elective::Levels(_) => 3,
+            Elective::ValueMin(_) => 4,
+            Elective::ValueMax(_) => 5,
+            Elective::Intervals(_) => 6,
+            Elective::Symbolism(_) => 7,
+            Elective::NoContourLines => 8,
+            Elective::NoHistogram => 9,
+            Elective::Text(_) => 10,
+            Elective::PrintValues => 11,
+            Elective::Repeat => 12,
+            Elective::Scale(_) => 13,
+            Elective::Margins(_) => 14,
+            Elective::CharsPerInch { .. } => 15,
+            Elective::LargeMaps => 16,
+            Elective::NoTabular => 17,
+            Elective::InvalidBlank => 18,
+            Elective::InvalidMin(_) => 19,
+            Elective::InvalidMax(_) => 20,
+            Elective::StoreValues => 21,
+            Elective::ContinuousContours => 22,
+            Elective::NoInvalidSymbol => 23,
+            Elective::NoNumericInterpretation => 24,
+            Elective::NoDataPoints => 25,
+            Elective::OverprintAlignment => 26,
+            Elective::ForceContour => 27,
+            Elective::DotMap(_) => 28,
+            Elective::Extrapolation(_) => 31,
+            Elective::ExtrapolationMin(_) => 32,
+            Elective::ExtrapolationMax(_) => 33,
+            Elective::InitialRadius(_) => 34,
+            Elective::MaxRadius(_) => 35,
+            Elective::PointCount(_) => 36,
+            Elective::Independence => 37,
+            Elective::Unsupported { number, .. } => *number,
+        }
+    }
 }
 
 /// Read the elective number and fields of one card, fixed or free format.
@@ -125,11 +192,10 @@ fn number_and_fields(card: &str) -> Option<(u32, Vec<Option<f64>>)> {
     Some((n, f))
 }
 
-/// One parsed elective: its first card's line, number and value.
+/// One parsed elective and its first card's line.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
     pub line: usize,
-    pub number: u32,
     pub elective: Elective,
 }
 
@@ -266,25 +332,46 @@ pub fn parse(cards: &[(usize, &str)]) -> Result<Vec<Entry>, Error> {
             19 => Elective::InvalidMin(need(0, "minimum")?),
             20 => Elective::InvalidMax(need(0, "maximum")?),
             21 => Elective::StoreValues,
-            28 => Elective::DotMap {
-                percent: get(0).is_some_and(|v| v > 0.0),
-                per_dot: get(1).filter(|v| *v > 0.0),
-            },
+            28 => Elective::DotMap(
+                match (get(0).is_some_and(|v| v > 0.0), get(1).filter(|v| *v > 0.0)) {
+                    (_, Some(k)) => DotMode::PerDot(k),
+                    (true, None) => DotMode::Percent,
+                    (false, None) => DotMode::ByLevel,
+                },
+            ),
             22 => Elective::ContinuousContours,
             23 => Elective::NoInvalidSymbol,
             24 => Elective::NoNumericInterpretation,
             25 => Elective::NoDataPoints,
             26 => Elective::OverprintAlignment,
             27 => Elective::ForceContour,
-            31 => Elective::Extrapolation(get(0)),
+            31 => Elective::Extrapolation(match get(0) {
+                None => Extrapolation::Blank,
+                Some(f) if (0.0..1.0).contains(&f) => Extrapolation::Fraction(f),
+                Some(_) => {
+                    return Err(Error::at(
+                        ln,
+                        "elective 31: the fraction must be at least 0 and less than 1",
+                    ));
+                }
+            }),
             32 => Elective::ExtrapolationMin(need(0, "minimum")?),
             33 => Elective::ExtrapolationMax(need(0, "maximum")?),
             34 => Elective::InitialRadius(positive(0, "radius")?),
             35 => Elective::MaxRadius(positive(0, "radius")?),
-            36 => Elective::PointCount {
-                min: points(0)?,
-                max: points(1)?,
-            },
+            36 => Elective::PointCount(match (points(0)?, points(1)?) {
+                (None, None) => PointCount::Blank,
+                (min, max) => {
+                    let (min, max) = (min.unwrap_or(4), max.unwrap_or(10));
+                    if min > max {
+                        return Err(Error::at(
+                            ln,
+                            "elective 36: the minimum number of points exceeds the maximum",
+                        ));
+                    }
+                    PointCount::Given { min, max }
+                }
+            }),
             37 => Elective::Independence,
             number => Elective::Unsupported {
                 number,
@@ -293,7 +380,6 @@ pub fn parse(cards: &[(usize, &str)]) -> Result<Vec<Entry>, Error> {
         };
         out.push(Entry {
             line: ln,
-            number: n,
             elective: e,
         });
     }
@@ -312,9 +398,10 @@ pub fn resolve_repeat(previous: &[Entry], current: Vec<Entry>) -> Vec<Entry> {
     {
         // The previous map may give a number more than once: all of them
         // go, and the replacement takes the place of the first.
-        match out.iter().position(|x| x.number == e.number) {
+        let number = e.elective.number();
+        match out.iter().position(|x| x.elective.number() == number) {
             Some(k) => {
-                out.retain(|x| x.number != e.number);
+                out.retain(|x| x.elective.number() != number);
                 out.insert(k, e);
             }
             None => out.push(e),
@@ -352,10 +439,23 @@ mod tests {
     fn point_counts_and_radii_are_checked() {
         assert_eq!(
             run(&["   36       3.0"]).unwrap(),
-            vec![Elective::PointCount {
-                min: Some(3),
-                max: None
-            }]
+            vec![Elective::PointCount(PointCount::Given { min: 3, max: 10 })]
+        );
+        assert_eq!(
+            run(&["   36"]).unwrap(),
+            vec![Elective::PointCount(PointCount::Blank)]
+        );
+        assert!(
+            run(&["   36               3.0"])
+                .unwrap_err()
+                .message
+                .contains("exceeds")
+        );
+        assert!(
+            run(&["   31       1.0"])
+                .unwrap_err()
+                .message
+                .contains("less than 1")
         );
         for card in [
             "   36       4.0     1e30",

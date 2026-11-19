@@ -3,7 +3,7 @@
 
 use crate::classify::{Classes, Level};
 use crate::deck::{Legend, MapKind, MapSpec, Packages, ZoneShape};
-use crate::elective::Elective;
+use crate::elective::{DotMode, Elective, Extrapolation, PointCount};
 use crate::error::Error;
 use crate::frame::{Frame, Layout};
 use crate::geom::{self, Extent, Point};
@@ -40,17 +40,17 @@ pub struct Options {
     pub numeric: bool,
     pub conformant_points: bool,
     pub force_contour: bool,
-    pub extrapolation: Option<Option<f64>>,
+    pub extrapolation: Option<Extrapolation>,
     pub extrapolation_min: Option<f64>,
     pub extrapolation_max: Option<f64>,
     pub initial_radius: Option<f64>,
     pub max_radius: Option<f64>,
-    pub point_count: Option<(Option<usize>, Option<usize>)>,
+    pub point_count: Option<PointCount>,
     pub independence: bool,
     /// Elective 21: keep each character's computed value.
     pub store_values: bool,
-    /// Elective 28: dot map (`percent`, `per_dot`).
-    pub dots: Option<(bool, Option<f64>)>,
+    /// Elective 28: dot map.
+    pub dots: Option<DotMode>,
     /// Elective 17 turns off the table printed before the map.
     pub tabular: bool,
 }
@@ -111,7 +111,7 @@ impl Options {
                 Elective::Repeat | Elective::OverprintAlignment => {}
                 Elective::NoTabular => o.tabular = false,
                 Elective::StoreValues => o.store_values = true,
-                Elective::DotMap { percent, per_dot } => o.dots = Some((*percent, *per_dot)),
+                Elective::DotMap(mode) => o.dots = Some(*mode),
                 Elective::Scale(s) => o.layout.scale = Some(*s),
                 Elective::Margins(m) => o.layout.margins = *m,
                 Elective::CharsPerInch { rows, cols } => {
@@ -132,7 +132,7 @@ impl Options {
                 Elective::ExtrapolationMax(v) => o.extrapolation_max = Some(*v),
                 Elective::InitialRadius(r) => o.initial_radius = Some(*r),
                 Elective::MaxRadius(r) => o.max_radius = Some(*r),
-                Elective::PointCount { min, max } => o.point_count = Some((*min, *max)),
+                Elective::PointCount(count) => o.point_count = Some(*count),
                 Elective::Independence => o.independence = true,
                 Elective::Unsupported { number, .. } => warnings.push(format!(
                     "line {}: elective {number} is not supported; ignored",
@@ -148,8 +148,8 @@ impl Options {
 
     /// Electives 31, 36 and 37 together, with no values, request a proximal map.
     pub fn proximal(&self) -> bool {
-        self.extrapolation == Some(None)
-            && self.point_count == Some((None, None))
+        self.extrapolation == Some(Extrapolation::Blank)
+            && self.point_count == Some(PointCount::Blank)
             && self.independence
     }
 }
@@ -515,14 +515,17 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                 let e = Extent::of(&pts).unwrap();
                 (e.height() * e.width()).max(f64::MIN_POSITIVE)
             };
-            let (pmin, pmax) = o.point_count.unwrap_or((None, None));
+            let (min_points, max_points) = match o.point_count {
+                Some(PointCount::Given { min, max }) => (min, max),
+                Some(PointCount::Blank) | None => (4, 10),
+            };
             let params = ShepardParams {
-                min_points: pmin.unwrap_or(4),
-                max_points: pmax.unwrap_or(10),
+                min_points,
+                max_points,
                 fraction: match o.extrapolation {
                     None => 0.1,
-                    Some(None) => 0.0,
-                    Some(Some(f)) => f,
+                    Some(Extrapolation::Blank) => 0.0,
+                    Some(Extrapolation::Fraction(f)) => f,
                 },
                 initial_radius: o.initial_radius,
                 max_radius: o.max_radius,
@@ -530,16 +533,6 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                 slope_min_distance: 1.5 / (frame.scale * frame.cols_per_inch),
                 ..Default::default()
             };
-            if params.min_points > params.max_points {
-                return Err(at(
-                    "elective 36: the minimum number of points exceeds the maximum".into(),
-                ));
-            }
-            if !(0.0..1.0).contains(&params.fraction) {
-                return Err(at(
-                    "elective 31: the fraction must be at least 0 and less than 1".into(),
-                ));
-            }
             let lo = o.extrapolation_min.unwrap_or(data_range.0);
             let hi = o.extrapolation_max.unwrap_or(data_range.1);
             let s = Shepard::new(&pts, &zs, area, params, &pk.barriers);
@@ -675,7 +668,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         })
         .collect();
     // Elective 28: a dot map shows each zone as scattered dots instead of tone.
-    if let (Some((percent, per_dot)), MapKind::Conformant) = (o.dots, kind) {
+    if let (Some(mode), MapKind::Conformant) = (o.dots, kind) {
         let mut cells: std::collections::BTreeMap<usize, Vec<usize>> = Default::default();
         for (i, z) in zone_of.iter().enumerate() {
             if let Some(z) = z {
@@ -693,16 +686,14 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             else {
                 continue;
             };
-            let share = if let Some(k) = per_dot {
-                (v / k).round().max(0.0) / list.len() as f64
-            } else if percent {
-                (v - lo) / (hi - lo)
-            } else {
-                match classes.level(v) {
+            let share = match mode {
+                DotMode::PerDot(k) => (v / k).round().max(0.0) / list.len() as f64,
+                DotMode::Percent => (v - lo) / (hi - lo),
+                DotMode::ByLevel => match classes.level(v) {
                     Level::Low => 0.0,
                     Level::In(k) => (k as f64 + 1.0) / n as f64,
                     Level::High => 1.0,
-                }
+                },
             };
             let k = ((share.clamp(0.0, 1.0) * list.len() as f64).round() as usize).min(list.len());
             list.sort_by_key(|&i| scatter(i / width, i % width));
