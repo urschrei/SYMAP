@@ -37,7 +37,8 @@ fn import_args(
     opts: &mut symap::import::Options,
 ) -> Result<(Option<String>, Option<String>), lexopt::Error> {
     use lexopt::prelude::*;
-    use symap::import::{LineUse, MapType};
+    use symap::MapKind;
+    use symap::import::LineUse;
     let (mut path, mut lines_from) = (None, None);
     while let Some(arg) = p.next()? {
         match arg {
@@ -49,11 +50,11 @@ fn import_args(
             Long("line-symbol") => opts.line_symbol = p.value()?.string()?,
             Long("lines") => {
                 let v = p.value()?.string()?;
-                opts.lines = LineUse::parse(&v).ok_or_else(|| {
-                    format!("--lines: '{v}' is not legend, barrier, both or none")
-                })?;
+                opts.lines = v.parse::<LineUse>().map_err(|e| format!("--lines: {e}"))?;
             }
-            Long(m @ ("contour" | "proximal" | "conformant")) => opts.map = MapType::parse(m),
+            Long("contour") => opts.map = Some(MapKind::Contour),
+            Long("proximal") => opts.map = Some(MapKind::Proximal),
+            Long("conformant") => opts.map = Some(MapKind::Conformant),
             Long("no-outline") => opts.outline = false,
             Value(v) if path.is_none() => path = Some(v.string()?),
             _ => return Err(arg.unexpected()),

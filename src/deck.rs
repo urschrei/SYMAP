@@ -10,6 +10,7 @@ use crate::elective::{self, Entry};
 use crate::error::{Diagnostic, Error};
 use crate::geom::Point;
 use crate::symbols::Strikes;
+use std::str::FromStr;
 
 /// Which kind of map to draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,6 +21,31 @@ pub enum MapKind {
     Proximal,
     /// Each character takes the value of the zone that contains it.
     Conformant,
+}
+
+impl MapKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            MapKind::Contour => "contour",
+            MapKind::Proximal => "proximal",
+            MapKind::Conformant => "conformant",
+        }
+    }
+}
+
+impl FromStr for MapKind {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Error> {
+        match s {
+            "contour" => Ok(MapKind::Contour),
+            "proximal" => Ok(MapKind::Proximal),
+            "conformant" => Ok(MapKind::Conformant),
+            _ => Err(Error::general(format!(
+                "unknown map '{s}': expected contour, proximal or conformant"
+            ))),
+        }
+    }
 }
 
 /// How a conformant zone outline is drawn (column 10).

@@ -15,38 +15,13 @@ mod read;
 mod topology;
 
 use crate::Error;
+use crate::MapKind;
 use geo::{Centroid, ConvexHull, LineString, MultiPoint, MultiPolygon, Polygon};
 use project::TransverseMercator;
 use read::{Feature, Geom, Prop, Ring};
 use std::fmt::Write;
+use std::str::FromStr;
 use topology::{P, Topology};
-
-/// The kind of map to draw.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MapType {
-    Contour,
-    Proximal,
-    Conformant,
-}
-
-impl MapType {
-    pub fn name(self) -> &'static str {
-        match self {
-            MapType::Contour => "contour",
-            MapType::Proximal => "proximal",
-            MapType::Conformant => "conformant",
-        }
-    }
-
-    pub fn parse(s: &str) -> Option<MapType> {
-        match s {
-            "contour" => Some(MapType::Contour),
-            "proximal" => Some(MapType::Proximal),
-            "conformant" => Some(MapType::Conformant),
-            _ => None,
-        }
-    }
-}
 
 /// What to do with lines (LineString features).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,16 +45,6 @@ impl LineUse {
         }
     }
 
-    pub fn parse(s: &str) -> Option<LineUse> {
-        match s {
-            "legend" => Some(LineUse::Legend),
-            "barrier" => Some(LineUse::Barrier),
-            "both" => Some(LineUse::Both),
-            "none" => Some(LineUse::Omit),
-            _ => None,
-        }
-    }
-
     fn draws(self) -> bool {
         matches!(self, LineUse::Legend | LineUse::Both)
     }
@@ -89,12 +54,28 @@ impl LineUse {
     }
 }
 
+impl FromStr for LineUse {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Error> {
+        match s {
+            "legend" => Ok(LineUse::Legend),
+            "barrier" => Ok(LineUse::Barrier),
+            "both" => Ok(LineUse::Both),
+            "none" => Ok(LineUse::Omit),
+            _ => Err(Error::general(format!(
+                "unknown lines '{s}': expected legend, barrier, both or none"
+            ))),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Options {
     /// The property or column to map; the first numeric one if `None`.
     pub value: Option<String>,
     /// Conformant for polygons and contour for points if `None`.
-    pub map: Option<MapType>,
+    pub map: Option<MapKind>,
     /// Printed width of the map in inches.
     pub width: f64,
     /// First title card; the source's name if `None`.
@@ -143,7 +124,7 @@ pub struct Imported {
     pub fields: Vec<String>,
     /// The one mapped.
     pub value: String,
-    pub map: MapType,
+    pub map: MapKind,
     /// How many points or zones were mapped, and which.
     pub count: usize,
     pub unit: &'static str,
@@ -449,11 +430,11 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         ));
     }
     let map = opts.map.unwrap_or(if zonal {
-        MapType::Conformant
+        MapKind::Conformant
     } else {
-        MapType::Contour
+        MapKind::Contour
     });
-    if map == MapType::Conformant && !zonal {
+    if map == MapKind::Conformant && !zonal {
         return Err(Error::general(
             "a conformant map needs polygons; this file has only points",
         ));
@@ -503,7 +484,7 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
             "{missing} {unit} without a value for {value} were left out"
         ));
     }
-    let needed = if map == MapType::Conformant { 1 } else { 3 };
+    let needed = if map == MapKind::Conformant { 1 } else { 3 };
     if kept.len() < needed {
         return Err(Error::general(format!(
             "{} {unit} have a value for {value}; at least {needed} are needed",
@@ -762,7 +743,7 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
                 "{small} parts smaller than half a character were left out"
             ));
         }
-        if filled > 0 && map == MapType::Conformant {
+        if filled > 0 && map == MapKind::Conformant {
             warnings.push(format!(
                 "{filled} holes with no zone inside are filled by the zone around them"
             ));
@@ -825,14 +806,14 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         warnings.push("the lines all lie outside the map".into());
     }
     let barriers = opts.lines.bars() && !line_parts.is_empty();
-    if barriers && map == MapType::Conformant {
+    if barriers && map == MapKind::Conformant {
         warnings.push("barriers have no effect on a conformant map, so none were written".into());
     }
-    let barriers = barriers && map != MapType::Conformant;
+    let barriers = barriers && map != MapKind::Conformant;
     let legends = opts.lines.draws() && !line_parts.is_empty();
 
     // The outline around points: their convex hull, enlarged.
-    let point_outline = if opts.outline && !zonal && map != MapType::Conformant {
+    let point_outline = if opts.outline && !zonal && map != MapKind::Conformant {
         let pts: Vec<P> = items.iter().map(|i| i.point).collect();
         let h = hull(&pts);
         if h.len() >= 3 {
@@ -884,7 +865,7 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
                  shared border once, so neighbouring zones still meet."
             ),
         );
-        if map != MapType::Conformant {
+        if map != MapKind::Conformant {
             comment(
                 &mut out,
                 "Each zone's value is placed at its centroid as a data point.",
@@ -943,7 +924,7 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         }
         Ok(())
     };
-    if map == MapType::Conformant {
+    if map == MapKind::Conformant {
         let _ = writeln!(out, "A-CONFORMOLINES");
         for (z, ring) in &rings {
             write_ring(&mut out, &format!("{z:>5}    A"), ring)?;
@@ -1010,9 +991,9 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         out,
         "{}",
         match map {
-            MapType::Contour => "CONTOUR MAP - SHEPARD INTERPOLATION",
-            MapType::Proximal => "PROXIMAL MAP - NEAREST DATA POINT",
-            MapType::Conformant => "CONFORMANT MAP",
+            MapKind::Contour => "CONTOUR MAP - SHEPARD INTERPOLATION",
+            MapKind::Proximal => "PROXIMAL MAP - NEAREST DATA POINT",
+            MapKind::Conformant => "CONFORMANT MAP",
         }
     );
     let _ = writeln!(
@@ -1031,7 +1012,7 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         field_with(down_extent, 3)?,
         field_with(across_extent, 3)?
     );
-    if map == MapType::Proximal {
+    if map == MapKind::Proximal {
         let _ = writeln!(out, "   31\n   36\n   37");
     }
     let _ = writeln!(out, "99999\n999999");
@@ -1070,7 +1051,7 @@ mod tests {
         assert_eq!(imp.value, "no2");
         assert_eq!(
             (imp.count, imp.unit, imp.map),
-            (4, "points", MapType::Contour)
+            (4, "points", MapKind::Contour)
         );
         assert_eq!(
             imp.warnings,
@@ -1123,7 +1104,7 @@ mod tests {
            "geometry": {"type": "LineString", "coordinates": [[-6.3, 53.34], [-6.2, 53.35]]}}
         ]}"#;
         let opts = Options {
-            map: Some(MapType::Proximal),
+            map: Some(MapKind::Proximal),
             ..Options::default()
         };
         let imp = import(gj, &opts).unwrap();
@@ -1140,7 +1121,7 @@ mod tests {
         let run = crate::run(&imp.deck).unwrap();
         assert_eq!(run.maps[0].kind, crate::MapKind::Proximal);
         let conformant = Options {
-            map: Some(MapType::Conformant),
+            map: Some(MapKind::Conformant),
             ..Options::default()
         };
         assert!(import(gj, &conformant).is_err());
@@ -1272,7 +1253,7 @@ mod tests {
         let imp = import(&zones_geojson(), &Options::default()).unwrap();
         assert_eq!(
             (imp.map, imp.count, imp.unit),
-            (MapType::Conformant, 5, "zones")
+            (MapKind::Conformant, 5, "zones")
         );
         assert_eq!(
             imp.warnings,
@@ -1302,7 +1283,7 @@ mod tests {
             "geometry":{"type":"Polygon","coordinates":[]}}]}"#;
         let g = zones_geojson();
         let g = format!("{}{empty}", g.strip_suffix("]}").unwrap());
-        for map in [MapType::Conformant, MapType::Contour] {
+        for map in [MapKind::Conformant, MapKind::Contour] {
             let opts = Options {
                 map: Some(map),
                 ..Options::default()
@@ -1345,7 +1326,7 @@ mod tests {
     #[test]
     fn zones_as_points() {
         let opts = Options {
-            map: Some(MapType::Contour),
+            map: Some(MapKind::Contour),
             ..Options::default()
         };
         let imp = import(&zones_geojson(), &opts).unwrap();
@@ -1370,7 +1351,7 @@ mod tests {
             [[100, 100], [100, 0], [0, -100], [-100, 0]]
           ]}"#;
         let imp = import(t, &Options::default()).unwrap();
-        assert_eq!((imp.count, imp.map), (2, MapType::Conformant));
+        assert_eq!((imp.count, imp.map), (2, MapKind::Conformant));
         let m = &crate::run(&imp.deck).unwrap().maps[0];
         assert!(m.to_text().contains("CONFORMANT MAP"));
     }

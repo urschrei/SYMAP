@@ -12,7 +12,6 @@
 //! { "ok": false, "error": {"line": 12, "message": "..."} }
 //! ```
 
-use crate::deck::MapKind;
 use crate::map::PrintedMap;
 use serde::{Deserialize, Serialize};
 
@@ -80,11 +79,7 @@ impl From<&PrintedMap> for MapReply {
         let page = m.page();
         let asa = crate::page::asa(&page);
         MapReply {
-            kind: match m.kind {
-                MapKind::Contour => "contour",
-                MapKind::Proximal => "proximal",
-                MapKind::Conformant => "conformant",
-            },
+            kind: m.kind.name(),
             rows: m.frame.rows,
             cols: m.frame.cols,
             lines_per_inch: m.frame.lines_per_inch,
@@ -171,25 +166,13 @@ pub fn import(req: ImportRequest) -> Reply<ImportReply> {
             title: some(req.title),
             source: req.name,
             object: some(req.object),
-            map: some(req.map)
-                .map(|m| {
-                    import::MapType::parse(&m).ok_or_else(|| {
-                        crate::Error::general(format!(
-                            "unknown map '{m}': expected contour, proximal or conformant"
-                        ))
-                    })
-                })
-                .transpose()?,
+            map: some(req.map).map(|m| m.parse()).transpose()?,
             lines_text: some(req.lines_text),
             lines_source: req.lines_name,
             ..import::Options::default()
         };
         if let Some(l) = some(req.lines) {
-            opts.lines = import::LineUse::parse(&l).ok_or_else(|| {
-                crate::Error::general(format!(
-                    "unknown lines '{l}': expected legend, barrier, both or none"
-                ))
-            })?;
+            opts.lines = l.parse()?;
         }
         if let Some(sym) = some(req.line_symbol) {
             opts.line_symbol = sym;
