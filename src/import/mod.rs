@@ -383,9 +383,9 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
                 .to_string()
         }));
     }
-    // Lines, as paths in source coordinates, with their names: from this
-    // file and from a second one.
-    let mut lines: Vec<(Option<String>, Vec<P>)> = Vec::new();
+    // Lines, as paths in source coordinates, with the number of the feature
+    // they come from and its name: from this file and from a second one.
+    let mut lines: Vec<(usize, Option<String>, Vec<P>)> = Vec::new();
     let line_name = |f: &Feature| {
         name_field(&[f]).and_then(|k| {
             f.props
@@ -397,10 +397,10 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
                 })
         })
     };
-    for f in &line_features {
+    for (k, f) in line_features.iter().enumerate() {
         if let Geom::Line(parts) = &f.geom {
             for r in parts {
-                lines.push((line_name(f), path(&src.arcs, r)));
+                lines.push((k, line_name(f), path(&src.arcs, r)));
             }
         }
     }
@@ -413,11 +413,12 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         let mut in_range = true;
         for f in &other.features {
             if let Geom::Line(parts) = &f.geom {
+                let k = line_features.len() + used;
                 used += 1;
                 for r in parts {
                     let p = path(&other.arcs, r);
                     in_range &= p.iter().all(|q| q.0.abs() <= 180.0 && q.1.abs() <= 90.0);
-                    lines.push((line_name(f), p));
+                    lines.push((k, line_name(f), p));
                 }
             }
         }
@@ -773,7 +774,10 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         ));
     }
     let mut line_parts: Vec<Vec<P>> = Vec::new();
-    for (_, pts) in &lines {
+    // The line features with a part on the map, and their names.
+    let mut drawn: Vec<usize> = Vec::new();
+    let mut names: Vec<&str> = Vec::new();
+    for (k, name, pts) in &lines {
         let projected: Vec<P> = pts.iter().map(|&p| project(p)).collect();
         let simple = topology::douglas_peucker(&projected, tolerance);
         let on_grid: Vec<P> = simple
@@ -793,6 +797,12 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
                     .map(|(d, a)| (d - char_width, a - char_width))
                     .collect(),
             );
+            if !drawn.contains(k) {
+                drawn.push(*k);
+                if let Some(n) = name.as_deref().filter(|n| !names.contains(n)) {
+                    names.push(n);
+                }
+            }
         }
     }
     if !lines.is_empty() && line_parts.is_empty() {
@@ -854,8 +864,6 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
             (true, false) => format!("drawn as line legends ({symbol})"),
             _ => "written as impermeable barriers (strength -1)".into(),
         };
-        let mut names: Vec<&str> = lines.iter().filter_map(|(n, _)| n.as_deref()).collect();
-        names.dedup();
         let named = if names.is_empty() {
             String::new()
         } else {
@@ -864,8 +872,9 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         comment(
             &mut out,
             &format!(
-                "{line_count} lines{from}{named} are {how}, simplified to within {tolerance:.3} \
-                 and cut a character beyond the map's edges."
+                "{} lines{from}{named} are {how}, simplified to within {tolerance:.3} \
+                 and cut a character beyond the map's edges.",
+                drawn.len()
             ),
         );
     }
@@ -1336,7 +1345,7 @@ mod tests {
         assert_eq!(imp.lines, 2);
         assert!(
             imp.deck
-                .contains("from river.geojson (River, Far) are drawn as line legends (~)")
+                .contains("1 lines from river.geojson (River) are drawn as line legends (~)")
         );
         assert!(imp.deck.contains("\nC-OTOLEGENDS\n     ~   L"));
         assert!(!imp.deck.contains("D-BARRIERS"));
