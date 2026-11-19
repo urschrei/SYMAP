@@ -3,10 +3,10 @@
 use super::lines::Clipped;
 use super::options::{LineUse, Unit};
 use super::project::Projection;
-use super::topology::P;
 use super::{Item, Sheet, ZoneRing};
 use crate::Error;
 use crate::MapKind;
+use crate::Point;
 use std::fmt::Write;
 
 /// The last part of a path.
@@ -44,11 +44,11 @@ pub(crate) fn field(x: f64) -> Result<String, Error> {
 
 /// A location to the nearest thousandth (a metre, in kilometres), after
 /// `head` in columns 1-10.
-pub(crate) fn coordinate_card(head: &str, (down, across): P) -> Result<String, Error> {
+pub(crate) fn coordinate_card(head: &str, p: Point) -> Result<String, Error> {
     Ok(format!(
         "{head:10}{}{}",
-        field_with(down, 3)?,
-        field_with(across, 3)?
+        field_with(p.down, 3)?,
+        field_with(p.across, 3)?
     ))
 }
 
@@ -102,7 +102,7 @@ pub(crate) struct Plan<'a> {
     /// Zone rings with their zone numbers, on the sheet.
     pub(crate) rings: &'a [ZoneRing],
     pub(crate) outline: bool,
-    pub(crate) point_outline: Option<&'a [P]>,
+    pub(crate) point_outline: Option<&'a [Point]>,
 }
 
 /// The deck: comments, then the packages and the F-MAP.
@@ -198,7 +198,7 @@ pub(crate) fn write_deck(plan: &Plan) -> Result<String, Error> {
         }
     }
 
-    let write_ring = |out: &mut String, head: &str, ring: &[P]| -> Result<(), Error> {
+    let write_ring = |out: &mut String, head: &str, ring: &[Point]| -> Result<(), Error> {
         for (j, &p) in ring.iter().enumerate() {
             let _ = writeln!(
                 out,

@@ -9,6 +9,7 @@ use super::project::Projection;
 use super::read::{self, Feature, Geom, Prop, Source};
 use super::topology::{self, P};
 use crate::Error;
+use crate::Point;
 
 /// The lines to map, in source coordinates.
 pub(crate) struct Lines {
@@ -29,7 +30,7 @@ pub(crate) struct Path {
 
 /// Lines on the sheet, clipped a character beyond its edges.
 pub(crate) struct Clipped {
-    pub(crate) parts: Vec<Vec<P>>,
+    pub(crate) parts: Vec<Vec<Point>>,
     /// How many line features have a part on the sheet.
     pub(crate) drawn: usize,
     /// Their names, without repeats.
@@ -125,29 +126,24 @@ pub(crate) fn clip_to(
     tolerance: f64,
 ) -> Clipped {
     let char_width = sheet.char_width;
-    let mut parts: Vec<Vec<P>> = Vec::new();
+    let mut parts: Vec<Vec<Point>> = Vec::new();
     let mut drawn: Vec<usize> = Vec::new();
     let mut names: Vec<String> = Vec::new();
     for line in paths {
         let projected: Vec<P> = line.points.iter().map(|&p| projection.project(p)).collect();
         let simple = topology::douglas_peucker(&projected, tolerance);
-        let on_grid: Vec<P> = simple
+        // Clip to bounds from 0, a character beyond the sheet on each side.
+        let shift = |p: Point, by: f64| Point::new(p.down + by, p.across + by);
+        let on_grid: Vec<Point> = simple
             .into_iter()
-            .map(|p| sheet.grid(p))
-            .map(|(d, a)| (d + char_width, a + char_width))
+            .map(|p| shift(sheet.grid(p), char_width))
             .collect();
-        for part in clip(
-            &on_grid,
-            (
-                sheet.down_extent + 2.0 * char_width,
-                sheet.across_extent + 2.0 * char_width,
-            ),
-        ) {
-            parts.push(
-                part.into_iter()
-                    .map(|(d, a)| (d - char_width, a - char_width))
-                    .collect(),
-            );
+        let bounds = Point::new(
+            sheet.down_extent + 2.0 * char_width,
+            sheet.across_extent + 2.0 * char_width,
+        );
+        for part in clip(&on_grid, bounds) {
+            parts.push(part.into_iter().map(|p| shift(p, -char_width)).collect());
             if !drawn.contains(&line.feature) {
                 drawn.push(line.feature);
                 if let Some(n) = line.name.as_ref().filter(|n| !names.contains(n)) {

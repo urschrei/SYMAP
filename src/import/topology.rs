@@ -7,6 +7,9 @@
 use geo::{Area, LineString, Polygon, Simplify};
 use std::collections::HashMap;
 
+/// A location before it is placed on the sheet: (x, y) in the source's
+/// coordinates, or (easting, northing) once projected. On the sheet,
+/// locations are `Point`s.
 pub type P = (f64, f64);
 
 #[derive(Debug, Clone, Default, PartialEq)]

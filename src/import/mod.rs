@@ -23,6 +23,7 @@ pub use options::{Imported, LineUse, Options, Unit};
 
 use crate::Error;
 use crate::MapKind;
+use crate::Point;
 use fields::{is_id, name_field, numeric_fields};
 use geometry::{centroid, hull};
 use project::Projection;
@@ -53,7 +54,7 @@ struct Valued<G> {
 struct Item {
     value: f64,
     name: Option<String>,
-    point: P,
+    point: Point,
 }
 
 /// A projected zone: its rings as references to the topology's arcs.
@@ -65,7 +66,7 @@ struct Zone {
 }
 
 /// A zone ring on the sheet, with its zone's number (from 1).
-type ZoneRing = (usize, Vec<P>);
+type ZoneRing = (usize, Vec<Point>);
 
 /// The projection, the sheet, and the items and zone rings on it.
 struct Placed {
@@ -92,9 +93,10 @@ struct Sheet {
 }
 
 impl Sheet {
-    /// Down and across from the top-left corner.
-    fn grid(&self, (e, n): P) -> P {
-        (self.top - n, e - self.left)
+    /// A projected location's place on the sheet: down and across from
+    /// the top-left corner.
+    fn grid(&self, (e, n): P) -> Point {
+        Point::new(self.top - n, e - self.left)
     }
 }
 
@@ -460,8 +462,8 @@ fn zone_rings(
     for zone in zones {
         let mut kept_rings = Vec::new();
         for r in &zone.outer {
-            let ring: Vec<P> = topo.ring(r).into_iter().map(grid).collect();
-            if ring.len() < 4 || topology::area(&ring).abs() < char_area / 2.0 {
+            let ring: Vec<Point> = topo.ring(r).into_iter().map(grid).collect();
+            if ring.len() < 4 || geometry::area(&ring) < char_area / 2.0 {
                 small += 1;
             } else {
                 kept_rings.push(ring);
@@ -474,7 +476,7 @@ fn zone_rings(
                     .abs()
                     .total_cmp(&topology::area(&topo.ring(b)).abs())
             }) {
-                let ring: Vec<P> = topo.ring(r).into_iter().map(grid).collect();
+                let ring: Vec<Point> = topo.ring(r).into_iter().map(grid).collect();
                 if ring.len() >= 4 {
                     small -= 1;
                     kept_rings.push(ring);
@@ -523,7 +525,7 @@ fn zone_rings(
     // enclaves stay distinct from the zones around them.
     let mut by_area: Vec<(f64, ZoneRing)> = rings
         .into_iter()
-        .map(|r| (topology::area(&r.1).abs(), r))
+        .map(|r| (geometry::area(&r.1), r))
         .collect();
     by_area.sort_by(|a, b| a.0.total_cmp(&b.0));
     let rings = by_area.into_iter().map(|(_, r)| r).collect();
@@ -532,20 +534,25 @@ fn zone_rings(
 
 /// The outline around points: their convex hull, enlarged by part of the
 /// margin and closed. `None` if the points are in a line.
-fn point_outline(items: &[Item], margin: f64) -> Option<Vec<P>> {
-    let pts: Vec<P> = items.iter().map(|i| i.point).collect();
+fn point_outline(items: &[Item], margin: f64) -> Option<Vec<Point>> {
+    let pts: Vec<Point> = items.iter().map(|i| i.point).collect();
     let h = hull(&pts);
     if h.len() < 3 {
         return None;
     }
-    let (cd, ca) = h.iter().fold((0.0, 0.0), |s, p| (s.0 + p.0, s.1 + p.1));
-    let c = (cd / h.len() as f64, ca / h.len() as f64);
-    let mut grown: Vec<P> = h
+    let (cd, ca) = h
         .iter()
-        .map(|&(d, a)| {
-            let (dd, da) = (d - c.0, a - c.1);
+        .fold((0.0, 0.0), |s, p| (s.0 + p.down, s.1 + p.across));
+    let c = (cd / h.len() as f64, ca / h.len() as f64);
+    let mut grown: Vec<Point> = h
+        .iter()
+        .map(|p| {
+            let (dd, da) = (p.down - c.0, p.across - c.1);
             let len = (dd * dd + da * da).sqrt().max(1e-9);
-            (d + dd / len * margin * 0.6, a + da / len * margin * 0.6)
+            Point::new(
+                p.down + dd / len * margin * 0.6,
+                p.across + da / len * margin * 0.6,
+            )
         })
         .collect();
     grown.push(grown[0]);
