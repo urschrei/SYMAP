@@ -170,13 +170,25 @@ pub fn import(req: ImportRequest) -> Reply<ImportReply> {
             title: some(req.title),
             source: req.name,
             object: some(req.object),
-            map: req.map.as_deref().and_then(import::MapType::parse),
+            map: some(req.map)
+                .map(|m| {
+                    import::MapType::parse(&m).ok_or_else(|| {
+                        crate::Error::general(format!(
+                            "unknown map '{m}': expected contour, proximal or conformant"
+                        ))
+                    })
+                })
+                .transpose()?,
             lines_text: some(req.lines_text),
             lines_source: req.lines_name,
             ..import::Options::default()
         };
-        if let Some(l) = req.lines.as_deref().and_then(import::LineUse::parse) {
-            opts.lines = l;
+        if let Some(l) = some(req.lines) {
+            opts.lines = import::LineUse::parse(&l).ok_or_else(|| {
+                crate::Error::general(format!(
+                    "unknown lines '{l}': expected legend, barrier, both or none"
+                ))
+            })?;
         }
         if let Some(sym) = some(req.line_symbol) {
             opts.line_symbol = sym;
@@ -237,6 +249,17 @@ mod tests {
             to_json(&import(request(json!({})))),
             json!({"ok": false, "error": {"line": null, "message": "the request has no text"}})
         );
+        let text = "lon,lat,v\n-0.1,51.5,1\n-0.2,51.6,2\n0.0,51.4,3\n";
+        let auto = to_json(&import(request(
+            json!({"text": text, "map": "", "lines": ""}),
+        )));
+        assert_eq!(auto["map"], "contour");
+        for (k, v) in [("map", "contur"), ("lines", "barriers")] {
+            let reply = to_json(&import(request(json!({"text": text, k: v}))));
+            assert_eq!(reply["ok"], false);
+            let message = reply["error"]["message"].as_str().unwrap();
+            assert!(message.contains(&format!("unknown {k} '{v}'")), "{message}");
+        }
     }
 
     #[test]
