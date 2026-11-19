@@ -551,17 +551,17 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             let grid_pts: Vec<((f64, f64), f64)> =
                 valid_pts.iter().map(|&(p, v)| (frame.grid(p), v)).collect();
             let at_location = |r: usize, c: usize| -> Option<f64> {
-                let here: Vec<f64> = grid_pts
+                // The sum starts from -0.0, as `Sum` for f64 does.
+                let (sum, n) = grid_pts
                     .iter()
                     .filter(|((gr, gc), _)| {
                         (gr - r as f64).abs() <= 0.5 && (gc - c as f64).abs() <= 0.5
                     })
-                    .map(|x| x.1)
-                    .collect();
-                if here.is_empty() {
+                    .fold((-0.0, 0usize), |(sum, n), x| (sum + x.1, n + 1));
+                if n == 0 {
                     s.eval(frame.centre(r, c))
                 } else {
-                    Some(here.iter().sum::<f64>() / here.len() as f64)
+                    Some(sum / n as f64)
                 }
             };
             // Standard SYMAP computes about one character in six (every second
@@ -572,18 +572,18 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                 let a = i / step * step;
                 (a, (a + step).min(n))
             };
-            let samples: std::collections::HashMap<(usize, usize), Option<f64>> = (0..=frame.rows)
-                .filter(|r| r % sr == 0 || *r == frame.rows)
-                .flat_map(|r| {
-                    (0..=frame.cols)
-                        .filter(|c| c % sc == 0 || *c == frame.cols)
-                        .map(move |c| (r, c))
-                })
-                .map(|(r, c)| ((r, c), at_location(r, c)))
-                .collect();
+            // Values at the computed characters; the others stay `None`.
+            let mut samples: Vec<Option<f64>> = vec![None; fill.len()];
+            let sample_rows = (0..=frame.rows).filter(|r| r % sr == 0 || *r == frame.rows);
+            for r in sample_rows {
+                let sample_cols = (0..=frame.cols).filter(|c| c % sc == 0 || *c == frame.cols);
+                for c in sample_cols {
+                    samples[idx(r, c)] = at_location(r, c);
+                }
+            }
             let value = |r: usize, c: usize| -> Option<f64> {
                 let ((r0, r1), (c0, c1)) = (anchor(r, sr, frame.rows), anchor(c, sc, frame.cols));
-                let g = |r, c| samples[&(r, c)];
+                let g = |r, c| samples[idx(r, c)];
                 let (a, b, cc, d) = (g(r0, c0)?, g(r0, c1)?, g(r1, c0)?, g(r1, c1)?);
                 let t = if r1 > r0 {
                     (r - r0) as f64 / (r1 - r0) as f64
