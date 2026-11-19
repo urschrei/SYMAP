@@ -720,20 +720,27 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             }
         }
     } else if o.lines != Lines::None {
+        // Lines are made in printing order. A character becomes a line where
+        // its level differs from the character above it, or from the one to
+        // its left unless that one is already a line. So a boundary takes
+        // one character, on whichever side the scan reaches second, rather
+        // than always the higher level. (Matches Examples 1-5, 1-16 and 1-17
+        // of the 1971 manual better than either side by level.) Standard
+        // SYMAP drops a line that would leave no symbol between it and the
+        // next; elective 22 keeps them.
         let rank = |r: usize, c: usize| levels[idx(r, c)].map(Level::rank);
+        let band = o.lines != Lines::Continuous;
+        let mut line = vec![false; fill.len()];
         for r in 1..frame.rows {
             for c in 1..frame.cols {
                 let Some(me) = rank(r, c) else { continue };
-                let line = [(0i64, 1i64), (1, 0), (0, -1), (-1, 0)]
-                    .iter()
-                    .any(|&(dr, dc)| {
-                        let (nr, nc) = ((r as i64 + dr) as usize, (c as i64 + dc) as usize);
-                        let lower = rank(nr, nc).is_some_and(|x| x < me);
-                        // Keep symbolism in bands one character wide.
-                        let (br, bc) = ((r as i64 - dr) as usize, (c as i64 - dc) as usize);
-                        lower && (o.lines == Lines::Continuous || rank(br, bc) == Some(me))
-                    });
-                if line {
+                let differs = |(nr, nc): (usize, usize), (br, bc): (usize, usize)| {
+                    rank(nr, nc).is_some_and(|x| x != me) && (!band || rank(br, bc) == Some(me))
+                };
+                if differs((r - 1, c), (r + 1, c))
+                    || (!line[idx(r, c - 1)] && differs((r, c - 1), (r, c + 1)))
+                {
+                    line[idx(r, c)] = true;
                     grid[idx(r, c)] = symbolism.contour;
                 }
             }
