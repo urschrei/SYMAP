@@ -111,13 +111,16 @@ impl Frame {
             mt *= f;
             ml *= f;
         }
-        let rows = ((h * lpi).round() as usize).max(2);
-        let cols = ((w * cpi).round() as usize).max(2);
-        if (rows + 1).saturating_mul(cols + 1) > MAX_CELLS {
+        // Check the size before the conversion to usize, which saturates.
+        let rows = (h * lpi).round().max(2.0);
+        let cols = (w * cpi).round().max(2.0);
+        let cells = (rows + 1.0) * (cols + 1.0);
+        if cells.is_nan() || cells > MAX_CELLS as f64 {
             return Err(Error::general(format!(
-                "a map of {rows} x {cols} characters is too large"
+                "a map of {rows:.0} x {cols:.0} characters is too large"
             )));
         }
+        let (rows, cols) = (rows as usize, cols as usize);
         Ok((
             Frame {
                 rows,
@@ -227,5 +230,15 @@ mod tests {
             ..layout
         };
         assert!(Frame::fit(ext(1.0, 1.0), &layout).unwrap().1.is_empty());
+    }
+
+    #[test]
+    fn huge_character_density_is_too_large() {
+        let layout = Layout {
+            lines_per_inch: 1e20,
+            ..Default::default()
+        };
+        let e = Frame::fit(ext(1.0, 1.0), &layout).unwrap_err();
+        assert!(e.message.contains("too large"));
     }
 }
