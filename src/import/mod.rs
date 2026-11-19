@@ -815,6 +815,31 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
     let barriers = barriers && map != MapType::Conformant;
     let legends = opts.lines.draws() && !line_parts.is_empty();
 
+    // The outline around points: their convex hull, enlarged.
+    let point_outline = if opts.outline && !zonal && map != MapType::Conformant {
+        let pts: Vec<P> = items.iter().map(|i| i.point).collect();
+        let h = hull(&pts);
+        if h.len() >= 3 {
+            let (cd, ca) = h.iter().fold((0.0, 0.0), |s, p| (s.0 + p.0, s.1 + p.1));
+            let c = (cd / h.len() as f64, ca / h.len() as f64);
+            let mut grown: Vec<P> = h
+                .iter()
+                .map(|&(d, a)| {
+                    let (dd, da) = (d - c.0, a - c.1);
+                    let len = (dd * dd + da * da).sqrt().max(1e-9);
+                    (d + dd / len * margin * 0.6, a + da / len * margin * 0.6)
+                })
+                .collect();
+            grown.push(grown[0]);
+            Some(grown)
+        } else {
+            warnings.push("the points are in a line, so no outline was drawn".into());
+            None
+        }
+    } else {
+        None
+    };
+
     // The deck.
     let source = opts
         .source
@@ -916,27 +941,10 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
                     write_ring(&mut out, "", ring)?;
                 }
                 let _ = writeln!(out, "99999");
-            } else {
-                let pts: Vec<P> = items.iter().map(|i| i.point).collect();
-                let h = hull(&pts);
-                if h.len() >= 3 {
-                    let (cd, ca) = h.iter().fold((0.0, 0.0), |s, p| (s.0 + p.0, s.1 + p.1));
-                    let c = (cd / h.len() as f64, ca / h.len() as f64);
-                    let mut grown: Vec<P> = h
-                        .iter()
-                        .map(|&(d, a)| {
-                            let (dd, da) = (d - c.0, a - c.1);
-                            let len = (dd * dd + da * da).sqrt().max(1e-9);
-                            (d + dd / len * margin * 0.6, a + da / len * margin * 0.6)
-                        })
-                        .collect();
-                    grown.push(grown[0]);
-                    let _ = writeln!(out, "A-OUTLINE");
-                    write_ring(&mut out, "", &grown)?;
-                    let _ = writeln!(out, "99999");
-                } else {
-                    warnings.push("the points are in a line, so no outline was drawn".into());
-                }
+            } else if let Some(ring) = &point_outline {
+                let _ = writeln!(out, "A-OUTLINE");
+                write_ring(&mut out, "", ring)?;
+                let _ = writeln!(out, "99999");
             }
         }
         let _ = writeln!(out, "B-DATA POINTS");
@@ -1120,6 +1128,16 @@ mod tests {
             ..Options::default()
         };
         assert!(import(gj, &conformant).is_err());
+    }
+
+    #[test]
+    fn points_in_a_line_are_noted_in_the_deck() {
+        let imp = import("x,y,v\n0,0,1\n1,0,2\n2,0,3\n", &Options::default()).unwrap();
+        assert!(!imp.deck.contains("A-OUTLINE"));
+        assert!(
+            imp.deck
+                .contains("# Note: the points are in a line, so no outline was drawn.")
+        );
     }
 
     #[test]
