@@ -1,6 +1,6 @@
-//! A reimplementation of SYMAP, the Synagraphic Mapping System
-//! (H. T. Fisher; Harvard Laboratory for Computer Graphics and Spatial
-//! Analysis), following the 1971 program manual.
+//! An implementation of SYMAP, the Synagraphic Mapping System (Howard
+//! Fisher and Betty Benson; Harvard Laboratory for Computer Graphics and
+//! Spatial Analysis), following the 1971 program manual.
 //!
 //! It reads SYMAP card decks and prints line-printer maps: contour (Shepard
 //! interpolation), proximal (nearest data point) and conformant (zone fill),

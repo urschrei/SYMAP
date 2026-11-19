@@ -1,10 +1,10 @@
 # symap
 
-A reimplementation of SYMAP, the Synagraphic Mapping System. SYMAP was
-Howard T. Fisher's line-printer mapping program, written at Northwestern in
-1963 and developed at the Harvard Laboratory for Computer Graphics and
-Spatial Analysis. It reads SYMAP card decks and prints maps made of
-overprinted characters, following the 1971 program manual.
+An implementation of SYMAP, the Synagraphic Mapping System: the
+line-printer mapping program developed at the Harvard Laboratory for
+Computer Graphics and Spatial Analysis by Howard Fisher and Betty Benson. It
+reads SYMAP card decks and prints maps made of overprinted characters,
+following the 1971 program manual.
 
 The core is written in Rust with no dependencies. It runs from the command
 line, or compiled to WebAssembly in the browser at
