@@ -439,7 +439,8 @@ mod tests {
             run(&["1 5 8"]).unwrap(),
             run(&["    1       5.0       8.0"]).unwrap()
         );
-        assert!(run(&["    3      11.0"]).is_err());
+        let e = run(&["    3      11.0"]).unwrap_err();
+        assert!(e.message.contains("from 1 to 10"), "{e}");
     }
 
     #[test]
@@ -512,7 +513,8 @@ mod tests {
         let e = run(&["    7", "", "", "", "", "   11"]).unwrap();
         assert!(matches!(e[0], Elective::Symbolism(_)));
         assert_eq!(e[1], Elective::PrintValues);
-        assert!(run(&["    7", "", ""]).is_err());
+        let e = run(&["    7", "", ""]).unwrap_err();
+        assert!(e.message.contains("four symbolism cards"), "{e}");
     }
 
     #[test]

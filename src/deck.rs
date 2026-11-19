@@ -793,17 +793,26 @@ mod tests {
                 shift: (1.0, -2.0)
             }
         );
-        assert!(
-            matches!(&l[1], Legend::Line { strikes, vertices } if *strikes == Strikes::new("R/") && vertices.len() == 2)
+        assert_eq!(
+            l[1..],
+            [
+                Legend::Line {
+                    strikes: Strikes::new("R/"),
+                    vertices: vec![Point::new(2.31, 4.08), Point::new(2.35, 7.92)]
+                },
+                Legend::Symbol {
+                    strikes: Strikes::new("A"),
+                    at: Point::new(3.8, 5.2),
+                    shift: (0.0, 0.0)
+                },
+                Legend::Text {
+                    text: "ABC".into(),
+                    direction: Direction::Down,
+                    at: Point::new(1.0, 1.0),
+                    shift: (0.0, 0.0)
+                },
+            ]
         );
-        assert!(matches!(&l[2], Legend::Symbol { strikes, .. } if *strikes == Strikes::new("A")));
-        assert!(matches!(
-            &l[3],
-            Legend::Text {
-                direction: Direction::Down,
-                ..
-            }
-        ));
     }
 
     #[test]
@@ -844,8 +853,10 @@ mod tests {
         let e = Deck::parse("B-DATA POINTS\n1 2\nfoo\n99999\n").unwrap_err();
         assert_eq!(e.line, Some(3));
         assert_eq!(Deck::parse("hello\n").unwrap_err().line, Some(1));
-        assert!(Deck::parse("Q-NONSENSE\n99999\n").is_err());
-        assert!(Deck::parse("F-MAP\nA\n99999\n").is_err());
+        let e = Deck::parse("Q-NONSENSE\n99999\n").unwrap_err();
+        assert!(e.message.contains("unknown package"), "{e}");
+        let e = Deck::parse("F-MAP\nA\n99999\n").unwrap_err();
+        assert!(e.message.contains("three title cards"), "{e}");
         // An unclosed area zone is reported on its first card.
         let d = "A-CONFORMOLINES\n1 A 0 0\n0 1\n1 1\n2 A 5 5\n5 6\n6 6\n99999\n999999\n";
         assert_eq!(Deck::parse(d).unwrap_err().line, Some(2));

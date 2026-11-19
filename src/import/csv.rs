@@ -5,6 +5,7 @@
 
 use crate::Error;
 
+#[derive(Debug)]
 pub struct Table {
     pub header: Vec<String>,
     /// The line the header is on.
@@ -98,7 +99,8 @@ mod tests {
         assert_eq!(t.rows[1].0, 4);
         let t = parse("a;b\n1,5;2\n").unwrap();
         assert_eq!(t.rows[0].1, ["1,5", "2"]);
-        assert!(parse("a,b\n\"open,1\n").is_err());
+        let e = parse("a,b\n\"open,1\n").unwrap_err();
+        assert!(e.message.contains("unterminated"), "{e}");
     }
 
     #[test]

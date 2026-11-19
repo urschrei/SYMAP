@@ -161,6 +161,7 @@ mod tests {
             counts[k as usize] += 1;
         }
         assert_eq!(counts, [2; 5]);
-        assert!(Classes::new(0.0, 1.0, 3, Some(&[1.0]), &[]).is_err());
+        let e = Classes::new(0.0, 1.0, 3, Some(&[1.0]), &[]).unwrap_err();
+        assert!(e.message.contains("1 ranges for 3 levels"), "{e}");
     }
 }

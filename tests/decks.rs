@@ -136,8 +136,10 @@ fn errors() {
     let e = run(short).unwrap_err();
     assert_eq!(e.line, Some(8));
     assert!(e.message.contains("E-VALUES has only 1"));
-    assert!(run("B-DATA POINTS\n0 0\n99999\n999999\n").is_err());
-    assert!(run(&square(["1", "2", "3", "4"], "    3      12.\n")).is_err());
+    let e = run("B-DATA POINTS\n0 0\n99999\n999999\n").unwrap_err();
+    assert!(e.message.contains("no F-MAP package"), "{e}");
+    let e = run(&square(["1", "2", "3", "4"], "    3      12.\n")).unwrap_err();
+    assert!(e.message.contains("from 1 to 10"), "{e}");
 }
 
 #[test]

@@ -620,7 +620,8 @@ mod tests {
             map: Some(MapKind::Conformant),
             ..Options::default()
         };
-        assert!(import(gj, &conformant).is_err());
+        let e = import(gj, &conformant).unwrap_err();
+        assert!(e.message.contains("a conformant map needs polygons"), "{e}");
     }
 
     #[test]
@@ -658,7 +659,8 @@ mod tests {
         let imp = import(csv, &Options::default()).unwrap();
         assert!(imp.deck.contains("taken to be metres"));
         crate::run(&imp.deck).unwrap();
-        assert!(import("a,b\n1,2\n", &Options::default()).is_err());
+        let e = import("a,b\n1,2\n", &Options::default()).unwrap_err();
+        assert!(e.message.contains("no coordinate columns"), "{e}");
         let opts = Options {
             value: Some("nope".into()),
             ..Options::default()
@@ -669,7 +671,8 @@ mod tests {
                 .message
                 .contains("numeric fields: height")
         );
-        assert!(import("x,y,v\n1,1,1\n1,1,2\n1,1,3\n", &Options::default()).is_err());
+        let e = import("x,y,v\n1,1,1\n1,1,2\n1,1,3\n", &Options::default()).unwrap_err();
+        assert!(e.message.contains("all lie in one place"), "{e}");
     }
 
     /// Four zones in a 2x2 grid with wavy shared borders, the north-east
