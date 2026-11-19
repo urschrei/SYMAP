@@ -116,6 +116,16 @@ button, select {
   font: inherit; font-size: 13px; color: var(--ink); background: var(--bg);
   border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer;
 }
+/* Toolbar controls share one height, whatever the element. */
+.tools > button, .segmented button, .tools select, .menu > summary,
+.import-form select, .import-form input[type="text"], .import-form input[type="number"],
+.import-actions button, .sheet-view-head button {
+  box-sizing: border-box; height: var(--control-height, 32px);
+}
+.tools > button, .segmented button, .menu > summary, .import-actions button, .sheet-view-head button {
+  display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+}
+.tools select, .import-form select { padding-top: 0; padding-bottom: 0; }
 button:hover, select:hover { border-color: var(--muted); }
 button:disabled { opacity: 0.45; cursor: default; }
 button:disabled:hover { border-color: var(--line); }
@@ -198,7 +208,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible {
   padding: 5px 10px; cursor: pointer; background: var(--bg); user-select: none;
 }
 .menu summary::-webkit-details-marker { display: none; }
-.menu summary::after { content: " \25BE"; color: var(--muted); }
+.menu summary::after { content: "\25BE"; color: var(--muted); margin-left: 5px; }
 .menu summary:hover { border-color: var(--muted); }
 .menu summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .menu-items {
