@@ -352,6 +352,28 @@ fn raster(
     })
 }
 
+/// The content characters, row by row, within a character of a polygon's
+/// bounding box: the only ones whose centres can be inside it.
+fn cells_around(frame: &Frame, vertices: &[Point]) -> impl Iterator<Item = (usize, usize)> {
+    let (mut lo, mut hi) = (
+        (f64::INFINITY, f64::INFINITY),
+        (f64::NEG_INFINITY, f64::NEG_INFINITY),
+    );
+    for &p in vertices {
+        let (r, c) = frame.grid(p);
+        lo = (lo.0.min(r), lo.1.min(c));
+        hi = (hi.0.max(r), hi.1.max(c));
+    }
+    // Clamp in floating point, then convert: positions can be far off the map.
+    let span = |lo: f64, hi: f64, n: usize| {
+        let first = (lo - 1.0).floor().max(1.0);
+        let end = (hi + 2.0).floor().min(n as f64).max(first);
+        first as usize..end as usize
+    };
+    let (rows, cols) = (span(lo.0, hi.0, frame.rows), span(lo.1, hi.1, frame.cols));
+    rows.flat_map(move |r| cols.clone().map(move |c| (r, c)))
+}
+
 /// Draw one map.
 pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
     let at = |m: String| Error::at(spec.line, m);
@@ -610,15 +632,13 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                 let f = Fill::Value(classes.level(*v));
                 match z.shape {
                     ZoneShape::Area => {
-                        for r in 1..frame.rows {
-                            for c in 1..frame.cols {
-                                if fill[idx(r, c)] == Fill::Background
-                                    && geom::in_ring(frame.centre(r, c), &z.vertices)
-                                {
-                                    fill[idx(r, c)] = f;
-                                    zone_of[idx(r, c)] = Some(z.reference);
-                                    cell_value[idx(r, c)] = Some(*v);
-                                }
+                        for (r, c) in cells_around(&frame, &z.vertices) {
+                            if fill[idx(r, c)] == Fill::Background
+                                && geom::in_ring(frame.centre(r, c), &z.vertices)
+                            {
+                                fill[idx(r, c)] = f;
+                                zone_of[idx(r, c)] = Some(z.reference);
+                                cell_value[idx(r, c)] = Some(*v);
                             }
                         }
                     }
@@ -847,11 +867,9 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                 }
             }
             Legend::Area { strikes, vertices } => {
-                for r in 1..frame.rows {
-                    for c in 1..frame.cols {
-                        if geom::in_ring(frame.centre(r, c), vertices) {
-                            grid[idx(r, c)] = *strikes;
-                        }
+                for (r, c) in cells_around(&frame, vertices) {
+                    if geom::in_ring(frame.centre(r, c), vertices) {
+                        grid[idx(r, c)] = *strikes;
                     }
                 }
             }
@@ -952,5 +970,33 @@ mod tests {
         assert_eq!(raster(&frame, (-9.0, 5.0), (-2.0, 6.0)).count(), 0);
         let far = [Point::new(-1e9, 5.0), Point::new(1e9, 5.0)];
         assert_eq!(trace(&frame, &far).len(), frame.rows - 1);
+    }
+
+    #[test]
+    fn cells_around_a_polygon() {
+        let extent = Extent {
+            min: Point::new(0.0, 0.0),
+            max: Point::new(10.0, 10.0),
+        };
+        let (frame, _) = Frame::fit(extent, &Layout::default()).unwrap();
+        let square = [
+            Point::new(2.0, 2.0),
+            Point::new(2.0, 4.0),
+            Point::new(4.0, 4.0),
+            Point::new(4.0, 2.0),
+        ];
+        let cells: Vec<_> = cells_around(&frame, &square).collect();
+        let inside = (1..frame.rows)
+            .flat_map(|r| (1..frame.cols).map(move |c| (r, c)))
+            .filter(|&(r, c)| geom::in_ring(frame.centre(r, c), &square));
+        assert!(inside.into_iter().all(|cell| cells.contains(&cell)));
+        assert!(cells.len() < (frame.rows - 1) * (frame.cols - 1) / 4);
+        let off = square.map(|p| Point::new(p.down + 1e9, p.across));
+        assert_eq!(cells_around(&frame, &off).count(), 0);
+        let huge = square.map(|p| Point::new((p.down - 3.0) * 1e9, (p.across - 3.0) * 1e9));
+        assert_eq!(
+            cells_around(&frame, &huge).count(),
+            (frame.rows - 1) * (frame.cols - 1)
+        );
     }
 }
