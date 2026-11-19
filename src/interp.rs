@@ -85,13 +85,10 @@ fn by_dist(a: &(usize, f64), b: &(usize, f64)) -> std::cmp::Ordering {
 }
 
 impl Shepard {
-    /// `area` is the area of the study region, in source-map units squared.
-    pub fn new(points: &[Point], values: &[f64], area: f64, params: ShepardParams) -> Self {
-        Self::with_barriers(points, values, area, params, &[])
-    }
-
-    /// As `new`, with interpolation barriers (Shepard 1970, section 4).
-    pub fn with_barriers(
+    /// `area` is the area of the data points' bounding rectangle, in
+    /// source-map units squared. `barriers` stop or lengthen the paths
+    /// between points (Shepard 1970, section 4).
+    pub fn new(
         points: &[Point],
         values: &[f64],
         area: f64,
@@ -342,7 +339,7 @@ mod tests {
         .iter()
         .map(|&(d, a)| Point::new(d, a))
         .collect();
-        let s = Shepard::new(&pts, &[0.0; 6], 2.2 * 5.7, ShepardParams::default());
+        let s = Shepard::new(&pts, &[0.0; 6], 2.2 * 5.7, ShepardParams::default(), &[]);
         assert!((s.initial_radius() - 3.9958).abs() < 5e-5);
     }
 
@@ -353,7 +350,7 @@ mod tests {
             .iter()
             .map(|p| (p.down * 0.7).sin() + p.across)
             .collect();
-        let s = Shepard::new(&pts, &z, 100.0, ShepardParams::default());
+        let s = Shepard::new(&pts, &z, 100.0, ShepardParams::default(), &[]);
         for (p, v) in pts.iter().zip(&z) {
             assert_eq!(s.eval(*p), Some(*v));
         }
@@ -363,7 +360,7 @@ mod tests {
     fn constant_field_is_reproduced() {
         let pts = grid_points();
         let z = vec![3.25; pts.len()];
-        let s = Shepard::new(&pts, &z, 100.0, ShepardParams::default());
+        let s = Shepard::new(&pts, &z, 100.0, ShepardParams::default(), &[]);
         for q in [
             Point::new(1.1, 4.4),
             Point::new(9.9, 0.2),
@@ -381,7 +378,7 @@ mod tests {
             fraction: 0.0,
             ..Default::default()
         };
-        let s = Shepard::new(&pts, &z, 100.0, params);
+        let s = Shepard::new(&pts, &z, 100.0, params, &[]);
         for k in 0..200 {
             let q = Point::new((k % 20) as f64 * 0.55, (k / 20) as f64 * 1.1);
             let v = s.eval(q).unwrap();
@@ -400,7 +397,7 @@ mod tests {
     #[test]
     fn few_points_still_interpolate() {
         let pts = [Point::new(0.0, 0.0), Point::new(0.0, 10.0)];
-        let s = Shepard::new(&pts, &[0.0, 10.0], 100.0, ShepardParams::default());
+        let s = Shepard::new(&pts, &[0.0, 10.0], 100.0, ShepardParams::default(), &[]);
         let v = s.eval(Point::new(0.0, 5.0)).unwrap();
         assert!((v - 5.0).abs() < 1e-9, "{v}");
     }
@@ -412,7 +409,7 @@ mod tests {
         // more than 0.1 of the range.
         let pts: Vec<Point> = (0..8).map(|i| Point::new(0.0, i as f64)).collect();
         let z: Vec<f64> = (0..8).map(|i| (i * i) as f64).collect();
-        let s = Shepard::new(&pts, &z, 64.0, ShepardParams::default());
+        let s = Shepard::new(&pts, &z, 64.0, ShepardParams::default(), &[]);
         let reach = 0.1 * 49.0;
         for k in 0..70 {
             let p = Point::new(0.3, k as f64 * 0.1);
@@ -426,7 +423,7 @@ mod tests {
         // Report L, p. 8: 200 and 400 three units apart, P two units from
         // the first. Slopes 66.7, a = 0.3, Z' = 217.4 and 384.6, Z_P = 341.
         let pts = [Point::new(0.0, 0.0), Point::new(0.0, 3.0)];
-        let s = Shepard::new(&pts, &[200.0, 400.0], 1.0, ShepardParams::default());
+        let s = Shepard::new(&pts, &[200.0, 400.0], 1.0, ShepardParams::default(), &[]);
         let v = s.eval(Point::new(0.0, 2.0)).unwrap();
         let want = (217.391_3 * 0.875 + 384.615_4 * 2.5) / 3.375;
         assert!((v - want).abs() < 1e-3, "{v} vs {want}");
@@ -444,7 +441,7 @@ mod tests {
             Point::new(0.0, 0.0),
             Point::new(0.0, 2.0),
         ];
-        let s = Shepard::new(&pts, &[7.0, 0.0, 6.0], 0.0, ShepardParams::default());
+        let s = Shepard::new(&pts, &[7.0, 0.0, 6.0], 0.0, ShepardParams::default(), &[]);
         let at = |x: f64| s.eval(Point::new(0.0, x)).unwrap();
         assert_eq!((at(-5.0), at(0.0), at(2.0)), (7.0, 0.0, 6.0));
         assert!(at(-5.5) > 7.0, "{}", at(-5.5));
@@ -468,7 +465,7 @@ mod tests {
             (Point::new(-50.0, 3.0), -1.0),
             (Point::new(50.0, 3.0), -1.0),
         ];
-        let s = Shepard::with_barriers(&pts, &z, 10.0, ShepardParams::default(), &[wall]);
+        let s = Shepard::new(&pts, &z, 10.0, ShepardParams::default(), &[wall]);
         for x in [0.5, 1.5, 2.5, 2.9] {
             assert_eq!(s.eval(Point::new(0.0, x)), Some(0.0), "x = {x}");
         }
@@ -491,7 +488,7 @@ mod tests {
             (Point::new(0.0, 3.0), -1.0),
             (Point::new(50.0, 3.0), -1.0),
         ];
-        let s = Shepard::with_barriers(&pts, &z, 10.0, ShepardParams::default(), &[wall]);
+        let s = Shepard::new(&pts, &z, 10.0, ShepardParams::default(), &[wall]);
         for p in [Point::new(0.0, 2.0), Point::new(0.001, 2.0)] {
             assert_eq!(s.eval(p), Some(0.0), "{p:?}");
         }
@@ -506,11 +503,11 @@ mod tests {
                 (Point::new(-50.0, 3.0), strength),
                 (Point::new(50.0, 3.0), strength),
             ];
-            Shepard::with_barriers(&pts, &z, 10.0, ShepardParams::default(), &[wall])
+            Shepard::new(&pts, &z, 10.0, ShepardParams::default(), &[wall])
                 .eval(Point::new(0.0, 2.0))
                 .unwrap()
         };
-        let none = Shepard::new(&pts, &z, 10.0, ShepardParams::default())
+        let none = Shepard::new(&pts, &z, 10.0, ShepardParams::default(), &[])
             .eval(Point::new(0.0, 2.0))
             .unwrap();
         assert_eq!(at(0.0), none);
@@ -524,10 +521,10 @@ mod tests {
             (Point::new(1.0, 2.0), -1.0),
             (Point::new(-1.0, 2.0), -1.0),
         ];
-        let s = Shepard::with_barriers(&pts2, &z, 10.0, ShepardParams::default(), &[loop_]);
+        let s = Shepard::new(&pts2, &z, 10.0, ShepardParams::default(), &[loop_]);
         assert_eq!(
             s.eval(Point::new(0.0, 1.0)),
-            Shepard::new(&pts2, &z, 10.0, ShepardParams::default()).eval(Point::new(0.0, 1.0))
+            Shepard::new(&pts2, &z, 10.0, ShepardParams::default(), &[]).eval(Point::new(0.0, 1.0))
         );
     }
 
@@ -538,7 +535,7 @@ mod tests {
             max_radius: Some(2.0),
             ..Default::default()
         };
-        let s = Shepard::new(&pts, &[1.0, 2.0], 100.0, params);
+        let s = Shepard::new(&pts, &[1.0, 2.0], 100.0, params, &[]);
         assert!(s.eval(Point::new(0.0, 0.5)).is_some());
         assert_eq!(s.eval(Point::new(9.0, 9.0)), None);
     }

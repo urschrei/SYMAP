@@ -544,7 +544,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
             let hi = o.extrapolation_max.unwrap_or(data_range.1);
             let barriers: Vec<Vec<(Point, f64)>> =
                 pk.barriers.iter().map(|b| b.vertices.clone()).collect();
-            let s = Shepard::with_barriers(&pts, &zs, area, params, &barriers);
+            let s = Shepard::new(&pts, &zs, area, params, &barriers);
             search_radius = Some(s.initial_radius());
             // A location within half a character of data points takes their
             // (average) value; elsewhere the surface is interpolated.

@@ -9,10 +9,10 @@
 //! program's only input, so what the importer produces can be read, edited
 //! and run like any other deck.
 
-pub mod csv;
-pub mod project;
-pub mod read;
-pub mod topology;
+mod csv;
+mod project;
+mod read;
+mod topology;
 
 use crate::Error;
 use geo::{Centroid, ConvexHull, LineString, MultiPoint, MultiPolygon, Polygon};

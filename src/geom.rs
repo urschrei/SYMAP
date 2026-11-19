@@ -40,22 +40,6 @@ pub fn in_ring(p: Point, ring: &[Point]) -> bool {
     inside
 }
 
-/// Even-odd test over several rings, so later rings can punch holes.
-pub fn in_rings(p: Point, rings: &[Vec<Point>]) -> bool {
-    rings.iter().filter(|r| in_ring(p, r)).count() % 2 == 1
-}
-
-/// Unsigned shoelace area.
-pub fn area(ring: &[Point]) -> f64 {
-    let n = ring.len();
-    let mut s = 0.0;
-    for i in 0..n {
-        let (a, b) = (ring[i], ring[(i + 1) % n]);
-        s += a.across * b.down - b.across * a.down;
-    }
-    s.abs() / 2.0
-}
-
 /// Axis-aligned bounds.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Extent {
@@ -102,18 +86,9 @@ mod tests {
     }
 
     #[test]
-    fn ring_membership_and_holes() {
+    fn ring_membership() {
         let outer = square(0.0, 10.0);
-        let hole = square(4.0, 6.0);
         assert!(in_ring(Point::new(5.0, 5.0), &outer));
         assert!(!in_ring(Point::new(11.0, 5.0), &outer));
-        let rings = vec![outer, hole];
-        assert!(!in_rings(Point::new(5.0, 5.0), &rings));
-        assert!(in_rings(Point::new(1.0, 1.0), &rings));
-    }
-
-    #[test]
-    fn shoelace() {
-        assert_eq!(area(&square(0.0, 3.0)), 9.0);
     }
 }

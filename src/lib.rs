@@ -15,29 +15,29 @@
 //! print!("{}", run.maps[0].to_text());
 //! ```
 
-pub mod card;
-pub mod classify;
-pub mod deck;
-pub mod elective;
-pub mod error;
-pub mod frame;
-pub mod geom;
+mod card;
+mod classify;
+mod deck;
+mod elective;
+mod error;
+mod frame;
+mod geom;
 pub mod import;
-pub mod interp;
-pub mod json;
-pub mod map;
-pub mod page;
-pub mod symbols;
+mod interp;
+#[cfg(any(target_arch = "wasm32", test))]
+mod json;
+mod map;
+mod page;
+mod symbols;
 #[cfg(target_arch = "wasm32")]
-pub mod wasm;
+mod wasm;
 
 pub use classify::{Classes, Level};
-pub use deck::{Deck, MapKind, MapSpec};
-pub use elective::Elective;
+pub use deck::MapKind;
 pub use error::{Diagnostic, Error};
 pub use frame::Frame;
 pub use geom::Point;
-pub use map::PrintedMap;
+pub use map::{Frequency, PrintedMap, TableRow};
 pub use page::Line;
 pub use symbols::{Strikes, Symbolism};
 
@@ -50,7 +50,7 @@ pub struct Run {
 
 /// Parse a deck and draw every map it requests.
 pub fn run(text: &str) -> Result<Run, Error> {
-    let deck = Deck::parse(text)?;
+    let deck = deck::Deck::parse(text)?;
     if deck.maps.is_empty() {
         return Err(Error::general("deck contains no F-MAP package"));
     }
