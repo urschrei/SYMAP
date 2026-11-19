@@ -46,17 +46,20 @@ fn hills_contour_and_repeated_electives() {
     let (c, p) = (&r.maps[0], &r.maps[1]);
     assert_eq!((c.kind, p.kind), (MapKind::Contour, MapKind::Proximal));
     // Elective 12 carried electives 1 and 3 into the second map.
-    assert_eq!(p.classes.levels(), 6);
+    assert_eq!(p.classes.levels(), 4);
     assert_eq!((p.frame.rows, p.frame.cols), (c.frame.rows, c.frame.cols));
     // The surface stays within the data (electives 32 and 33 default to its extremes).
     assert_eq!(c.frequency.low + c.frequency.high, 0);
     assert!(c.levels.iter().flatten().all(|l| matches!(l, Level::In(_))));
-    // White contour lines: blank characters inside the study area.
+    // Elective 8 (also carried by 12): no white contour lines, so nothing
+    // inside the study area is left blank.
     let w = c.width();
-    let lined = (0..c.grid.len())
-        .filter(|&i| c.levels[i].is_some() && c.grid[i].is_blank())
-        .count();
-    assert!(lined > 50, "{lined}");
+    for m in [c, p] {
+        let lined = (0..m.grid.len())
+            .filter(|&i| m.levels[i].is_some() && m.grid[i].is_blank())
+            .count();
+        assert_eq!(lined, 0);
+    }
     assert!(c.levels[w + 1].is_none(), "corner is outside the outline");
 }
 
@@ -156,6 +159,11 @@ fn manual_example_1_3_contour() {
         assert!((a - b).abs() < 1e-9, "{a} {b}");
     }
     assert_eq!(m.frequency.levels, vec![2, 1, 1, 0, 2]);
+    // White contour lines: blank characters inside the study area.
+    let lined = (0..m.grid.len())
+        .filter(|&i| m.levels[i].is_some() && m.grid[i].is_blank())
+        .count();
+    assert!(lined > 50, "{lined}");
     // Histogram bars: two rows, as in the original.
     let text = m.to_text();
     assert!(text.contains("1   I..1..I    I++2++I    IOO3OOI               I██5██I"));
