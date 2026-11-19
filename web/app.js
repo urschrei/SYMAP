@@ -188,14 +188,15 @@ function pages(map) {
   return out;
 }
 
-function drawSheet(map, lines) {
+// `density` is canvas pixels per layout unit; by default, the zoom times
+// the screen's pixel ratio.
+function drawSheet(map, lines, density) {
   // Every sheet of a map is as wide as its widest line, like the paper.
   const width = Math.max(...map.lines.map((l) => Math.max(l.plain.length, ...l.strikes.map((s) => s.length))), 80);
   const cols = width + 2 * MARGIN_COLS;
   const rows = lines.length + 2 * TOP_LINES;
   const scale = state.zoom === 'fit' ? 1.5 : Number(state.zoom);
-  const dpr = window.devicePixelRatio || 1;
-  const px = scale * dpr;
+  const px = density ?? scale * (window.devicePixelRatio || 1);
   const canvas = document.createElement('canvas');
   canvas.width = Math.ceil(cols * CELL_W * px);
   canvas.height = Math.ceil(rows * CELL_H * px);
@@ -360,6 +361,83 @@ function download(name, text) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+// ------------------------------------------------------------- PNG export
+
+// One character is 0.1 inch, CELL_W layout units, so 300 dpi is exact: 30
+// pixels per character and 37.5 per line.
+const PRINT_DPI = 300;
+
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (const b of bytes) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function chunk(type, data) {
+  const out = new Uint8Array(12 + data.length);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, data.length);
+  out.set(new TextEncoder().encode(type), 4);
+  out.set(data, 8);
+  view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+  return out;
+}
+
+// An uncompressed international text chunk (UTF-8).
+function itxt(keyword, text) {
+  const enc = new TextEncoder();
+  return chunk('iTXt', new Uint8Array([...enc.encode(keyword), 0, 0, 0, 0, 0, ...enc.encode(text)]));
+}
+
+// The PNG with its physical size (pHYs) and text chunks after the header.
+function annotate(png, dpi, texts) {
+  const ppm = Math.round(dpi / 0.0254);
+  const phys = new Uint8Array(9);
+  new DataView(phys.buffer).setUint32(0, ppm);
+  new DataView(phys.buffer).setUint32(4, ppm);
+  phys[8] = 1; // metres
+  const parts = [png.subarray(0, 8)];
+  let i = 8;
+  while (i < png.length) {
+    const len = new DataView(png.buffer, png.byteOffset + i).getUint32(0);
+    const type = String.fromCharCode(...png.subarray(i + 4, i + 8));
+    const end = i + 12 + len;
+    if (type !== 'pHYs') parts.push(png.subarray(i, end));
+    if (type === 'IHDR') parts.push(chunk('pHYs', phys), ...texts.map(([k, v]) => itxt(k, v)));
+    i = end;
+  }
+  return new Blob(parts, { type: 'image/png' });
+}
+
+// Each map's sheet (the page that holds the map) at print resolution.
+async function exportPng() {
+  const r = state.result;
+  if (!r?.ok) return;
+  const density = PRINT_DPI / (10 * CELL_W);
+  const maps = r.maps;
+  for (const [i, m] of maps.entries()) {
+    const canvas = drawSheet(m, pages(m).at(-1), density);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    const png = new Uint8Array(await blob.arrayBuffer());
+    const titled = annotate(png, PRINT_DPI, [
+      ['Title', m.titles.filter(Boolean).join(' / ')],
+      ['Software', 'SYMAP, https://urschrei.github.io/SYMAP/'],
+      ['SYMAP deck', deck.value],
+    ]);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(titled);
+    a.download = maps.length > 1 ? `symap-${i + 1}.png` : 'symap.png';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+}
+
 function outputs(kind) {
   const r = state.result;
   if (!r?.ok) return null;
@@ -497,6 +575,7 @@ async function init() {
   $('turn').addEventListener('change', (e) => { state.turn = Number(e.target.value); render(); });
   $('download-asa').addEventListener('click', () => { const t = outputs('asa'); if (t) download('symap-asa.txt', t); });
   $('download-text').addEventListener('click', () => { const t = outputs('text'); if (t) download('symap.txt', t); });
+  $('download-png').addEventListener('click', exportPng);
   $('download-values').addEventListener('click', () => {
     const maps = state.result?.ok ? state.result.maps.filter((m) => m.valuesCsv) : [];
     if (maps.length) download('symap-values.csv', maps.map((m) => m.valuesCsv).join('\n'));

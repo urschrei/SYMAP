@@ -46,6 +46,12 @@ characters and 8 lines to the inch.
   reproduced their maps.
 - **Pages.** The tables before a map are on one sheet and the map starts the
   next, as in the manual (Examples 1-4 and 1-5).
+- **PNG export.** The PNG button saves each map's sheet as shown (paper,
+  orientation and overprinting) at 300 dpi. At that resolution a character
+  is exactly 30 pixels wide and a line 37.5 pixels tall, and the file
+  records its resolution, so it prints at the original size. The deck is
+  embedded in the file as a text chunk (`SYMAP deck`), with the map's
+  titles.
 - **Orientation.** Sheets can be turned a quarter-turn either way. The
   Laboratory's report maps were often printed sideways and reproduced turned
   left, with the foot of the page running up the right edge.

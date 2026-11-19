@@ -43,6 +43,13 @@ const sideways = await page.$eval('#sheets canvas', (c) => [c.width, c.height]);
 check(sideways[0] === upright[1] && sideways[1] === upright[0], 'a sheet turns sideways');
 await page.selectOption('#turn', '0');
 
+const [download] = await Promise.all([page.waitForEvent('download'), page.click('#download-png')]);
+const png = (await import('node:fs')).readFileSync(await download.path());
+const phys = png.indexOf('pHYs');
+const ppm = phys > 0 ? png.readUInt32BE(phys + 4) : 0;
+check(png.subarray(1, 4).toString() === 'PNG' && Math.round(ppm * 0.0254) === 300 && png.includes('SYMAP deck'),
+  `a map exports as a 300 dpi PNG with its deck (${png.length} bytes)`);
+
 const points = 'name,lat,lon,value\nA,51.52,-0.15,48\nB,51.52,-0.12,28\nC,51.45,0.01,24\nD,51.42,-0.34,13\n';
 await page.setInputFiles('#import-file', { name: 'points.csv', mimeType: 'text/csv', buffer: Buffer.from(points) });
 await page.waitForSelector('#import-dialog[open]', { timeout: 10000 });
