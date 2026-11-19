@@ -115,19 +115,37 @@ fn import(args: lexopt::Parser) -> ExitCode {
     }
 }
 
-/// The options for printing a deck: `--asa`, `--values` and the deck's path.
-fn run_args(mut p: lexopt::Parser) -> Result<(bool, bool, Option<String>), lexopt::Error> {
+/// What to print for a deck.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Output {
+    /// Plain text, one character per print position.
+    Text,
+    /// Fortran carriage control (`--asa`).
+    Asa,
+    /// The values of maps with elective 21, as CSV (`--values`).
+    Values,
+}
+
+/// The options for printing a deck: the output and the deck's path.
+fn run_args(mut p: lexopt::Parser) -> Result<(Output, Option<String>), lexopt::Error> {
     use lexopt::prelude::*;
-    let (mut asa, mut values, mut path) = (false, false, None);
+    let (mut output, mut path) = (Output::Text, None);
     while let Some(arg) = p.next()? {
-        match arg {
-            Long("asa") => asa = true,
-            Long("values") => values = true,
-            Value(v) if path.is_none() => path = Some(v.string()?),
+        let mode = match arg {
+            Long("asa") => Output::Asa,
+            Long("values") => Output::Values,
+            Value(v) if path.is_none() => {
+                path = Some(v.string()?);
+                continue;
+            }
             _ => return Err(arg.unexpected()),
+        };
+        if output != Output::Text && output != mode {
+            return Err("--asa and --values cannot be used together".into());
         }
+        output = mode;
     }
-    Ok((asa, values, path))
+    Ok((output, path))
 }
 
 fn main() -> ExitCode {
@@ -140,7 +158,7 @@ fn main() -> ExitCode {
         args.remove(0);
         return import(lexopt::Parser::from_args(args));
     }
-    let (asa, values, path) = match run_args(lexopt::Parser::from_args(args)) {
+    let (output, path) = match run_args(lexopt::Parser::from_args(args)) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("symap: {e}\n\n{USAGE}");
@@ -165,23 +183,27 @@ fn main() -> ExitCode {
             for w in run.maps.iter().flat_map(|m| &m.warnings) {
                 eprintln!("warning: {w}");
             }
-            if values {
-                let csv: Vec<String> = run.maps.iter().filter_map(|m| m.values_csv()).collect();
-                if csv.is_empty() {
-                    eprintln!("symap: no map in this deck uses elective 21 (store values)");
-                    return ExitCode::FAILURE;
-                }
-                print!("{}", csv.join("\n"));
-                return ExitCode::SUCCESS;
-            }
-            for (i, m) in run.maps.iter().enumerate() {
-                if asa {
-                    print!("{}", m.to_asa());
-                } else {
-                    if i > 0 {
-                        println!("\x0c");
+            match output {
+                Output::Values => {
+                    let csv: Vec<String> = run.maps.iter().filter_map(|m| m.values_csv()).collect();
+                    if csv.is_empty() {
+                        eprintln!("symap: no map in this deck uses elective 21 (store values)");
+                        return ExitCode::FAILURE;
                     }
-                    print!("{}", m.to_text());
+                    print!("{}", csv.join("\n"));
+                }
+                Output::Asa => {
+                    for m in &run.maps {
+                        print!("{}", m.to_asa());
+                    }
+                }
+                Output::Text => {
+                    for (i, m) in run.maps.iter().enumerate() {
+                        if i > 0 {
+                            println!("\x0c");
+                        }
+                        print!("{}", m.to_text());
+                    }
                 }
             }
             ExitCode::SUCCESS
