@@ -500,10 +500,19 @@ impl Deck {
                     }
                     match header(c) {
                         Some(Ok(kind)) => {
-                            let per = |k| card::field(c, k).flatten().filter(|v| *v > 0.0);
-                            let per_unit = match (per(2), per(3)) {
-                                (Some(r), Some(k)) => (r, k),
-                                _ => (1.0, 1.0),
+                            let per_unit = match (card::field(c, 2), card::field(c, 3)) {
+                                (Some(Some(r)), Some(Some(k))) if r > 0.0 && k > 0.0 => (r, k),
+                                (Some(None), Some(None)) => (1.0, 1.0),
+                                _ => {
+                                    warn(
+                                        &mut deck,
+                                        ln,
+                                        "the row and column measurements in columns 31-50 \
+                                         need two positive numbers; ignored"
+                                            .into(),
+                                    );
+                                    (1.0, 1.0)
+                                }
                             };
                             open = Some(Package {
                                 kind,
@@ -624,6 +633,18 @@ mod tests {
         );
         let m = &Deck::parse(&d).unwrap().maps[0];
         assert_eq!(m.packages.points, vec![Point::new(2.0, 2.5)]);
+        // One measurement alone is ignored, with a warning.
+        let d = format!(
+            "B-DATA POINTS{:17}{:>10}\n{:10}{}\n99999\nF-MAP\n\n\n\n99999\n999999\n",
+            "",
+            "8.",
+            "",
+            f10(&[16.0, 25.0])
+        );
+        let deck = Deck::parse(&d).unwrap();
+        assert_eq!(deck.maps[0].packages.points, vec![Point::new(16.0, 25.0)]);
+        assert_eq!(deck.diagnostics.len(), 1);
+        assert!(deck.diagnostics[0].message.contains("columns 31-50"));
     }
 
     #[test]
