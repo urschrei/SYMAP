@@ -152,16 +152,16 @@ const CELL_H = 11.25;      // 1/8 inch at 8 lines per inch
 const MARGIN_COLS = 6;     // tractor-feed strip on each side
 const TOP_LINES = 2;
 const INK = 'rgba(30, 28, 40, 0.88)';
-const CAP_HEIGHT = 0.7;    // of the line pitch
-const GLYPH_WIDTH = 0.8;   // of the character pitch
+const CAP_HEIGHT = 0.78;   // of the line pitch
+const GLYPH_WIDTH = 0.68;  // of the character pitch
 const SPREAD = 0.7;        // ink spread around each stroke, in pixels
 // Each further strike on a cell soaks more ink into the paper: four-strike
 // overprints (OXAV) print near-solid black, not just a darker O.
 const SPREAD_PER_STRIKE = 1.0;
-// Glyphs narrowed to the printer's type. A modern '=' spans its whole cell
-// and prints darker than '+', inverting the standard levels' order (Table
-// 3-2); the manual's printouts show a '=' about three quarters of a cell
-// wide, a little lighter than '+'.
+// Glyphs narrowed to the printer's type. A modern '=' spans its whole glyph
+// width and prints darker than '+', inverting the standard levels' order
+// (Table 3-2); the manual's printouts show a narrower '=', a little lighter
+// than '+'.
 const NARROW = { '=': 0.75 };
 
 function hash(a, b, c) {
@@ -173,7 +173,7 @@ function hash(a, b, c) {
 // Font size and horizontal scale that give capitals the printed proportions.
 let typeCache = null;
 function typeMetrics(ctx) {
-  const family = getComputedStyle(document.body).getPropertyValue('--mono');
+  const family = getComputedStyle(document.body).getPropertyValue('--type');
   if (typeCache && typeCache.family === family) return typeCache;
   const probe = 100;
   ctx.font = `bold ${probe}px ${family}`;
@@ -181,7 +181,7 @@ function typeMetrics(ctx) {
   const cap = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent || 0.72 * probe;
   const ink = m.actualBoundingBoxLeft + m.actualBoundingBoxRight || 0.5 * probe;
   const size = (CAP_HEIGHT * CELL_H) / (cap / probe);
-  const widen = Math.max(1, (GLYPH_WIDTH * CELL_W) / ((ink / probe) * size));
+  const widen = (GLYPH_WIDTH * CELL_W) / ((ink / probe) * size);
   typeCache = { family, font: `bold ${size.toFixed(2)}px ${family}`, widen };
   return typeCache;
 }
@@ -414,10 +414,13 @@ function showMessages() {
   });
 }
 
+// The bundled type face, loaded before the first sheet is measured and drawn.
+const typeLoaded = document.fonts.load('bold 16px "IBM Plex Mono"').catch(() => []);
+
 async function run(opts = {}) {
   if (!state.symap) return;
   store.set(STORE_KEY, deck.value);
-  const result = await state.symap.run(deck.value);
+  const [result] = await Promise.all([state.symap.run(deck.value), typeLoaded]);
   if (!result) return; // superseded by a newer edit
   state.result = result;
   showMessages();

@@ -5,12 +5,13 @@ cd "$(dirname "$0")/.."
 cargo build --lib --target wasm32-unknown-unknown --profile wasm
 out=target/site
 rm -rf "$out"
-mkdir -p "$out/examples"
+mkdir -p "$out/examples" "$out/fonts"
 cp web/index.html web/style.css web/app.js web/symap.js web/worker.js "$out/"
 # Bindings and module into pkg/; the CLI must match Cargo.toml's wasm-bindgen.
 wasm-bindgen --target web --no-typescript --remove-name-section --remove-producers-section --out-dir "$out/pkg" \
   target/wasm32-unknown-unknown/wasm/symap.wasm
 cp examples/decks/*.sym "$out/examples/"
+cp web/fonts/* "$out/fonts/"
 # The user guides, rendered from docs/ (needs pandoc).
 mkdir -p "$out/docs"
 cp web/docs/docs.css "$out/docs/"

@@ -39,13 +39,15 @@ deck it makes; imports use a second instance on the main thread.
 Each sheet is drawn on a canvas, one sheet per animation frame, at 10
 characters and 8 lines to the inch.
 
-- **Type.** Chain-printer type was heavy and nearly filled its cell. On the
-  manual's printouts capitals are about 0.7 of the line pitch tall and 0.8
-  of the character pitch wide, so the font is measured, sized and widened
-  to match, and each glyph is stroked lightly for ink spread. Level fills
-  then read as tones, as on the original maps. Modern fonts draw `=` across
-  the whole cell, which makes it darker than `+`; the printouts show it
-  about three quarters of a cell wide, so it is narrowed to match.
+- **Type.** The printout is set in IBM Plex Mono Bold, bundled with the
+  site (SIL Open Font License), so it looks the same on every system.
+  Chain-printer type was heavy, tall and narrow, with a clear gap between
+  neighbours. The font is measured and its capitals set 0.78 of the line
+  pitch tall and 0.68 of the character pitch wide, which with the ink spread
+  matches the letters on the manual's printouts; each glyph is stroked
+  lightly for that spread. Level fills then read as tones, as on the original maps. A modern
+  `=` spans the full glyph width, which makes it darker than `+`; the
+  printouts show it narrower, so it is narrowed to match.
 - **Overprinting.** Every strike is printed into the same cell in
   translucent ink, with a small offset between strikes, so overprints
   darken. Each further strike on a cell is stroked a pixel wider, as more
