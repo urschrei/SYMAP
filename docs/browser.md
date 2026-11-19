@@ -14,7 +14,10 @@ python3 -m http.server --directory target/site
 ```
 
 The build uses the `wasm` Cargo profile (optimised for size) and copies the
-module, the front end and the example decks into `target/site`.
+module, the front end and the example decks into `target/site`. It also
+renders [Importing data](importing.md) and [Mapping your own data](your-own-data.md)
+into `target/site/docs` with [pandoc](https://pandoc.org), so those two guides
+are published alongside the map.
 
 ## Interface
 
