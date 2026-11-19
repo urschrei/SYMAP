@@ -1,7 +1,7 @@
 //! Writing the deck's cards and comments.
 
 use super::lines::Clipped;
-use super::options::LineUse;
+use super::options::{LineUse, Unit};
 use super::project::Projection;
 use super::topology::P;
 use super::{Item, Sheet, ZoneRing};
@@ -82,11 +82,10 @@ pub(crate) struct Plan<'a> {
     pub(crate) source: &'a str,
     pub(crate) title: &'a str,
     /// "points" or "zones".
-    pub(crate) unit: &'a str,
+    pub(crate) unit: Unit,
     /// The field mapped.
     pub(crate) value: &'a str,
     pub(crate) map: MapKind,
-    pub(crate) zonal: bool,
     pub(crate) projection: &'a Projection,
     pub(crate) sheet: &'a Sheet,
     /// Simplification tolerance, half a character.
@@ -114,7 +113,6 @@ pub(crate) fn write_deck(plan: &Plan) -> Result<String, Error> {
         unit,
         value,
         map,
-        zonal,
         projection,
         sheet,
         tolerance,
@@ -144,7 +142,7 @@ pub(crate) fn write_deck(plan: &Plan) -> Result<String, Error> {
              margin of {margin:.3} around the {unit}."
         ),
     );
-    if zonal {
+    if unit == Unit::Zones {
         comment(
             &mut out,
             &format!(
@@ -187,7 +185,10 @@ pub(crate) fn write_deck(plan: &Plan) -> Result<String, Error> {
         comment(&mut out, &format!("Note: {w}."));
     }
     if named {
-        let what = if zonal { "Zones" } else { "Data points" };
+        let what = match unit {
+            Unit::Points => "Data points",
+            Unit::Zones => "Zones",
+        };
         let _ = writeln!(out, "#\n# {what}, in order:");
         for (i, item) in items.iter().enumerate() {
             if let Some(name) = &item.name {
@@ -214,18 +215,20 @@ pub(crate) fn write_deck(plan: &Plan) -> Result<String, Error> {
         }
         let _ = writeln!(out, "99999");
     } else {
-        if outline {
-            if zonal {
+        match (outline, unit, point_outline) {
+            (true, Unit::Zones, _) => {
                 let _ = writeln!(out, "A-OUTLINE");
                 for (_, ring) in rings {
                     write_ring(&mut out, "", ring)?;
                 }
                 let _ = writeln!(out, "99999");
-            } else if let Some(ring) = point_outline {
+            }
+            (true, Unit::Points, Some(ring)) => {
                 let _ = writeln!(out, "A-OUTLINE");
                 write_ring(&mut out, "", ring)?;
                 let _ = writeln!(out, "99999");
             }
+            (true, Unit::Points, None) | (false, _, _) => {}
         }
         let _ = writeln!(out, "B-DATA POINTS");
         for i in items {
@@ -258,10 +261,9 @@ pub(crate) fn write_deck(plan: &Plan) -> Result<String, Error> {
 
     let _ = writeln!(out, "F-MAP");
     let _ = writeln!(out, "{}", card_text(title));
-    let counted = if zonal {
-        format!("{value} for {n} zones")
-    } else {
-        format!("{value} at {n} points")
+    let counted = match unit {
+        Unit::Points => format!("{value} at {n} points"),
+        Unit::Zones => format!("{value} for {n} zones"),
     };
     let _ = writeln!(out, "{}", card_text(&counted));
     let _ = writeln!(

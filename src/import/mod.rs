@@ -19,7 +19,7 @@ mod project;
 mod read;
 mod topology;
 
-pub use options::{Imported, LineUse, Options};
+pub use options::{Imported, LineUse, Options, Unit};
 
 use crate::Error;
 use crate::MapKind;
@@ -29,11 +29,37 @@ use project::Projection;
 use read::{Feature, Geom, Prop, Ring, Source};
 use topology::{P, Topology};
 
-/// One mapped item: a point, or a zone's rings (arc references).
+/// What a file maps: its points, or else its polygons as zones.
+enum Layer<'a> {
+    Points(Vec<(&'a Feature, P)>),
+    Zones(Vec<(&'a Feature, Rings<'a>)>),
+}
+
+/// A polygon's rings as read.
+#[derive(Clone, Copy)]
+struct Rings<'a> {
+    outer: &'a [Ring],
+    holes: &'a [Ring],
+}
+
+/// A feature's geometry, with its value for the mapped field and its name.
+struct Valued<G> {
+    geom: G,
+    value: f64,
+    name: Option<String>,
+}
+
+/// One mapped item: a data point, or a zone's centroid, on the sheet.
 struct Item {
     value: f64,
     name: Option<String>,
     point: P,
+}
+
+/// A projected zone: its rings as references to the topology's arcs.
+struct Zone {
+    value: f64,
+    name: Option<String>,
     outer: Vec<Vec<i64>>,
     holes: Vec<Vec<i64>>,
 }
@@ -41,11 +67,12 @@ struct Item {
 /// A zone ring on the sheet, with its zone's number (from 1).
 type ZoneRing = (usize, Vec<P>);
 
-/// A feature with a value for the mapped field, and its name.
-struct Valued<'a> {
-    feature: &'a Feature,
-    value: f64,
-    name: Option<String>,
+/// The projection, the sheet, and the items and zone rings on it.
+struct Placed {
+    projection: Projection,
+    sheet: Sheet,
+    items: Vec<Item>,
+    rings: Vec<ZoneRing>,
 }
 
 /// The printed sheet: the extent mapped, with a margin, and its size.
@@ -76,14 +103,15 @@ impl Sheet {
 pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
     let src = read::read(text, opts.object.as_deref())?;
     let mut warnings = src.warnings.clone();
-    let (line_features, mapped): (Vec<&Feature>, Vec<&Feature>) = src
-        .features
-        .iter()
-        .partition(|f| matches!(f.geom, Geom::Line(_)));
-    let (polys, points): (Vec<&Feature>, Vec<&Feature>) = mapped
-        .into_iter()
-        .partition(|f| matches!(f.geom, Geom::Polygon { .. }));
-    if polys.is_empty() && points.is_empty() {
+    let (mut line_features, mut points, mut zones) = (Vec::new(), Vec::new(), Vec::new());
+    for f in &src.features {
+        match &f.geom {
+            Geom::Line(_) => line_features.push(f),
+            Geom::Point(p) => points.push((f, *p)),
+            Geom::Polygon { outer, holes } => zones.push((f, Rings { outer, holes })),
+        }
+    }
+    if zones.is_empty() && points.is_empty() {
         return Err(Error::general(if line_features.is_empty() {
             "the file has no points or polygons to map".to_string()
         } else {
@@ -93,61 +121,104 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         }));
     }
     let lines = lines::gather(&src, &line_features, opts, &mut warnings)?;
-    let zonal = !polys.is_empty();
-    if zonal && !points.is_empty() {
-        warnings.push(format!(
-            "{} point features were left out; the polygons are mapped",
-            points.len()
-        ));
-    }
-    let map = opts.map.unwrap_or(if zonal {
-        MapKind::Conformant
+    let layer = if zones.is_empty() {
+        Layer::Points(points)
     } else {
-        MapKind::Contour
-    });
-    if map == MapKind::Conformant && !zonal {
-        return Err(Error::general(
-            "a conformant map needs polygons; this file has only points",
-        ));
-    }
-    let features = if zonal { polys } else { points };
-    let unit = if zonal { "zones" } else { "points" };
+        if !points.is_empty() {
+            warnings.push(format!(
+                "{} point features were left out; the polygons are mapped",
+                points.len()
+            ));
+        }
+        Layer::Zones(zones)
+    };
+    let (unit, features): (Unit, Vec<&Feature>) = match &layer {
+        Layer::Points(p) => (Unit::Points, p.iter().map(|(f, _)| *f).collect()),
+        Layer::Zones(z) => (Unit::Zones, z.iter().map(|(f, _)| *f).collect()),
+    };
+    let map = match (opts.map, unit) {
+        (Some(MapKind::Conformant), Unit::Points) => {
+            return Err(Error::general(
+                "a conformant map needs polygons; this file has only points",
+            ));
+        }
+        (Some(map), _) => map,
+        (None, Unit::Points) => MapKind::Contour,
+        (None, Unit::Zones) => MapKind::Conformant,
+    };
 
     let fields = numeric_fields(&features);
     let value = choose_value(&fields, opts.value.as_deref())?;
     let name_field = name_field(&features);
-    let kept = with_values(&features, &value, name_field.as_deref());
-    let missing = features.len() - kept.len();
-    if missing > 0 {
-        warnings.push(format!(
-            "{missing} {unit} without a value for {value} were left out"
-        ));
-    }
     let needed = if map == MapKind::Conformant { 1 } else { 3 };
-    if kept.len() < needed {
-        return Err(Error::general(format!(
-            "{} {unit} have a value for {value}; at least {needed} are needed",
-            kept.len()
-        )));
-    }
-
-    let raw = source_coordinates(&src, &kept);
-    let projection = Projection::choose(&raw, src.geographic, lines.geographic, &mut warnings)?;
-    let (items, topo) = project_items(&src, &kept, zonal, &projection);
-    let sheet = fit_sheet(&items, &topo, zonal, unit, opts.width)?;
-    let tolerance = sheet.char_width / 2.0;
-    let (items, rings) = if zonal {
-        zone_rings(items, topo, &sheet, map, needed, &mut warnings)?
-    } else {
-        let items = items
-            .into_iter()
-            .map(|i| Item {
-                point: sheet.grid(i.point),
-                ..i
-            })
-            .collect();
-        (items, Vec::new())
+    let check_kept = |kept: usize, warnings: &mut Vec<String>| {
+        let missing = features.len() - kept;
+        if missing > 0 {
+            warnings.push(format!(
+                "{missing} {unit} without a value for {value} were left out"
+            ));
+        }
+        if kept < needed {
+            return Err(Error::general(format!(
+                "{kept} {unit} have a value for {value}; at least {needed} are needed"
+            )));
+        }
+        Ok(())
     };
+
+    let Placed {
+        projection,
+        sheet,
+        items,
+        rings,
+    } = match &layer {
+        Layer::Points(points) => {
+            let kept = with_values(points, &value, name_field.as_deref());
+            check_kept(kept.len(), &mut warnings)?;
+            let raw: Vec<P> = kept.iter().map(|k| k.geom).collect();
+            let projection =
+                Projection::choose(&raw, src.geographic, lines.geographic, &mut warnings)?;
+            let projected: Vec<P> = raw.iter().map(|&p| projection.project(p)).collect();
+            let sheet = fit_sheet(&projected, unit, opts.width)?;
+            let items = kept
+                .into_iter()
+                .zip(projected)
+                .map(|(k, p)| Item {
+                    value: k.value,
+                    name: k.name,
+                    point: sheet.grid(p),
+                })
+                .collect();
+            Placed {
+                projection,
+                sheet,
+                items,
+                rings: Vec::new(),
+            }
+        }
+        Layer::Zones(zones) => {
+            let kept = with_values(zones, &value, name_field.as_deref());
+            check_kept(kept.len(), &mut warnings)?;
+            let raw = zone_coordinates(&src, &kept);
+            let projection =
+                Projection::choose(&raw, src.geographic, lines.geographic, &mut warnings)?;
+            let (zones, topo) = project_zones(&src, kept, &projection);
+            let extent: Vec<P> = zones
+                .iter()
+                .flat_map(|z| &z.outer)
+                .flat_map(|r| topo.ring(r))
+                .collect();
+            let sheet = fit_sheet(&extent, unit, opts.width)?;
+            let (items, rings) = zone_rings(zones, topo, &sheet, map, needed, &mut warnings)?;
+            Placed {
+                projection,
+                sheet,
+                items,
+                rings,
+            }
+        }
+    };
+    let tolerance = sheet.char_width / 2.0;
 
     let symbol: String = opts.line_symbol.chars().take(4).collect();
     if opts.lines.draws() && symbol.chars().any(|c| c.is_control()) {
@@ -173,7 +244,7 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         }
         (lines, _, false) => lines,
     };
-    let point_outline = if opts.outline && !zonal && map != MapKind::Conformant {
+    let point_outline = if opts.outline && unit == Unit::Points {
         let outline = point_outline(&items, sheet.margin);
         if outline.is_none() {
             warnings.push("the points are in a line, so no outline was drawn".into());
@@ -199,7 +270,6 @@ pub fn import(text: &str, opts: &Options) -> Result<Imported, Error> {
         unit,
         value: &value,
         map,
-        zonal,
         projection: &projection,
         sheet: &sheet,
         tolerance,
@@ -249,14 +319,14 @@ fn choose_value(fields: &[String], asked: Option<&str>) -> Result<String, Error>
 }
 
 /// The features with a number for `value`, with the value and a name.
-fn with_values<'a>(
-    features: &[&'a Feature],
+fn with_values<G: Copy>(
+    features: &[(&Feature, G)],
     value: &str,
     name_field: Option<&str>,
-) -> Vec<Valued<'a>> {
+) -> Vec<Valued<G>> {
     features
         .iter()
-        .filter_map(|f| {
+        .filter_map(|&(f, geom)| {
             let get = |name: &str| f.props.iter().find(|(k, _)| k == name).map(|(_, p)| p);
             let Some(Prop::Number(v)) = get(value) else {
                 return None;
@@ -267,7 +337,7 @@ fn with_values<'a>(
                 Prop::Missing => None,
             });
             Some(Valued {
-                feature: f,
+                geom,
                 value: *v,
                 name,
             })
@@ -275,27 +345,21 @@ fn with_values<'a>(
         .collect()
 }
 
-/// Source coordinates in use, to choose the projection. Lines are drawn on
-/// the map but do not set its extent.
-fn source_coordinates(src: &Source, kept: &[Valued]) -> Vec<P> {
+/// The zones' source coordinates, to choose the projection. Lines are drawn
+/// on the map but do not set its extent.
+fn zone_coordinates(src: &Source, kept: &[Valued<Rings>]) -> Vec<P> {
     let mut raw: Vec<P> = Vec::new();
     let mut used_arcs = vec![false; src.arcs.len()];
     for k in kept {
-        match &k.feature.geom {
-            Geom::Point(p) => raw.push(*p),
-            Geom::Polygon { outer, holes } => {
-                for r in outer.iter().chain(holes) {
-                    match r {
-                        Ring::Coords(c) => raw.extend(c),
-                        Ring::Arcs(a) => {
-                            for &i in a {
-                                used_arcs[topology::arc_index(i)] = true;
-                            }
-                        }
+        for r in k.geom.outer.iter().chain(k.geom.holes) {
+            match r {
+                Ring::Coords(c) => raw.extend(c),
+                Ring::Arcs(a) => {
+                    for &i in a {
+                        used_arcs[topology::arc_index(i)] = true;
                     }
                 }
             }
-            Geom::Line(_) => {}
         }
     }
     for (arc, _) in src.arcs.iter().zip(&used_arcs).filter(|(_, u)| **u) {
@@ -304,91 +368,48 @@ fn source_coordinates(src: &Source, kept: &[Valued]) -> Vec<P> {
     raw
 }
 
-/// Projected items, and (for zones) the topology of their borders.
-fn project_items(
+/// Projected zones, and the topology of their borders.
+fn project_zones(
     src: &Source,
-    kept: &[Valued],
-    zonal: bool,
+    kept: Vec<Valued<Rings>>,
     projection: &Projection,
-) -> (Vec<Item>, Topology) {
+) -> (Vec<Zone>, Topology) {
     let project = |p: P| projection.project(p);
-    let mut topo = Topology::default();
-    let mut items: Vec<Item> = Vec::new();
-    if zonal {
-        let topojson = !src.arcs.is_empty();
-        let mut coords: Vec<Vec<P>> = Vec::new();
-        let mut shapes: Vec<(usize, usize)> = Vec::new(); // outer, hole counts
-        let mut arc_rings: Vec<Vec<i64>> = Vec::new();
-        for k in kept {
-            let Geom::Polygon { outer, holes } = &k.feature.geom else {
-                unreachable!()
-            };
-            shapes.push((outer.len(), holes.len()));
-            for r in outer.iter().chain(holes) {
-                match r {
-                    Ring::Coords(c) => coords.push(c.iter().map(|&p| project(p)).collect()),
-                    Ring::Arcs(a) => arc_rings.push(a.clone()),
-                }
+    let mut coords: Vec<Vec<P>> = Vec::new();
+    let mut arc_rings: Vec<Vec<i64>> = Vec::new();
+    for k in &kept {
+        for r in k.geom.outer.iter().chain(k.geom.holes) {
+            match r {
+                Ring::Coords(c) => coords.push(c.iter().map(|&p| project(p)).collect()),
+                Ring::Arcs(a) => arc_rings.push(a.clone()),
             }
         }
-        let refs = if topojson {
-            topo.arcs = src
-                .arcs
-                .iter()
-                .map(|a| a.iter().map(|&p| project(p)).collect())
-                .collect();
-            arc_rings
-        } else {
-            let (t, refs) = Topology::from_rings(&coords);
-            topo = t;
-            refs
-        };
-        let mut refs = refs.into_iter();
-        for (k, (no, nh)) in kept.iter().zip(shapes) {
-            let outer: Vec<Vec<i64>> = refs.by_ref().take(no).collect();
-            let holes: Vec<Vec<i64>> = refs.by_ref().take(nh).collect();
-            items.push(Item {
-                value: k.value,
-                name: k.name.clone(),
-                point: (0.0, 0.0),
-                outer,
-                holes,
-            });
-        }
-    } else {
-        for k in kept {
-            let Geom::Point(p) = k.feature.geom else {
-                unreachable!()
-            };
-            items.push(Item {
-                value: k.value,
-                name: k.name.clone(),
-                point: project(p),
-                outer: Vec::new(),
-                holes: Vec::new(),
-            });
-        }
     }
-    (items, topo)
+    let (topo, refs) = if src.arcs.is_empty() {
+        Topology::from_rings(&coords)
+    } else {
+        let arcs = src
+            .arcs
+            .iter()
+            .map(|a| a.iter().map(|&p| project(p)).collect())
+            .collect();
+        (Topology { arcs }, arc_rings)
+    };
+    let mut refs = refs.into_iter();
+    let zones = kept
+        .into_iter()
+        .map(|k| Zone {
+            outer: refs.by_ref().take(k.geom.outer.len()).collect(),
+            holes: refs.by_ref().take(k.geom.holes.len()).collect(),
+            value: k.value,
+            name: k.name,
+        })
+        .collect();
+    (zones, topo)
 }
 
-/// The sheet: a margin around everything mapped, `width` inches across.
-fn fit_sheet(
-    items: &[Item],
-    topo: &Topology,
-    zonal: bool,
-    unit: &str,
-    width: f64,
-) -> Result<Sheet, Error> {
-    let extent: Vec<P> = if zonal {
-        items
-            .iter()
-            .flat_map(|i| &i.outer)
-            .flat_map(|r| topo.ring(r))
-            .collect()
-    } else {
-        items.iter().map(|i| i.point).collect()
-    };
+/// The sheet: a margin around `extent`, `width` inches across.
+fn fit_sheet(extent: &[P], unit: Unit, width: f64) -> Result<Sheet, Error> {
     let (e0, n0, e1, n1) = extent.iter().fold(
         (f64::MAX, f64::MAX, f64::MIN, f64::MIN),
         |(a, b, c, d), p| (a.min(p.0), b.min(p.1), c.max(p.0), d.max(p.1)),
@@ -397,7 +418,10 @@ fn fit_sheet(
     if span.is_nan() || span <= 0.0 {
         return Err(Error::general(format!("the {unit} all lie in one place")));
     }
-    let margin = if zonal { 0.02 } else { 0.05 } * span;
+    let margin = match unit {
+        Unit::Points => 0.05,
+        Unit::Zones => 0.02,
+    } * span;
     if !(1.0..=30.0).contains(&width) {
         return Err(Error::general("the map width must be from 1 to 30 inches"));
     }
@@ -418,7 +442,7 @@ fn fit_sheet(
 /// Simplify shared borders once, then rebuild each zone's rings on the
 /// sheet, smaller rings first. Zones with no usable outline are left out.
 fn zone_rings(
-    items: Vec<Item>,
+    zones: Vec<Zone>,
     mut topo: Topology,
     sheet: &Sheet,
     map: MapKind,
@@ -429,13 +453,13 @@ fn zone_rings(
     let char_area = sheet.char_width * sheet.char_width * 1.25;
     let mut rings: Vec<ZoneRing> = Vec::new();
     topo.simplify(sheet.char_width / 2.0);
-    let outer_refs: Vec<Vec<i64>> = items.iter().flat_map(|i| i.outer.clone()).collect();
+    let outer_refs: Vec<Vec<i64>> = zones.iter().flat_map(|z| z.outer.clone()).collect();
     let uses = topo.uses(&outer_refs);
     let (mut small, mut filled, mut empty) = (0, 0, 0);
     let mut kept_items = Vec::new();
-    for mut item in items {
+    for zone in zones {
         let mut kept_rings = Vec::new();
-        for r in &item.outer {
+        for r in &zone.outer {
             let ring: Vec<P> = topo.ring(r).into_iter().map(grid).collect();
             if ring.len() < 4 || topology::area(&ring).abs() < char_area / 2.0 {
                 small += 1;
@@ -445,7 +469,7 @@ fn zone_rings(
         }
         if kept_rings.is_empty() {
             // Keep the largest part, however small, so the zone remains.
-            if let Some(r) = item.outer.iter().max_by(|a, b| {
+            if let Some(r) = zone.outer.iter().max_by(|a, b| {
                 topology::area(&topo.ring(a))
                     .abs()
                     .total_cmp(&topology::area(&topo.ring(b)).abs())
@@ -461,13 +485,16 @@ fn zone_rings(
             empty += 1;
             continue;
         };
-        item.point = point;
-        filled += item
+        filled += zone
             .holes
             .iter()
             .filter(|h| h.iter().any(|&a| uses[topology::arc_index(a)] == 0))
             .count();
-        kept_items.push(item);
+        kept_items.push(Item {
+            value: zone.value,
+            name: zone.name,
+            point,
+        });
         let z = kept_items.len();
         rings.extend(kept_rings.into_iter().map(|r| (z, r)));
     }
@@ -547,7 +574,7 @@ mod tests {
         assert_eq!(imp.value, "no2");
         assert_eq!(
             (imp.count, imp.unit, imp.map),
-            (4, "points", MapKind::Contour)
+            (4, Unit::Points, MapKind::Contour)
         );
         assert_eq!(
             imp.warnings,
@@ -752,7 +779,7 @@ mod tests {
         let imp = import(&zones_geojson(), &Options::default()).unwrap();
         assert_eq!(
             (imp.map, imp.count, imp.unit),
-            (MapKind::Conformant, 5, "zones")
+            (MapKind::Conformant, 5, Unit::Zones)
         );
         assert_eq!(
             imp.warnings,

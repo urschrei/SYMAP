@@ -2,6 +2,7 @@
 
 use crate::Error;
 use crate::MapKind;
+use std::fmt;
 use std::str::FromStr;
 
 /// What to do with lines (LineString features).
@@ -115,8 +116,31 @@ pub struct Imported {
     pub map: MapKind,
     /// How many points or zones were mapped, and which.
     pub count: usize,
-    pub unit: &'static str,
+    pub unit: Unit,
     /// How many line features were used.
     pub lines: usize,
     pub warnings: Vec<String>,
+}
+
+/// What the importer maps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unit {
+    Points,
+    /// Polygons, as conformant zones or their centroids.
+    Zones,
+}
+
+impl Unit {
+    pub fn name(self) -> &'static str {
+        match self {
+            Unit::Points => "points",
+            Unit::Zones => "zones",
+        }
+    }
+}
+
+impl fmt::Display for Unit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
 }

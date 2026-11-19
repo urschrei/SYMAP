@@ -219,7 +219,7 @@ pub fn import(req: ImportRequest) -> Reply<ImportReply> {
             value: imp.value,
             map: imp.map.name(),
             count: imp.count,
-            unit: imp.unit,
+            unit: imp.unit.name(),
             lines: imp.lines,
             warnings: imp.warnings,
         })
