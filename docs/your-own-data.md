@@ -196,10 +196,10 @@ large area with a large count looks more important than it is.
 cargo run -- import wards.geojson --value density --contour > surface.sym
 ```
 
-Each zone's value is placed at its centroid as a data point, and the zones
-become the outline, so the surface stops at the edge of the data. This
-suits values that vary smoothly across zone boundaries more than values
-that belong to the zones.
+Each zone's value is placed at a point inside it (away from its edges, and
+outside any holes) as a data point, and the zones become the outline, so the
+surface stops at the edge of the data. This suits values that vary smoothly
+across zone boundaries more than values that belong to the zones.
 
 ### Nearest point
 

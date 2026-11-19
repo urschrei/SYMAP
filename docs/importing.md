@@ -83,9 +83,10 @@ value goes on E-VALUES.
   zone's hole keeps its own level. A hole with no zone inside it (a lake,
   for example) is filled by the zone around it, with a warning.
 
-With `--contour` or `--proximal`, each zone's value is placed at its
-centroid as a data point instead, and the zones themselves become the
-outline, so the map stops at the edge of the data.
+With `--contour` or `--proximal`, each zone's value is placed at a point
+inside it (away from its edges, and outside any holes) as a data point
+instead, and the zones themselves become the outline, so the map stops at
+the edge of the data.
 
 ## Lines
 

@@ -126,7 +126,7 @@ pub struct Imported {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Unit {
     Points,
-    /// Polygons, as conformant zones or their centroids.
+    /// Polygons, as conformant zones or as points inside them.
     Zones,
 }
 

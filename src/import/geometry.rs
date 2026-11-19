@@ -1,5 +1,5 @@
-//! Geometry for the importer: hulls, centroids and clipping on the sheet,
-//! and paths from TopoJSON arcs.
+//! Geometry for the importer: hulls, interior points and clipping on the
+//! sheet, and paths from TopoJSON arcs.
 //!
 //! On the sheet, locations are `Point`s (down and across); `geo` takes them
 //! as (down, across) pairs.
@@ -7,7 +7,7 @@
 use super::read::Ring;
 use super::topology::{self, P, arc_points};
 use crate::Point;
-use geo::{Centroid, ConvexHull, LineString, MultiPoint, MultiPolygon, Polygon};
+use geo::{Contains, ConvexHull, InteriorPoint, LineString, MultiPoint, MultiPolygon, Polygon};
 
 fn pair(p: &Point) -> P {
     (p.down, p.across)
@@ -36,16 +36,26 @@ pub(crate) fn hull(points: &[Point]) -> Vec<Point> {
     h.into_iter().map(|(d, a)| Point::new(d, a)).collect()
 }
 
-/// Area-weighted centroid of rings (closed or not).
-pub(crate) fn centroid(rings: &[Vec<Point>]) -> Option<Point> {
-    MultiPolygon::new(
-        rings
+/// A point inside a zone of `outers` (closed or not) with `holes`, away
+/// from its edges where possible: a centroid can lie outside a concave
+/// zone, or in a hole. `None` if there are no outer rings.
+pub(crate) fn interior_point(outers: &[Vec<Point>], holes: &[Vec<Point>]) -> Option<Point> {
+    let polygons = outers.iter().map(|outer| {
+        let exterior = LineString::from(ring_pairs(outer));
+        let shell = Polygon::new(exterior.clone(), vec![]);
+        let inside: Vec<LineString> = holes
             .iter()
-            .map(|r| Polygon::new(LineString::from(ring_pairs(r)), vec![]))
-            .collect(),
-    )
-    .centroid()
-    .map(|p| Point::new(p.x(), p.y()))
+            .filter(|h| {
+                h.first()
+                    .is_some_and(|p| shell.contains(&geo::Coord::from(pair(p))))
+            })
+            .map(|h| LineString::from(ring_pairs(h)))
+            .collect();
+        Polygon::new(exterior, inside)
+    });
+    MultiPolygon::new(polygons.collect())
+        .interior_point()
+        .map(|p| Point::new(p.x(), p.y()))
 }
 
 /// Unsigned area of a ring.
@@ -105,6 +115,38 @@ pub(crate) fn path(arcs: &[Vec<P>], r: &Ring) -> Vec<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn points(v: &[(f64, f64)]) -> Vec<Point> {
+        v.iter().map(|&(d, a)| Point::new(d, a)).collect()
+    }
+
+    fn inside(p: Point, ring: &[Point]) -> bool {
+        Polygon::new(LineString::from(ring_pairs(ring)), vec![])
+            .contains(&geo::Coord::from(pair(&p)))
+    }
+
+    #[test]
+    fn interior_points_avoid_holes_and_concavities() {
+        // A C shape, whose centroid lies in its mouth.
+        let c = points(&[
+            (0.0, 0.0),
+            (0.0, 10.0),
+            (2.0, 10.0),
+            (2.0, 2.0),
+            (8.0, 2.0),
+            (8.0, 10.0),
+            (10.0, 10.0),
+            (10.0, 0.0),
+        ]);
+        let p = interior_point(std::slice::from_ref(&c), &[]).unwrap();
+        assert!(inside(p, &c), "{p:?}");
+        // A square around an enclave at its centre.
+        let outer = points(&[(0.0, 0.0), (0.0, 10.0), (10.0, 10.0), (10.0, 0.0)]);
+        let hole = points(&[(3.0, 3.0), (3.0, 7.0), (7.0, 7.0), (7.0, 3.0)]);
+        let p = interior_point(std::slice::from_ref(&outer), std::slice::from_ref(&hole)).unwrap();
+        assert!(inside(p, &outer) && !inside(p, &hole), "{p:?}");
+        assert_eq!(interior_point(&[], &[]), None);
+    }
 
     #[test]
     fn hull_is_convex() {

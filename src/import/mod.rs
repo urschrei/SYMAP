@@ -4,7 +4,8 @@
 //! GeoJSON or TopoJSON, projects them, and writes an ordinary, commented
 //! deck. Polygons become A-CONFORMOLINES zones for a conformant map, with
 //! shared borders simplified once so that neighbours still meet; for a
-//! contour or proximal map, each zone gives its centroid as a data point.
+//! contour or proximal map, each zone gives a point inside it as a data
+//! point.
 //! Points become B-DATA POINTS with an outline around them. The deck is the
 //! program's only input, so what the importer produces can be read, edited
 //! and run like any other deck.
@@ -25,7 +26,7 @@ use crate::Error;
 use crate::MapKind;
 use crate::Point;
 use fields::{is_id, name_field, numeric_fields};
-use geometry::{centroid, hull};
+use geometry::hull;
 use project::Projection;
 use read::{Feature, Geom, Prop, Ring, Source};
 use topology::{P, Topology};
@@ -50,7 +51,7 @@ struct Valued<G> {
     name: Option<String>,
 }
 
-/// One mapped item: a data point, or a zone's centroid, on the sheet.
+/// One mapped item: a data point, or a point inside a zone, on the sheet.
 struct Item {
     value: f64,
     name: Option<String>,
@@ -483,7 +484,12 @@ fn zone_rings(
                 }
             }
         }
-        let Some(point) = centroid(&kept_rings) else {
+        let holes: Vec<Vec<Point>> = zone
+            .holes
+            .iter()
+            .map(|h| topo.ring(h).into_iter().map(grid).collect())
+            .collect();
+        let Some(point) = geometry::interior_point(&kept_rings, &holes) else {
             empty += 1;
             continue;
         };
@@ -882,7 +888,7 @@ mod tests {
         };
         let imp = import(&zones_geojson(), &opts).unwrap();
         assert!(imp.deck.contains("\nA-OUTLINE\n") && imp.deck.contains("\nB-DATA POINTS\n"));
-        assert!(imp.deck.contains("placed at its centroid"));
+        assert!(imp.deck.contains("placed at a point inside it"));
         let m = &crate::run(&imp.deck).unwrap().maps[0];
         assert_eq!(m.kind, crate::MapKind::Contour);
         assert_eq!(m.table.len(), 5);

@@ -153,7 +153,7 @@ pub(crate) fn write_deck(plan: &Plan) -> Result<String, Error> {
         if map != MapKind::Conformant {
             comment(
                 &mut out,
-                "Each zone's value is placed at its centroid as a data point.",
+                "Each zone's value is placed at a point inside it as a data point.",
             );
         }
     }
