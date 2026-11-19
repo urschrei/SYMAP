@@ -273,14 +273,18 @@ fn read_topojson(doc: &Value, object: Option<&str>) -> Result<Source, Error> {
     };
     // Quantized topologies store positions as integers to be scaled and
     // translated, and arcs as deltas.
-    let transform = doc.get("transform").map(|t| {
-        let pair = |k| {
-            t.get(k)
-                .and_then(|v| position(v, "TopoJSON transform").ok())
-                .unwrap_or((0.0, 0.0))
-        };
-        (pair("scale"), pair("translate"))
-    });
+    let transform = doc
+        .get("transform")
+        .map(|t| {
+            let pair = |k| {
+                position(
+                    t.get(k).unwrap_or(&Value::Null),
+                    &format!("TopoJSON transform {k}"),
+                )
+            };
+            Ok::<_, Error>((pair("scale")?, pair("translate")?))
+        })
+        .transpose()?;
     let place = |p: P| match transform {
         Some((s, t)) => (p.0 * s.0 + t.0, p.1 * s.1 + t.1),
         None => p,
@@ -312,8 +316,7 @@ fn read_topojson(doc: &Value, object: Option<&str>) -> Result<Source, Error> {
     let ring = |v: &Value| -> Result<Ring, Error> {
         let refs: Option<Vec<i64>> = v
             .as_array()
-            .map(|a| a.iter().map(|x| x.as_f64().map(|f| f as i64)).collect())
-            .and_then(|r: Option<Vec<i64>>| r);
+            .and_then(|a| a.iter().map(Value::as_i64).collect());
         match refs {
             Some(r) if r.iter().all(|&a| (if a < 0 { !a } else { a }) < n_arcs) => {
                 Ok(Ring::Arcs(r))
@@ -373,11 +376,11 @@ fn read_topojson(doc: &Value, object: Option<&str>) -> Result<Source, Error> {
             }
             Some("MultiPolygon") => {
                 let (mut outer, mut holes) = (Vec::new(), Vec::new());
-                for p in g
+                let polygons = g
                     .get("arcs")
                     .and_then(Value::as_array)
-                    .map_or(&[][..], Vec::as_slice)
-                {
+                    .ok_or_else(|| Error::general("TopoJSON: expected polygons"))?;
+                for p in polygons {
                     let (o, h) = polygon(&rings(p)?);
                     outer.extend(o);
                     holes.extend(h);
@@ -459,6 +462,29 @@ mod tests {
         let s = read("x,y,v\nNaN,0,5\n1,inf,2\n2,0,3\n", None).unwrap();
         assert_eq!(s.features.len(), 1);
         assert_eq!(s.warnings, ["2 rows without coordinates were left out"]);
+    }
+
+    #[test]
+    fn topojson_input_is_checked() {
+        let topo = |transform: &str, arcs: &str| {
+            format!(
+                r#"{{"type": "Topology", {transform}
+                  "objects": {{"z": {{"type": "Polygon", "arcs": {arcs}}}}},
+                  "arcs": [[[0, 0], [1, 0], [0, 1], [-1, 0]]]}}"#
+            )
+        };
+        assert!(read(&topo("", "[[0]]"), None).is_ok());
+        for (transform, arcs, message) in [
+            ("", "[[0.5]]", "missing arc"),
+            ("", "[[-2]]", "missing arc"),
+            (r#""transform": {"translate": [0, 0]},"#, "[[0]]", "scale"),
+        ] {
+            let e = read(&topo(transform, arcs), None).unwrap_err();
+            assert!(e.message.contains(message), "{e}");
+        }
+        let multi = r#"{"type": "Topology", "arcs": [],
+          "objects": {"z": {"type": "MultiPolygon"}}}"#;
+        assert!(read(multi, None).unwrap_err().message.contains("polygons"));
     }
 
     #[test]
