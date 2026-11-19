@@ -6,9 +6,10 @@ use crate::deck::{Direction, Legend, MapKind, MapSpec, Packages, ZoneShape};
 use crate::elective::{DotMode, Elective, Extrapolation, PointCount};
 use crate::error::Error;
 use crate::frame::{Frame, Layout, round_half_up};
-use crate::geom::{self, Extent, Point};
+use crate::geom::{self, Extent, Point, Row};
 use crate::interp::{PointIndex, Shepard, ShepardParams};
 use crate::symbols::{Strikes, Symbolism};
+use std::ops::Range;
 
 /// White contour and boundary lines (electives 8 and 22).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -351,9 +352,9 @@ fn raster(
     })
 }
 
-/// The content characters, row by row, within a character of a polygon's
-/// bounding box: the only ones whose centres can be inside it.
-fn cells_around(frame: &Frame, vertices: &[Point]) -> impl Iterator<Item = (usize, usize)> {
+/// The rows and columns of content characters within a character of a
+/// polygon's bounding box: the only ones whose centres can be inside it.
+fn span_around(frame: &Frame, vertices: &[Point]) -> (Range<usize>, Range<usize>) {
     let (mut lo, mut hi) = (
         (f64::INFINITY, f64::INFINITY),
         (f64::NEG_INFINITY, f64::NEG_INFINITY),
@@ -369,8 +370,20 @@ fn cells_around(frame: &Frame, vertices: &[Point]) -> impl Iterator<Item = (usiz
         let end = (hi + 2.0).floor().min(n as f64).max(first);
         first as usize..end as usize
     };
-    let (rows, cols) = (span(lo.0, hi.0, frame.rows), span(lo.1, hi.1, frame.cols));
-    rows.flat_map(move |r| cols.clone().map(move |c| (r, c)))
+    (span(lo.0, hi.0, frame.rows), span(lo.1, hi.1, frame.cols))
+}
+
+/// The A-OUTLINE rings along one row of characters.
+struct OutlineRow(Option<Vec<Row>>);
+
+impl OutlineRow {
+    /// Whether the position at `across` is inside an outline (or there
+    /// are none).
+    fn contains(&self, across: f64) -> bool {
+        self.0
+            .as_ref()
+            .is_none_or(|rows| rows.iter().any(|r| r.contains(across)))
+    }
 }
 
 /// Draw one map.
@@ -605,9 +618,13 @@ impl Drawing<'_> {
         (s, search_radius)
     }
 
-    /// Whether a location is inside the A-OUTLINE rings (or there are none).
-    fn inside(&self, p: Point) -> bool {
-        self.pk.outlines.is_empty() || self.pk.outlines.iter().any(|r| geom::in_ring(p, r))
+    /// The A-OUTLINE rings along content row `r`.
+    fn outline_row(&self, r: usize) -> OutlineRow {
+        let down = self.frame.centre(r, 0).down;
+        let outlines = &self.pk.outlines;
+        OutlineRow(
+            (!outlines.is_empty()).then(|| outlines.iter().map(|o| Row::new(o, down)).collect()),
+        )
     }
 
     fn fill_contour(
@@ -697,8 +714,9 @@ impl Drawing<'_> {
             Some((a * (1.0 - u) + b * u) * (1.0 - t) + (cc * (1.0 - u) + d * u) * t)
         };
         for r in 1..frame.rows {
+            let outline = self.outline_row(r);
             for c in 1..frame.cols {
-                if self.inside(frame.centre(r, c)) {
+                if outline.contains(frame.centre(r, c).across) {
                     let i = frame.index(r, c);
                     s.fill[i] = match value(r, c) {
                         Some(v) => {
@@ -719,9 +737,13 @@ impl Drawing<'_> {
         let pts: Vec<Point> = valid_pts.iter().map(|x| x.0).collect();
         let index = PointIndex::new(&pts);
         for r in 1..frame.rows {
+            let outline = self.outline_row(r);
             for c in 1..frame.cols {
                 let p = frame.centre(r, c);
-                if let Some(k) = index.nearest(&pts, p).filter(|_| self.inside(p)) {
+                if !outline.contains(p.across) {
+                    continue;
+                }
+                if let Some(k) = index.nearest(&pts, p) {
                     let v = valid_pts[k].1;
                     let i = frame.index(r, c);
                     s.value[i] = Some(v);
@@ -740,12 +762,16 @@ impl Drawing<'_> {
             let level = self.classes.level(*v);
             match z.shape {
                 ZoneShape::Area => {
-                    for (r, c) in cells_around(frame, &z.vertices) {
-                        let i = frame.index(r, c);
-                        if s.fill[i] == Fill::Background
-                            && geom::in_ring(frame.centre(r, c), &z.vertices)
-                        {
-                            s.set_zone(i, z.reference, *v, level);
+                    let (rows, cols) = span_around(frame, &z.vertices);
+                    for r in rows {
+                        let row = Row::new(&z.vertices, frame.centre(r, 0).down);
+                        for c in cols.clone() {
+                            let i = frame.index(r, c);
+                            if s.fill[i] == Fill::Background
+                                && row.contains(frame.centre(r, c).across)
+                            {
+                                s.set_zone(i, z.reference, *v, level);
+                            }
                         }
                     }
                 }
@@ -972,9 +998,13 @@ impl Drawing<'_> {
                     }
                 }
                 Legend::Area { strikes, vertices } => {
-                    for (r, c) in cells_around(frame, vertices) {
-                        if geom::in_ring(frame.centre(r, c), vertices) {
-                            grid[frame.index(r, c)] = *strikes;
+                    let (rows, cols) = span_around(frame, vertices);
+                    for r in rows {
+                        let row = Row::new(vertices, frame.centre(r, 0).down);
+                        for c in cols.clone() {
+                            if row.contains(frame.centre(r, c).across) {
+                                grid[frame.index(r, c)] = *strikes;
+                            }
                         }
                     }
                 }
@@ -1063,7 +1093,7 @@ mod tests {
     }
 
     #[test]
-    fn cells_around_a_polygon() {
+    fn span_around_a_polygon() {
         let extent = Extent {
             min: Point::new(0.0, 0.0),
             max: Point::new(10.0, 10.0),
@@ -1075,17 +1105,21 @@ mod tests {
             Point::new(4.0, 4.0),
             Point::new(4.0, 2.0),
         ];
-        let cells: Vec<_> = cells_around(&frame, &square).collect();
+        let cells = |(rows, cols): (Range<usize>, Range<usize>)| -> Vec<(usize, usize)> {
+            rows.flat_map(|r| cols.clone().map(move |c| (r, c)))
+                .collect()
+        };
+        let around = cells(span_around(&frame, &square));
         let inside = (1..frame.rows)
             .flat_map(|r| (1..frame.cols).map(move |c| (r, c)))
             .filter(|&(r, c)| geom::in_ring(frame.centre(r, c), &square));
-        assert!(inside.into_iter().all(|cell| cells.contains(&cell)));
-        assert!(cells.len() < (frame.rows - 1) * (frame.cols - 1) / 4);
+        assert!(inside.into_iter().all(|cell| around.contains(&cell)));
+        assert!(around.len() < (frame.rows - 1) * (frame.cols - 1) / 4);
         let off = square.map(|p| Point::new(p.down + 1e9, p.across));
-        assert_eq!(cells_around(&frame, &off).count(), 0);
+        assert!(cells(span_around(&frame, &off)).is_empty());
         let huge = square.map(|p| Point::new((p.down - 3.0) * 1e9, (p.across - 3.0) * 1e9));
         assert_eq!(
-            cells_around(&frame, &huge).count(),
+            cells(span_around(&frame, &huge)).len(),
             (frame.rows - 1) * (frame.cols - 1)
         );
     }

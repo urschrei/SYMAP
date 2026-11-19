@@ -22,22 +22,42 @@ impl Point {
 
 /// Even-odd point-in-ring test. The ring need not repeat its first vertex.
 pub fn in_ring(p: Point, ring: &[Point]) -> bool {
-    let n = ring.len();
-    if n < 3 {
-        return false;
-    }
-    let mut inside = false;
-    let mut j = n - 1;
-    for i in 0..n {
-        let (a, b) = (ring[i], ring[j]);
-        if (a.down > p.down) != (b.down > p.down)
-            && p.across < (b.across - a.across) * (p.down - a.down) / (b.down - a.down) + a.across
-        {
-            inside = !inside;
+    Row::new(ring, p.down).contains(p.across)
+}
+
+/// Where a ring crosses the line at one `down`, to test many points on
+/// that line as `in_ring` does: the same crossings, found once.
+pub struct Row {
+    /// Across positions of the crossings, ascending.
+    crossings: Vec<f64>,
+}
+
+impl Row {
+    pub fn new(ring: &[Point], down: f64) -> Self {
+        let n = ring.len();
+        let mut crossings = Vec::new();
+        if n >= 3 {
+            let mut j = n - 1;
+            for i in 0..n {
+                let (a, b) = (ring[i], ring[j]);
+                if (a.down > down) != (b.down > down) {
+                    crossings.push(
+                        (b.across - a.across) * (down - a.down) / (b.down - a.down) + a.across,
+                    );
+                }
+                j = i;
+            }
         }
-        j = i;
+        crossings.sort_by(f64::total_cmp);
+        Self { crossings }
     }
-    inside
+
+    /// Whether the point at `across` on the line is inside the ring: an odd
+    /// number of crossings lie beyond it.
+    pub fn contains(&self, across: f64) -> bool {
+        let beyond = self.crossings.len() - self.crossings.partition_point(|&x| x <= across);
+        beyond % 2 == 1
+    }
 }
 
 /// Axis-aligned bounds.
@@ -83,6 +103,42 @@ mod tests {
             Point::new(hi, hi),
             Point::new(hi, lo),
         ]
+    }
+
+    #[test]
+    fn a_row_agrees_with_the_point_test() {
+        // A concave ring with a vertex and an edge on the test rows.
+        let ring = [
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 10.0),
+            Point::new(10.0, 10.0),
+            Point::new(5.0, 5.0),
+            Point::new(10.0, 0.0),
+        ];
+        for down in [0.0, 2.5, 5.0, 7.5, 10.0] {
+            let row = Row::new(&ring, down);
+            for k in -4..=56 {
+                let across = f64::from(k) * 0.25 - 1.0;
+                let p = Point::new(down, across);
+                let slow = {
+                    let n = ring.len();
+                    let (mut inside, mut j) = (false, n - 1);
+                    for i in 0..n {
+                        let (a, b) = (ring[i], ring[j]);
+                        if (a.down > p.down) != (b.down > p.down)
+                            && p.across
+                                < (b.across - a.across) * (p.down - a.down) / (b.down - a.down)
+                                    + a.across
+                        {
+                            inside = !inside;
+                        }
+                        j = i;
+                    }
+                    inside
+                };
+                assert_eq!(row.contains(across), slow, "{p:?}");
+            }
+        }
     }
 
     #[test]
