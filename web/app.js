@@ -1,18 +1,18 @@
 import { createRunner, loadSymap } from './symap.js';
 
 const EXAMPLES = [
-  { file: 'example-1-14.sym', name: 'Manual Example 1-14: proximal maps' },
-  { file: 'example-1-3.sym', name: 'Manual Example 1-3: contour map' },
-  { file: 'example-1-20.sym', name: 'Manual Example 1-20: conformant map' },
-  { file: 'hills.sym', name: 'Two hills: contour and proximal' },
-  { file: 'furniture.sym', name: 'Map furniture: lettering, north arrow, scale' },
-  { file: 'districts.sym', name: 'Six districts: conformant map' },
-  { file: 'barrier.sym', name: 'Two banks: a river as a barrier' },
-  { file: 'london-boroughs.sym', name: 'London boroughs: population density, Census 2021' },
-  { file: 'london-no2.sym', name: 'London: nitrogen dioxide, 2025 (contour)' },
-  { file: 'london-house-prices.sym', name: 'Central London house prices: the Thames as a barrier' },
-  { file: 'london-zones.sym', name: 'London fare zones: nearest station (proximal)' },
-  { file: 'dublin-density.sym', name: 'Dublin City: population density, Census 2022' },
+  { group: 'From the 1971 manual', file: 'example-1-14.sym', name: 'Example 1-14: proximal maps' },
+  { group: 'From the 1971 manual', file: 'example-1-3.sym', name: 'Example 1-3: contour map' },
+  { group: 'From the 1971 manual', file: 'example-1-20.sym', name: 'Example 1-20: conformant map' },
+  { group: 'Demonstrations', file: 'hills.sym', name: 'Two hills: contour and proximal' },
+  { group: 'Demonstrations', file: 'furniture.sym', name: 'Map furniture: lettering, north arrow, scale' },
+  { group: 'Demonstrations', file: 'districts.sym', name: 'Six districts: conformant map' },
+  { group: 'Demonstrations', file: 'barrier.sym', name: 'Two banks: a river as a barrier' },
+  { group: 'Open data: London and Dublin', file: 'london-boroughs.sym', name: 'London boroughs: population density, Census 2021' },
+  { group: 'Open data: London and Dublin', file: 'london-no2.sym', name: 'London: nitrogen dioxide, 2025 (contour)' },
+  { group: 'Open data: London and Dublin', file: 'london-house-prices.sym', name: 'Central London house prices: the Thames as a barrier' },
+  { group: 'Open data: London and Dublin', file: 'london-zones.sym', name: 'London fare zones: nearest station (proximal)' },
+  { group: 'Open data: London and Dublin', file: 'dublin-density.sym', name: 'Dublin City: population density, Census 2022' },
 ];
 
 const STORE_KEY = 'symap.deck';
@@ -21,7 +21,7 @@ const deck = $('deck');
 const sheets = $('sheets');
 const messages = $('messages');
 
-const state = { symap: null, result: null, overprint: true, zoom: 'fit', paper: 'greenbar', turn: 0 };
+const state = { symap: null, result: null, overprint: true, zoom: 'fit', paper: 'white', turn: 0 };
 
 // ---------------------------------------------------------------- storage
 
@@ -286,9 +286,23 @@ function turned(canvas, turn, cssHeight) {
   return out;
 }
 
-function render() {
+// The sheets of every map: [map, lines, label, isMap].
+function sheetList(r) {
+  const many = r.maps.length > 1;
+  return r.maps.flatMap((m, i) => {
+    const ps = pages(m);
+    return ps.map((lines, k) => {
+      const isMap = k === ps.length - 1;
+      const what = isMap ? 'Map' : 'Tables';
+      return [m, lines, many ? `${what} ${i + 1}` : what, isMap];
+    });
+  });
+}
+
+function render(opts = {}) {
   const r = state.result;
   sheets.replaceChildren();
+  $('sheet-nav').replaceChildren();
   sheets.classList.toggle('fit', state.zoom === 'fit');
   if (!r || !r.ok) {
     const p = document.createElement('p');
@@ -299,13 +313,53 @@ function render() {
   }
   // One sheet per frame, so long runs never block the page for long.
   const token = (render.token = (render.token || 0) + 1);
-  const queue = r.maps.flatMap((m) => pages(m).map((lines) => [m, lines]));
+  const list = sheetList(r);
+  const nav = $('sheet-nav');
+  if (list.length > 1) {
+    list.forEach(([, , label, isMap], k) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.className = isMap ? 'map' : '';
+      b.addEventListener('click', () => showSheet(k));
+      nav.append(b);
+    });
+  }
+  const firstMap = list.findIndex((x) => x[3]);
+  const queue = list.map(([m, lines, label], k) => [m, lines, label, k]);
   const next = () => {
     if (token !== render.token || !queue.length) return;
-    sheets.append(drawSheet(...queue.shift()));
+    const [m, lines, label, k] = queue.shift();
+    const canvas = drawSheet(m, lines);
+    canvas.dataset.sheet = k;
+    canvas.addEventListener('click', () => { if (state.zoom === 'fit') openSheet(m, lines, label); });
+    sheets.append(canvas);
+    if (opts.toMap && k === firstMap) showSheet(k, 'auto');
     requestAnimationFrame(next);
   };
   next();
+}
+
+// Scroll the printout to a sheet (within its pane on wide screens).
+function showSheet(k, behavior = 'smooth') {
+  const c = sheets.querySelector(`canvas[data-sheet="${k}"]`);
+  if (!c) return;
+  if (sheets.scrollHeight > sheets.clientHeight) {
+    sheets.scrollTo({ top: c.offsetTop - sheets.offsetTop - 12, behavior });
+  } else {
+    c.scrollIntoView({ block: 'start', behavior });
+  }
+}
+
+// A sheet at full size (100%), for reading on small screens.
+function openSheet(m, lines, label) {
+  const saved = state.zoom;
+  state.zoom = '1';
+  const canvas = drawSheet(m, lines);
+  state.zoom = saved;
+  $('sheet-view-title').textContent = `${label}: ${m.titles.filter(Boolean).join(' / ')}`;
+  $('sheet-view-body').replaceChildren(canvas);
+  $('sheet-view').showModal();
 }
 
 function showMessages() {
@@ -340,14 +394,14 @@ function showMessages() {
   });
 }
 
-async function run() {
+async function run(opts = {}) {
   if (!state.symap) return;
   store.set(STORE_KEY, deck.value);
   const result = await state.symap.run(deck.value);
   if (!result) return; // superseded by a newer edit
   state.result = result;
   showMessages();
-  render();
+  render(opts);
   $('download-values').disabled = !(result.ok && result.maps.some((m) => m.valuesCsv));
 }
 
@@ -362,6 +416,36 @@ function download(name, text) {
 }
 
 // ------------------------------------------------------------- PNG export
+
+const DECK_KEYWORD = 'SYMAP deck';
+const PNG_DECK_KEY = 'symap.pngDeck';
+
+// The deck embedded in a SYMAP PNG (an iTXt chunk), or null.
+function deckFromPng(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (bytes.length < 8 || sig.some((b, i) => bytes[i] !== b)) return null;
+  const dec = new TextDecoder();
+  for (let i = 8; i + 12 <= bytes.length;) {
+    const len = view.getUint32(i);
+    const type = dec.decode(bytes.subarray(i + 4, i + 8));
+    if (type === 'iTXt') {
+      const data = bytes.subarray(i + 8, i + 8 + len);
+      const nul = data.indexOf(0);
+      if (dec.decode(data.subarray(0, nul)) === DECK_KEYWORD && data[nul + 1] === 0) {
+        // keyword, NUL, compression flag and method, language tag, NUL,
+        // translated keyword, NUL, text.
+        let j = nul + 3;
+        j = data.indexOf(0, j) + 1;
+        j = data.indexOf(0, j) + 1;
+        return dec.decode(data.subarray(j));
+      }
+    }
+    if (type === 'IEND') break;
+    i += 12 + len;
+  }
+  return null;
+}
 
 // One character is 0.1 inch, CELL_W layout units, so 300 dpi is exact: 30
 // pixels per character and 37.5 per line.
@@ -425,11 +509,12 @@ async function exportPng() {
     const canvas = drawSheet(m, pages(m).at(-1), density);
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
     const png = new Uint8Array(await blob.arrayBuffer());
-    const titled = annotate(png, PRINT_DPI, [
+    const texts = [
       ['Title', m.titles.filter(Boolean).join(' / ')],
       ['Software', 'SYMAP, https://urschrei.github.io/SYMAP/'],
-      ['SYMAP deck', deck.value],
-    ]);
+    ];
+    if ($('png-deck').checked) texts.push([DECK_KEYWORD, deck.value]);
+    const titled = annotate(png, PRINT_DPI, texts);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(titled);
     a.download = maps.length > 1 ? `symap-${i + 1}.png` : 'symap.png';
@@ -444,20 +529,93 @@ function outputs(kind) {
   return r.maps.map((m) => (kind === 'asa' ? m.asa : m.lines.map((l) => (l.eject ? '\f' : '') + l.plain).join('\n') + '\n')).join(kind === 'asa' ? '' : '\f\n');
 }
 
-async function loadExample(file) {
+async function loadExample(file, toMap = true) {
   const res = await fetch(`examples/${file}`);
   deck.value = await res.text();
   deck.scrollTop = 0;
   deck.scrollLeft = 0;
   deck.setSelectionRange(0, 0);
   syncRuler();
-  await run();
+  await run({ toMap });
 }
 
 function flash(button, text) {
-  const old = button.textContent;
+  const old = button.innerHTML;
   button.textContent = text;
-  setTimeout(() => { button.textContent = old; }, 1500);
+  setTimeout(() => { button.innerHTML = old; }, 1500);
+}
+
+// ------------------------------------------------------------------ layout
+
+// The deck pane's width for 80 columns: the editor's character width, its
+// padding and borders, and room for a scroll bar.
+function cardWidth() {
+  const probe = document.createElement('span');
+  probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font:' + getComputedStyle(deck).font;
+  probe.textContent = '0'.repeat(80);
+  document.body.append(probe);
+  const w = probe.getBoundingClientRect().width;
+  probe.remove();
+  return Math.ceil(w + 24 + 2 + 16);
+}
+
+const WIDTH_KEY = 'symap.deckWidth';
+
+function setDeckWidth(px) {
+  const max = Math.max(360, document.querySelector('.workbench').clientWidth * 0.7);
+  const w = Math.round(Math.min(Math.max(px, 320), max));
+  document.documentElement.style.setProperty('--deck-width', `${w}px`);
+  $('divider').setAttribute('aria-valuenow', String(w));
+  return w;
+}
+
+function wireLayout() {
+  const head = () => document.documentElement.style.setProperty(
+    '--masthead-height', `${document.querySelector('.masthead').offsetHeight}px`);
+  head();
+  window.addEventListener('resize', head);
+  const natural = cardWidth();
+  setDeckWidth(Number(store.get(WIDTH_KEY)) || natural);
+  const divider = $('divider');
+  divider.addEventListener('pointerdown', (e) => {
+    divider.setPointerCapture(e.pointerId);
+    divider.classList.add('dragging');
+    const start = e.clientX;
+    const from = document.querySelector('.deck').getBoundingClientRect().width;
+    const move = (ev) => setDeckWidth(from + ev.clientX - start);
+    const up = () => {
+      divider.classList.remove('dragging');
+      divider.removeEventListener('pointermove', move);
+      store.set(WIDTH_KEY, String(document.querySelector('.deck').getBoundingClientRect().width));
+      render();
+    };
+    divider.addEventListener('pointermove', move);
+    divider.addEventListener('pointerup', up, { once: true });
+  });
+  divider.addEventListener('dblclick', () => { store.set(WIDTH_KEY, ''); setDeckWidth(natural); render(); });
+  divider.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 80 : 20;
+    const w = document.querySelector('.deck').getBoundingClientRect().width;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      store.set(WIDTH_KEY, String(setDeckWidth(w + (e.key === 'ArrowLeft' ? -step : step))));
+      render();
+    }
+  });
+
+  // The Export menu closes after a choice, or a click elsewhere.
+  const menu = $('export');
+  menu.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+    setTimeout(() => { menu.open = false; }, b.id === 'share' ? 1500 : 0);
+  }));
+  document.addEventListener('click', (e) => { if (!menu.contains(e.target)) menu.open = false; });
+  menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { menu.open = false; menu.querySelector('summary').focus(); } });
+
+  $('sheet-view-close').addEventListener('click', () => $('sheet-view').close());
+
+  const embed = $('png-deck');
+  embed.checked = store.get(PNG_DECK_KEY) !== 'no';
+  embed.addEventListener('change', () => store.set(PNG_DECK_KEY, embed.checked ? 'yes' : 'no'));
 }
 
 // ---------------------------------------------------------------- import
@@ -501,6 +659,25 @@ function refreshImport(auto = false) {
 }
 
 async function openImport(file) {
+  if (file.type === 'image/png' || /\.png$/i.test(file.name)) {
+    const text = deckFromPng(new Uint8Array(await file.arrayBuffer()));
+    if (text != null) {
+      deck.value = text;
+      deck.scrollTop = 0;
+      deck.setSelectionRange(0, 0);
+      syncRuler();
+      await run({ toMap: true });
+      return;
+    }
+    pending.result = null;
+    $('import-source').textContent = file.name;
+    $('import-value').replaceChildren();
+    $('import-summary').textContent = 'This PNG has no SYMAP deck embedded in it.';
+    $('import-summary').classList.add('error');
+    $('import-create').disabled = true;
+    $('import-dialog').showModal();
+    return;
+  }
   importer ??= await loadSymap(new URL('symap.wasm', import.meta.url));
   pending.text = await file.text();
   pending.name = file.name;
@@ -528,7 +705,7 @@ function wireImport() {
     deck.scrollTop = 0;
     deck.setSelectionRange(0, 0);
     syncRuler();
-    await run();
+    await run({ toMap: true });
   });
   const editor = deck.closest('.editor');
   editor.addEventListener('dragover', (e) => {
@@ -544,9 +721,18 @@ function wireImport() {
 
 async function init() {
   buildRuler();
+  wireLayout();
   const sel = $('examples');
   sel.append(new Option('Examples…', ''));
-  for (const e of EXAMPLES) sel.append(new Option(e.name, e.file));
+  for (const e of EXAMPLES) {
+    let group = [...sel.children].find((g) => g.label === e.group);
+    if (!group) {
+      group = document.createElement('optgroup');
+      group.label = e.group;
+      sel.append(group);
+    }
+    group.append(new Option(e.name, e.file));
+  }
   sel.addEventListener('change', () => { if (sel.value) loadExample(sel.value); sel.value = ''; });
 
   let timer;
@@ -584,9 +770,10 @@ async function init() {
     if (maps.length) download('symap-values.csv', maps.map((m) => m.valuesCsv).join('\n'));
   });
   $('share').addEventListener('click', async (e) => {
+    const button = e.currentTarget; // gone after the first await
     const url = `${location.origin}${location.pathname}#deck=${await compress(deck.value)}`;
     history.replaceState(null, '', url);
-    try { await navigator.clipboard.writeText(url); flash(e.target, 'Copied'); } catch { flash(e.target, 'Link in address bar'); }
+    try { await navigator.clipboard.writeText(url); flash(button, 'Copied'); } catch { flash(button, 'Link in address bar'); }
   });
   let resizeTimer;
   window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
@@ -599,7 +786,7 @@ async function init() {
     try { deck.value = await decompress(fromHash[1]); await run(); return; } catch { /* fall through */ }
   }
   const saved = store.get(STORE_KEY);
-  if (saved) { deck.value = saved; await run(); } else { await loadExample(EXAMPLES[0].file); }
+  if (saved) { deck.value = saved; await run(); } else { await loadExample(EXAMPLES[0].file, false); }
   updateStatus();
 }
 

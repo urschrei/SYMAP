@@ -13,6 +13,11 @@
     <div class="brand">
       <h1>SYMAP</h1>
       <p>The Synagraphic Mapping System</p>
+      <p class="intro">Howard T. Fisher's line-printer mapping program, begun at Northwestern
+        University in 1963 and developed at the Harvard Laboratory for Computer Graphics and
+        Spatial Analysis. This reimplementation follows the 1971 version: it reads the same card
+        decks and prints maps in the same characters. The examples include decks from the 1971
+        manual, and the importer makes decks from CSV, GeoJSON and TopoJSON.</p>
     </div>
     <nav>
       <a href="https://github.com/urschrei/SYMAP">Source</a>
@@ -29,8 +34,8 @@
             <span class="visually-hidden">Example deck</span>
             <select id="examples"></select>
           </label>
-          <button id="import" type="button" title="Make a deck from points or polygons in a CSV, GeoJSON or TopoJSON file (or drop the file on the editor)">Import data…</button>
-          <input id="import-file" type="file" accept=".csv,.tsv,.txt,.geojson,.topojson,.json" hidden>
+          <button id="import" type="button" title="Make a deck from points or polygons in a CSV, GeoJSON or TopoJSON file, or restore one from a SYMAP PNG (or drop the file on the editor)">Import data…</button>
+          <input id="import-file" type="file" accept=".csv,.tsv,.txt,.geojson,.topojson,.json,.png" hidden>
           <button id="run" type="button" title="Run (Ctrl+Enter)">Run</button>
         </div>
       </div>
@@ -95,30 +100,33 @@
       </details>
     </section>
 
+    <div class="divider" id="divider" role="separator" aria-orientation="vertical" tabindex="0"
+      aria-label="Width of the card deck" title="Drag to resize; double-click for 80 columns"></div>
+
     <section class="pane printout" aria-labelledby="printout-heading">
       <div class="pane-head">
         <h2 id="printout-heading">Printout</h2>
         <div class="tools">
           <div class="segmented" role="group" aria-label="Rendering">
-            <button type="button" id="mode-overprint" aria-pressed="true">Overprint</button>
-            <button type="button" id="mode-plain" aria-pressed="false">Plain</button>
+            <button type="button" id="mode-overprint" aria-pressed="true" title="Each strike printed over the last, as on the line printer">Overprint</button>
+            <button type="button" id="mode-plain" aria-pressed="false" title="One character per position, with modern stand-ins for overprints (Θ, ⊗, █)">Single</button>
           </div>
           <label class="select">
             <span class="visually-hidden">Paper</span>
             <select id="paper">
-              <option value="greenbar" selected>Green bar</option>
-              <option value="white">White paper</option>
+              <option value="white" selected>White</option>
+              <option value="greenbar">Green bar</option>
             </select>
           </label>
-          <label class="select">
+          <label class="select" title="Orientation">
             <span class="visually-hidden">Orientation</span>
             <select id="turn">
               <option value="0" selected>Upright</option>
-              <option value="-1">Sideways, turned left</option>
-              <option value="1">Sideways, turned right</option>
+              <option value="-1">Turned left</option>
+              <option value="1">Turned right</option>
             </select>
           </label>
-          <label class="select">
+          <label class="select" title="Zoom">
             <span class="visually-hidden">Zoom</span>
             <select id="zoom">
               <option value="fit" selected>Fit</option>
@@ -128,17 +136,33 @@
               <option value="2">200%</option>
             </select>
           </label>
-          <button type="button" id="share" title="Copy a link containing this deck">Copy link</button>
-          <button type="button" id="download-asa" title="Fortran carriage-control output, with overprint lines">ASA</button>
-          <button type="button" id="download-text" title="Plain text, one character per position">Text</button>
-          <button type="button" id="download-png" title="Each map's sheet as a PNG at 300 dpi, as shown (paper, orientation, overprint), with the deck embedded">PNG</button>
-          <button type="button" id="download-values" title="Computed values as CSV (maps with elective 21)" disabled>Values</button>
+          <details class="menu" id="export">
+            <summary>Export</summary>
+            <div class="menu-items">
+              <button type="button" id="share">Copy link <small>the deck, in the address</small></button>
+              <button type="button" id="download-png">PNG <small>each map at 300 dpi, as shown</small></button>
+              <label class="menu-check"><input type="checkbox" id="png-deck" checked> Embed the deck in PNGs
+                <small>Anyone with the file can read the cards; dropping it on the editor restores them.</small></label>
+              <button type="button" id="download-asa">ASA <small>carriage control, with overprints</small></button>
+              <button type="button" id="download-text">Text <small>one character per position</small></button>
+              <button type="button" id="download-values" disabled>Values <small>CSV, for maps with elective 21</small></button>
+            </div>
+          </details>
         </div>
       </div>
       <ul class="messages" id="messages" aria-live="polite"></ul>
+      <nav class="sheet-nav" id="sheet-nav" aria-label="Sheets"></nav>
       <div class="sheets" id="sheets"></div>
     </section>
   </main>
+
+  <dialog id="sheet-view" aria-label="Sheet at full size">
+    <div class="sheet-view-head">
+      <span id="sheet-view-title"></span>
+      <button type="button" id="sheet-view-close">Close</button>
+    </div>
+    <div class="sheet-view-body" id="sheet-view-body"></div>
+  </dialog>
 
   <dialog id="import-dialog" aria-labelledby="import-heading">
     <form method="dialog" class="import-form">

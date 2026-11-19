@@ -60,17 +60,39 @@ body {
   margin: 0; font: 600 28px/1 var(--mono); letter-spacing: 0.35em;
 }
 .brand p { margin: 6px 0 0; color: var(--muted); max-width: 60ch; }
+.brand p.intro { color: var(--ink); font-size: 14px; max-width: 92ch; margin-top: 10px; }
 .masthead nav { display: flex; gap: 16px; }
 .masthead a { color: var(--accent); text-decoration: none; }
 .masthead a:hover { text-decoration: underline; }
 
-/* Layout */
+/* Layout. On wide screens the deck pane is as wide as an 80-column card
+   (--deck-width, set from the font's metrics) and each pane scrolls on its
+   own; on narrow screens the panes stack, the printout first. */
 .workbench {
-  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  gap: 16px; padding: 16px 24px;
+  display: grid; grid-template-columns: var(--deck-width, 640px) 8px minmax(0, 1fr);
+  gap: 0 8px; padding: 16px 24px;
+  height: max(560px, calc(100dvh - var(--masthead-height, 140px)));
+}
+/* Panes don't clip (the Export menu opens over their edges); their editor
+   and sheets scroll instead. */
+.workbench > .pane { min-height: 0; }
+.workbench > .deck { overflow: auto; }
+@media (min-width: 1001px) {
+  .workbench .sheets { min-height: 0; }
+}
+.divider {
+  cursor: col-resize; border-radius: 4px; touch-action: none;
+  background: linear-gradient(to right, transparent 3px, var(--line) 3px, var(--line) 5px, transparent 5px);
+}
+.divider:hover, .divider:focus-visible, .divider.dragging {
+  background: linear-gradient(to right, transparent 2px, var(--accent) 2px, var(--accent) 6px, transparent 6px);
+  outline: none;
 }
 @media (max-width: 1000px) {
-  .workbench { grid-template-columns: minmax(0, 1fr); }
+  .workbench { grid-template-columns: minmax(0, 1fr); gap: 16px; height: auto; }
+  .workbench > .deck { overflow: visible; }
+  .divider { display: none; }
+  .printout { order: -1; }
 }
 
 .pane {
@@ -85,7 +107,10 @@ body {
   margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--muted);
 }
-.tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.tools select { max-width: 100%; }
+#examples { width: 100%; }
+.deck .tools .select { flex: 1 1 14rem; min-width: 0; }
 
 button, select {
   font: inherit; font-size: 13px; color: var(--ink); background: var(--bg);
@@ -105,7 +130,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible {
 .segmented button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
 /* Card editor */
-.editor { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 420px; }
+.editor { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 220px; }
 .ruler {
   overflow: hidden; background: var(--card); border-bottom: 1px solid var(--line);
   padding: 4px 0 2px;
@@ -115,7 +140,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible {
 }
 .ruler pre { margin: 0; padding: 0 12px; color: var(--muted); white-space: pre; will-change: transform; }
 #deck {
-  flex: 1; width: 100%; min-height: 380px; resize: vertical; border: 0; margin: 0;
+  flex: 1; width: 100%; min-height: 180px; resize: none; border: 0; margin: 0;
   padding: 6px 12px; color: var(--ink); white-space: pre; overflow: auto;
   background-color: var(--card);
   /* Field guides after columns 5, 10, 20, ... and the card edge after 80. */
@@ -166,6 +191,42 @@ button:focus-visible, select:focus-visible, textarea:focus-visible {
   border-color: currentColor;
 }
 
+/* Export menu */
+.menu { position: relative; }
+.menu summary {
+  list-style: none; font-size: 13px; border: 1px solid var(--line); border-radius: 6px;
+  padding: 5px 10px; cursor: pointer; background: var(--bg); user-select: none;
+}
+.menu summary::-webkit-details-marker { display: none; }
+.menu summary::after { content: " \25BE"; color: var(--muted); }
+.menu summary:hover { border-color: var(--muted); }
+.menu summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.menu-items {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 10; min-width: 17rem;
+  display: grid; padding: 4px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+}
+.menu-items button {
+  display: grid; text-align: left; border: 0; background: transparent; padding: 6px 10px;
+}
+.menu-items button:hover:not(:disabled) { background: var(--bg); }
+.menu-items small { color: var(--muted); font-size: 12px; }
+.menu-check {
+  display: grid; grid-template-columns: auto 1fr; gap: 0 8px; align-items: baseline;
+  padding: 4px 10px 8px 26px; font-size: 13px; cursor: pointer;
+}
+.menu-check input { margin: 0 0 0 -16px; grid-row: 1; }
+.menu-check small { grid-column: 1 / -1; }
+
+/* Sheet navigator */
+.sheet-nav {
+  display: flex; flex-wrap: wrap; gap: 4px 6px; padding: 8px 12px; border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.sheet-nav:empty { display: none; }
+.sheet-nav button { font-size: 12px; padding: 2px 8px; }
+.sheet-nav button.map { font-weight: 600; }
+
 /* Printout */
 .sheets {
   padding: 16px; overflow: auto; flex: 1; min-height: 420px;
@@ -175,7 +236,21 @@ button:focus-visible, select:focus-visible, textarea:focus-visible {
 .sheets canvas {
   display: block; max-width: none; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 6px 18px rgba(0, 0, 0, 0.10);
 }
-.sheets.fit canvas { max-width: 100%; height: auto; }
+.sheets.fit canvas { max-width: 100%; height: auto; cursor: zoom-in; }
+
+/* A sheet at full size */
+#sheet-view {
+  width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0;
+  border: 0; background: var(--bg); color: var(--ink);
+}
+#sheet-view[open] { display: flex; flex-direction: column; }
+#sheet-view::backdrop { background: rgba(0, 0, 0, 0.5); }
+.sheet-view-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 8px 16px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted);
+}
+.sheet-view-body { flex: 1; overflow: auto; padding: 16px; }
+.sheet-view-body canvas { display: block; margin: 0 auto; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
 .sheets .empty { color: var(--muted); font-size: 14px; margin: auto; }
 
 .colophon {

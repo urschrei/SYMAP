@@ -40,18 +40,24 @@ characters and 8 lines to the inch.
   to match, and each glyph is stroked lightly for ink spread. Level fills
   then read as tones, as on the original maps.
 - **Overprinting.** Every strike is printed into the same cell in
-  translucent ink, with a small offset between strikes, so
-  overprints darken. The Plain mode shows one character per cell.
-- **Paper.** Green-bar continuous stationery, or white paper as the reports
-  reproduced their maps.
+  translucent ink, with a small offset between strikes, so overprints
+  darken. This is the default, as in the original: the standard symbolism
+  is built from overprints, and the manual (§5.4.2) describes the program
+  printing each map line followed by up to three overprint lines. The
+  Single mode shows one character per position, with modern stand-ins
+  (`Θ`, `⊗`, `█`) for overprints.
+- **Paper.** White, as the reports reproduced their maps (the default), or
+  green-bar continuous stationery.
 - **Pages.** The tables before a map are on one sheet and the map starts the
   next, as in the manual (Examples 1-4 and 1-5).
 - **PNG export.** The PNG button saves each map's sheet as shown (paper,
   orientation and overprinting) at 300 dpi. At that resolution a character
   is exactly 30 pixels wide and a line 37.5 pixels tall, and the file
-  records its resolution, so it prints at the original size. The deck is
-  embedded in the file as a text chunk (`SYMAP deck`), with the map's
-  titles.
+  records its resolution, so it prints at the original size. The map's
+  titles are embedded in the file, and so, unless you turn it off in the
+  Export menu, is the deck (an iTXt chunk, `SYMAP deck`): anyone with the
+  file can read the cards. Dropping such a PNG on the editor, or choosing
+  it with Import data, restores its deck.
 - **Orientation.** Sheets can be turned a quarter-turn either way. The
   Laboratory's report maps were often printed sideways and reproduced turned
   left, with the foot of the page running up the right edge.
