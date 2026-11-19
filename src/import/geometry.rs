@@ -89,35 +89,70 @@ pub(crate) fn area(ring: &[Point]) -> f64 {
     topology::area(&ring_pairs(ring)).abs()
 }
 
-/// The parts of a path (in grid coordinates) that fall within `bounds`
-/// (down and across, from 0), each keeping the vertex beyond the edge so
-/// that it reaches the edge.
-pub(crate) fn clip(pts: &[Point], bounds: Point) -> Vec<Vec<Point>> {
-    let (down, across) = (bounds.down, bounds.across);
-    let inside =
-        |p: Point| p.down >= 0.0 && p.down <= down && p.across >= 0.0 && p.across <= across;
-    let overlaps = |a: Point, b: Point| {
-        a.down.min(b.down) <= down
-            && a.down.max(b.down) >= 0.0
-            && a.across.min(b.across) <= across
-            && a.across.max(b.across) >= 0.0
-    };
+/// The parts of a path on the sheet that lie within the rectangle from
+/// `min` to `max`, cut at its edges, in order along the path. A path breaks
+/// only where it leaves the rectangle. (Geo's `BooleanOps::clip` also
+/// breaks it where it touches itself, and two barriers meeting at a vertex
+/// both count a path through it.)
+pub(crate) fn clip(pts: &[Point], min: Point, max: Point) -> Vec<Vec<Point>> {
     let mut parts: Vec<Vec<Point>> = Vec::new();
     let mut cur: Vec<Point> = Vec::new();
+    let mut end = |cur: &mut Vec<Point>| {
+        if cur.len() >= 2 {
+            parts.push(std::mem::take(cur));
+        }
+        cur.clear();
+    };
     for w in pts.windows(2) {
-        if inside(w[0]) || inside(w[1]) || overlaps(w[0], w[1]) {
-            if cur.is_empty() {
-                cur.push(w[0]);
+        match clip_segment(w[0], w[1], min, max) {
+            Some((a, b)) => {
+                if cur.last() != Some(&a) {
+                    end(&mut cur);
+                    cur.push(a);
+                }
+                cur.push(b);
+                if b != w[1] {
+                    end(&mut cur);
+                }
             }
-            cur.push(w[1]);
-        } else if !cur.is_empty() {
-            parts.push(std::mem::take(&mut cur));
+            None => end(&mut cur),
         }
     }
-    if cur.len() >= 2 {
-        parts.push(cur);
-    }
+    end(&mut cur);
     parts
+}
+
+/// The part of segment `p`-`q` inside the rectangle from `min` to `max`
+/// (Liang-Barsky). An end inside the rectangle is returned unchanged.
+/// `None` if no more than a point is inside.
+fn clip_segment(p: Point, q: Point, min: Point, max: Point) -> Option<(Point, Point)> {
+    let (dd, da) = (q.down - p.down, q.across - p.across);
+    let (mut t0, mut t1) = (0.0_f64, 1.0_f64);
+    let axes = [
+        (p.down, dd, min.down, max.down),
+        (p.across, da, min.across, max.across),
+    ];
+    for (start, delta, lo, hi) in axes {
+        if delta == 0.0 {
+            if start < lo || start > hi {
+                return None;
+            }
+            continue;
+        }
+        let (ta, tb) = ((lo - start) / delta, (hi - start) / delta);
+        let (enter, exit) = if delta > 0.0 { (ta, tb) } else { (tb, ta) };
+        t0 = t0.max(enter);
+        t1 = t1.min(exit);
+    }
+    if t0 >= t1 {
+        return None;
+    }
+    let at = |t: f64| match t {
+        0.0 => p,
+        1.0 => q,
+        _ => Point::new(p.down + t * dd, p.across + t * da),
+    };
+    Some((at(t0), at(t1)))
 }
 
 /// A ring or path's coordinates: given directly, or joined from arcs.
@@ -172,6 +207,37 @@ mod tests {
         let p = interior_point(std::slice::from_ref(&outer), std::slice::from_ref(&hole)).unwrap();
         assert!(inside(p, &outer) && !inside(p, &hole), "{p:?}");
         assert_eq!(interior_point(&[], &[]), None);
+    }
+
+    #[test]
+    fn clipping_cuts_at_the_edges_and_keeps_paths_whole() {
+        // A path that leaves the rectangle and comes back, and touches
+        // itself at (5, 5).
+        let path = points(&[
+            (5.0, 0.0),
+            (5.0, 5.0),
+            (8.0, 8.0),
+            (5.0, 8.0),
+            (5.0, 5.0),
+            (5.0, 20.0),
+            (8.0, 20.0),
+            (8.0, 9.0),
+        ]);
+        let parts = clip(&path, Point::new(0.0, 0.0), Point::new(10.0, 10.0));
+        assert_eq!(
+            parts,
+            [
+                points(&[
+                    (5.0, 0.0),
+                    (5.0, 5.0),
+                    (8.0, 8.0),
+                    (5.0, 8.0),
+                    (5.0, 5.0),
+                    (5.0, 10.0)
+                ]),
+                points(&[(8.0, 10.0), (8.0, 9.0)]),
+            ]
+        );
     }
 
     #[test]

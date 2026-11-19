@@ -132,18 +132,16 @@ pub(crate) fn clip_to(
     for line in paths {
         let projected: Vec<P> = line.points.iter().map(|&p| projection.project(p)).collect();
         let simple = topology::douglas_peucker(&projected, tolerance);
-        // Clip to bounds from 0, a character beyond the sheet on each side.
-        let shift = |p: Point, by: f64| Point::new(p.down + by, p.across + by);
-        let on_grid: Vec<Point> = simple
-            .into_iter()
-            .map(|p| shift(sheet.grid(p), char_width))
-            .collect();
-        let bounds = Point::new(
-            sheet.down_extent + 2.0 * char_width,
-            sheet.across_extent + 2.0 * char_width,
+        let on_grid: Vec<Point> = simple.into_iter().map(|p| sheet.grid(p)).collect();
+        let (min, max) = (
+            Point::new(-char_width, -char_width),
+            Point::new(
+                sheet.down_extent + char_width,
+                sheet.across_extent + char_width,
+            ),
         );
-        for part in clip(&on_grid, bounds) {
-            parts.push(part.into_iter().map(|p| shift(p, -char_width)).collect());
+        for part in clip(&on_grid, min, max) {
+            parts.push(part);
             if !drawn.contains(&line.feature) {
                 drawn.push(line.feature);
                 if let Some(n) = line.name.as_ref().filter(|n| !names.contains(n)) {
