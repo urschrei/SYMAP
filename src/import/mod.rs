@@ -15,6 +15,7 @@ pub mod read;
 pub mod topology;
 
 use crate::Error;
+use geo::{Centroid, ConvexHull, LineString, MultiPoint, MultiPolygon, Polygon};
 use project::TransverseMercator;
 use read::{Feature, Geom, Prop, Ring};
 use std::fmt::Write;
@@ -247,59 +248,31 @@ fn coordinate_card(head: &str, (down, across): P) -> Result<String, Error> {
     ))
 }
 
-/// Convex hull (Andrew's monotone chain), counter-clockwise.
+/// Convex hull, counter-clockwise from its least vertex, not closed.
 fn hull(points: &[P]) -> Vec<P> {
-    let mut p = points.to_vec();
-    p.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    p.dedup();
-    if p.len() < 3 {
-        return p;
-    }
-    let cross = |o: P, a: P, b: P| (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0);
-    let mut h: Vec<P> = Vec::new();
-    for pass in 0..2 {
-        let start = h.len();
-        let iter: Box<dyn Iterator<Item = &P>> = if pass == 0 {
-            Box::new(p.iter())
-        } else {
-            Box::new(p.iter().rev())
-        };
-        for &q in iter {
-            while h.len() >= start + 2 && cross(h[h.len() - 2], h[h.len() - 1], q) <= 0.0 {
-                h.pop();
-            }
-            h.push(q);
-        }
-        h.pop();
+    let mut h: Vec<P> = MultiPoint::from(points.to_vec())
+        .convex_hull()
+        .exterior()
+        .coords()
+        .map(|c| c.x_y())
+        .collect();
+    h.pop();
+    if let Some(i) = (0..h.len()).min_by(|&i, &j| h[i].partial_cmp(&h[j]).unwrap()) {
+        h.rotate_left(i);
     }
     h
 }
 
 /// Area-weighted centroid of rings (closed or not).
 fn centroid(rings: &[Vec<P>]) -> Option<P> {
-    let (mut a, mut x, mut y) = (0.0, 0.0, 0.0);
-    for r in rings {
-        let n = r.len();
-        for i in 0..n {
-            let (p, q) = (r[i], r[(i + 1) % n]);
-            let c = p.0 * q.1 - q.0 * p.1;
-            a += c;
-            x += (p.0 + q.0) * c;
-            y += (p.1 + q.1) * c;
-        }
-    }
-    if a.abs() > 1e-12 {
-        Some((x / (3.0 * a), y / (3.0 * a)))
-    } else {
-        let pts: Vec<&P> = rings.iter().flatten().collect();
-        (!pts.is_empty()).then(|| {
-            let n = pts.len() as f64;
-            (
-                pts.iter().map(|p| p.0).sum::<f64>() / n,
-                pts.iter().map(|p| p.1).sum::<f64>() / n,
-            )
-        })
-    }
+    MultiPolygon::new(
+        rings
+            .iter()
+            .map(|r| Polygon::new(LineString::from(r.clone()), vec![]))
+            .collect(),
+    )
+    .centroid()
+    .map(|p| p.x_y())
 }
 
 /// Comment lines, wrapped to fit the card.

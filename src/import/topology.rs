@@ -4,6 +4,7 @@
 //! Arcs are referred to as in TopoJSON: `i` for arc `i`, and `!i` (that is,
 //! `-i - 1`) for arc `i` reversed.
 
+use geo::{Area, LineString, Polygon, Simplify};
 use std::collections::HashMap;
 
 pub type P = (f64, f64);
@@ -167,55 +168,18 @@ fn dist2(a: P, b: P) -> f64 {
     (a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)
 }
 
-/// Distance from `p` to the segment `a`-`b`.
-fn seg_dist(p: P, a: P, b: P) -> f64 {
-    let l2 = dist2(a, b);
-    if l2 == 0.0 {
-        return dist2(p, a).sqrt();
-    }
-    let t = (((p.0 - a.0) * (b.0 - a.0) + (p.1 - a.1) * (b.1 - a.1)) / l2).clamp(0.0, 1.0);
-    dist2(p, (a.0 + t * (b.0 - a.0), a.1 + t * (b.1 - a.1))).sqrt()
-}
-
+/// Douglas-Peucker simplification, keeping the end points.
 pub fn douglas_peucker(pts: &[P], tol: f64) -> Vec<P> {
-    if pts.len() <= 2 {
-        return pts.to_vec();
-    }
-    let mut keep = vec![false; pts.len()];
-    keep[0] = true;
-    keep[pts.len() - 1] = true;
-    let mut stack = vec![(0, pts.len() - 1)];
-    while let Some((s, e)) = stack.pop() {
-        let mut best = (0.0, 0);
-        for i in s + 1..e {
-            let d = seg_dist(pts[i], pts[s], pts[e]);
-            if d > best.0 {
-                best = (d, i);
-            }
-        }
-        if best.0 > tol {
-            keep[best.1] = true;
-            stack.push((s, best.1));
-            stack.push((best.1, e));
-        }
-    }
-    pts.iter()
-        .zip(keep)
-        .filter(|(_, k)| *k)
-        .map(|(p, _)| *p)
+    LineString::from(pts.to_vec())
+        .simplify(tol)
+        .coords()
+        .map(|c| c.x_y())
         .collect()
 }
 
 /// Signed area (positive anticlockwise, in x-y terms).
 pub fn area(ring: &[P]) -> f64 {
-    let n = ring.len();
-    (0..n)
-        .map(|i| {
-            let (a, b) = (ring[i], ring[(i + 1) % n]);
-            a.0 * b.1 - b.0 * a.1
-        })
-        .sum::<f64>()
-        / 2.0
+    Polygon::new(LineString::from(ring.to_vec()), vec![]).signed_area()
 }
 
 #[cfg(test)]
