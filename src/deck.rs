@@ -389,12 +389,25 @@ fn read_legends(p: &Package) -> Result<Vec<Legend>, Error> {
     Ok(out)
 }
 
+/// A barrier vertex's strength: columns 31-40, or the third number of a
+/// free-format card. Blank is 0.
+fn barrier_strength(l: usize, c: &str) -> Result<f64, Error> {
+    let bad = || Error::at(l, "unreadable barrier strength");
+    if card::fixed_pair(c).is_some() {
+        return Ok(card::field(c, 2).ok_or_else(bad)?.unwrap_or(0.0));
+    }
+    match c.split_whitespace().nth(2) {
+        None => Ok(0.0),
+        Some(t) => card::real_field(t).flatten().ok_or_else(bad),
+    }
+}
+
 fn read_barriers(p: &Package) -> Result<Vec<Barrier>, Error> {
     let mut out = Vec::new();
     let mut cur: Vec<(Point, f64)> = Vec::new();
     for (l, c) in p.data_cards() {
         let at = p.pair(l, c)?;
-        let s = card::field(c, 2).flatten().unwrap_or(0.0);
+        let s = barrier_strength(l, c)?;
         // Repeating the last vertex ends a barrier.
         if cur.last().is_some_and(|&(q, _)| q == at) {
             out.push(Barrier {
@@ -682,6 +695,24 @@ mod tests {
         let p = &Deck::parse(d).unwrap().maps[0].packages;
         assert_eq!(p.values, vec![Some(10.0), None, Some(7.0)]);
         assert_eq!(p.index, vec![(1, Some(2)), (2, Some(3)), (3, None)]);
+    }
+
+    #[test]
+    fn barrier_strengths_fixed_and_free() {
+        let d = "D-BARRIERS\n\
+                 \x20                0.0       1.0       -1.\n\
+                 5 2 -1\n\
+                 6 3\n\
+                 99999\nF-MAP\n\n\n\n99999\n999999\n";
+        let b = &Deck::parse(d).unwrap().maps[0].packages.barriers;
+        let s: Vec<f64> = b[0].vertices.iter().map(|v| v.1).collect();
+        assert_eq!(s, [-1.0, -1.0, 0.0]);
+        for card in ["\x20                0.0       1.0       -1x", "5 2 x"] {
+            let d = format!("D-BARRIERS\n{card}\n99999\n999999\n");
+            let e = Deck::parse(&d).unwrap_err();
+            assert_eq!(e.line, Some(2));
+            assert!(e.message.contains("strength"), "{e}");
+        }
     }
 
     #[test]
