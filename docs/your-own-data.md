@@ -185,7 +185,7 @@ share of each position covered by ink in the browser is:
 
 | Symbol | `.` | `'` | `-` | `=` | `+` | `X` | `O` | `O`+`-` | `O`+`X` | `O`+`X`+`A`+`V` |
 |--------|-----|-----|-----|-----|-----|-----|-----|---------|---------|-----------------|
-| Ink    | 0.07 | 0.09 | 0.09 | 0.18 | 0.20 | 0.38 | 0.41 | 0.47 | 0.67 | 0.87 |
+| Ink    | 0.14 | 0.09 | 0.12 | 0.18 | 0.20 | 0.38 | 0.41 | 0.49 | 0.67 | 0.87 |
 
 Each further strike on a position spreads more ink, as a ribbon did on
 paper, so `O`+`X`+`A`+`V` prints almost solid and `O`+`X` remains visibly
@@ -198,7 +198,9 @@ measurement of the original printouts.
 - **Five levels** use both `O` and `O`+`-`, which differ by a single dash
   and are hard to distinguish. If you need five, you should consider
   elective 7 to replace one of them.
-- **Seven or more levels** add `'`, which is close to `.`; eight or more
+- **Seven or more levels** add `'`, which prints lighter than `.`: the
+  manual's printouts show a heavy `.`, and it is drawn to match, so the
+  lowest levels no longer darken in order. Eight or more
   add `O` between `X` and `O`+`-`, close to both; and with nine or ten
   levels `=` and `+` are close (0.18 and 0.20), as they were on the
   original printouts. In my opinion more than

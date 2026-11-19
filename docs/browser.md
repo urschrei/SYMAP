@@ -47,7 +47,9 @@ characters and 8 lines to the inch.
   matches the letters on the manual's printouts; each glyph is stroked
   lightly for that spread. Level fills then read as tones, as on the original maps. A modern
   `=` spans the full glyph width, which makes it darker than `+`; the
-  printouts show it narrower, so it is narrowed to match.
+  printouts show it narrower, so it is narrowed to match. They also show a
+  heavy `.`, about 0.7 of a `+` in ink, and hyphens about 0.6, so `.` is
+  enlarged and `-` thickened to match.
 - **Overprinting.** Every strike is printed into the same cell in
   translucent ink, with a small offset between strikes, so overprints
   darken. Each further strike on a cell is stroked a pixel wider, as more

@@ -158,11 +158,14 @@ const SPREAD = 0.7;        // ink spread around each stroke, in pixels
 // Each further strike on a cell soaks more ink into the paper: four-strike
 // overprints (OXAV) print near-solid black, not just a darker O.
 const SPREAD_PER_STRIKE = 1.0;
-// Glyphs narrowed to the printer's type. A modern '=' spans its whole glyph
-// width and prints darker than '+', inverting the standard levels' order
-// (Table 3-2); the manual's printouts show a narrower '=', a little lighter
-// than '+'.
-const NARROW = { '=': 0.75 };
+// Glyphs reshaped to the printer's type, as [horizontal, vertical] scales
+// about each glyph's own centre, from the manual's printouts. A modern '='
+// spans its whole glyph width and prints darker than '+', inverting the
+// standard levels' order (Table 3-2); the printed '=' was narrower, a little
+// lighter than '+'. The printed '.' was a heavy blob, about 0.7 of '+' in
+// ink, and border hyphens about 0.6 of '+'. Matching them means that with
+// seven or more levels '.' prints darker than "'" and '-', as it did then.
+const RESHAPE = { '=': [0.75, 1], '.': [1.4, 1.4], '-': [1, 1.3] };
 
 function hash(a, b, c) {
   let h = (a * 73856093) ^ (b * 19349663) ^ (c * 83492791);
@@ -182,7 +185,16 @@ function typeMetrics(ctx) {
   const ink = m.actualBoundingBoxLeft + m.actualBoundingBoxRight || 0.5 * probe;
   const size = (CAP_HEIGHT * CELL_H) / (cap / probe);
   const widen = (GLYPH_WIDTH * CELL_W) / ((ink / probe) * size);
-  typeCache = { family, font: `bold ${size.toFixed(2)}px ${family}`, widen };
+  const font = `bold ${size.toFixed(2)}px ${family}`;
+  // Each reshaped glyph's vertical ink centre, relative to the middle baseline.
+  ctx.font = font;
+  ctx.textBaseline = 'middle';
+  const centre = {};
+  for (const ch of Object.keys(RESHAPE)) {
+    const g = ctx.measureText(ch);
+    centre[ch] = (g.actualBoundingBoxDescent - g.actualBoundingBoxAscent) / 2 || 0;
+  }
+  typeCache = { family, font, widen, centre };
   return typeCache;
 }
 
@@ -269,13 +281,14 @@ function drawSheet(map, lines, density) {
         const dx = state.overprint ? (hash(i, c, k) - 0.5) * 0.6 : 0;
         const dy = state.overprint ? (hash(c, i, k + 7) - 0.5) * 0.6 : 0;
         const x = ((MARGIN_COLS + c + 0.5) * CELL_W + dx) / type.widen;
-        const narrow = NARROW[ch];
-        if (narrow) {
+        const shape = RESHAPE[ch];
+        if (shape) {
+          const cy = type.centre[ch];
           ctx.save();
-          ctx.translate(x, y + dy);
-          ctx.scale(narrow, 1);
-          ctx.fillText(ch, 0, 0);
-          ctx.strokeText(ch, 0, 0);
+          ctx.translate(x, y + dy + cy);
+          ctx.scale(shape[0], shape[1]);
+          ctx.fillText(ch, 0, -cy);
+          ctx.strokeText(ch, 0, -cy);
           ctx.restore();
           continue;
         }
