@@ -13,13 +13,36 @@
 //! ```
 
 use crate::map::PrintedMap;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
-#[derive(Serialize)]
-#[serde(untagged)]
+/// A result for the browser: its fields, with `"ok": true`, or an error with
+/// `"ok": false`.
 pub enum Reply<T> {
     Ok(T),
-    Err { ok: bool, error: ErrorReply },
+    Err(ErrorReply),
+}
+
+impl<T: Serialize> Serialize for Reply<T> {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct Tagged<'a, B> {
+            ok: bool,
+            #[serde(flatten)]
+            body: &'a B,
+        }
+        #[derive(Serialize)]
+        struct Failure<'a> {
+            error: &'a ErrorReply,
+        }
+        match self {
+            Reply::Ok(body) => Tagged { ok: true, body }.serialize(s),
+            Reply::Err(error) => Tagged {
+                ok: false,
+                body: &Failure { error },
+            }
+            .serialize(s),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -32,20 +55,16 @@ impl<T> From<Result<T, crate::Error>> for Reply<T> {
     fn from(r: Result<T, crate::Error>) -> Self {
         match r {
             Ok(v) => Reply::Ok(v),
-            Err(e) => Reply::Err {
-                ok: false,
-                error: ErrorReply {
-                    line: e.line,
-                    message: e.message,
-                },
-            },
+            Err(e) => Reply::Err(ErrorReply {
+                line: e.line,
+                message: e.message,
+            }),
         }
     }
 }
 
 #[derive(Serialize)]
 pub struct RunReply {
-    pub ok: bool,
     pub diagnostics: Vec<ErrorReply>,
     pub maps: Vec<MapReply>,
 }
@@ -104,7 +123,6 @@ impl From<&PrintedMap> for MapReply {
 pub fn run(text: &str) -> Reply<RunReply> {
     crate::run(text)
         .map(|r| RunReply {
-            ok: true,
             diagnostics: r
                 .diagnostics
                 .into_iter()
@@ -141,7 +159,6 @@ pub struct ImportRequest {
 
 #[derive(Serialize)]
 pub struct ImportReply {
-    pub ok: bool,
     pub deck: String,
     pub fields: Vec<String>,
     pub value: String,
@@ -187,7 +204,6 @@ pub fn import(req: ImportRequest) -> Reply<ImportReply> {
     })();
     result
         .map(|imp| ImportReply {
-            ok: true,
             deck: imp.deck,
             fields: imp.fields,
             value: imp.value,
