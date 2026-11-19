@@ -15,13 +15,9 @@ GRID = ROOT / "examples/data/london-grid-1km.csv"
 ZONES = ROOT / "examples/decks/london-zones.sym"
 OUT = ROOT / "examples/decks/london-suitability.sym"
 
-# Map origin, as in the other London decks: down from northing 202 km,
-# across from easting 502.5 km. One kilometre is one printed line down
-# and two printed columns across: 2 lines and 2 columns, at the
-# printer's 8 lines and 10 columns per inch.
+# Map origin and scale, as in the other London decks: kilometres down from
+# northing 202 km and across from easting 502.5 km, at 0.2 inch per km.
 N0, E0 = 202.0, 502.5
-ROWS, COLS = 2.0, 2.0
-HEADER = f"{'8.':>40}{'10.':>10}"  # rows and columns per inch
 
 # TfL's PTAL bands by access index: 0, 1a, 1b, 2, 3, 4, 5, 6a, 6b.
 PTAL_BOUNDS = [0.0, 2.5, 5.0, 10.0, 15.0, 20.0, 25.0, 40.0]
@@ -75,11 +71,10 @@ DECK_HEADER = """
 # Weights: flats near transit 0.60 / 0.25 / 0.15 / 0; family housing 0.25
 #   each. Levels are equal numbers of cells (elective 6 left blank), so
 #   each map ranks the cells; the two are not on one scale.
-# Measurement: rows and columns (8 lines and 10 columns per inch, the
-#   header's 8. and 10.). A cell is 2 lines by 2 columns, so it prints
-#   aligned to the characters, as on the Delmarva maps, but 1.25 times as
-#   tall as wide: the map is stretched north-south. Outline and Thames are
-#   those of london-zones.sym, converted to rows and columns.
+# Coordinates are kilometres: down from northing 202 km, across from
+#   easting 502.5 km; 0.2 inch per km, as on the other London maps. A cell
+#   is 2 columns wide and 1.6 lines tall, so rows of cells print alternately
+#   one and two lines deep. Outline and Thames are those of london-zones.sym.
 """
 
 
@@ -91,10 +86,6 @@ WEIGHTS = {
 
 def index(f, w):
     return 100.0 * sum(w[k] * f[k] for k in w)
-
-
-def rc(down_km, across_km):
-    return f"{down_km * ROWS:20.2f}{across_km * COLS:10.2f}"
 
 
 def zones_packages():
@@ -111,18 +102,6 @@ def zones_packages():
     return pkgs
 
 
-def rescale(line):
-    """Convert one card's km fields (11-20 down, 21-30 across, 31-50 the
-    point-legend displacement in characters) to rows and columns."""
-    if len(line) < 30 or not line[10:30].strip():
-        return line  # a text card
-    try:
-        down, across = float(line[10:20]), float(line[20:30])
-    except ValueError:
-        return line
-    return line[:10] + f"{down * ROWS:10.2f}{across * COLS:10.2f}" + line[30:]
-
-
 def main():
     rows = list(csv.DictReader(GRID.open()))
     rows.sort(key=lambda r: (-int(r["y"]), int(r["x"])))
@@ -130,23 +109,21 @@ def main():
     out = []
     w = out.append
     w(DECK_HEADER.strip())
-    w("A-OUTLINE" + HEADER[9:])
-    w("\n".join(rescale(l) for l in pkgs["A-OUTLINE"]))
+    w("A-OUTLINE")
+    w("\n".join(pkgs["A-OUTLINE"]))
     w("99999")
-    w("A-CONFORMOLINES" + HEADER[15:])
+    w("A-CONFORMOLINES")
     for i, r in enumerate(rows, 1):
         d = N0 - (int(r["y"]) + 500) / 1000  # top edge
         a = (int(r["x"]) - 500) / 1000 - E0  # left edge
         corners = [(d, a), (d, a + 1), (d + 1, a + 1), (d + 1, a), (d, a)]
         for j, (dd, aa) in enumerate(corners):
             lead = f"{i:5d}    A" if j == 0 else ""
-            w(f"{lead:<10}{dd * ROWS:10.2f}{aa * COLS:10.2f}")
+            w(f"{lead:<10}{dd:10.2f}{aa:10.2f}")
     w("99999")
-    w("C-OTOLEGENDS" + HEADER[12:])
-    w("\n".join(rescale(l) for l in pkgs["C-OTOLEGENDS"]))
+    w("C-OTOLEGENDS")
+    w("\n".join(pkgs["C-OTOLEGENDS"]))
     w("99999")
-    height = 46.5 * ROWS / 8
-    width = 61.0 * COLS / 10
     for name, title in [
         ("flats", "FLATS NEAR TRANSIT"),
         ("family", "FAMILY HOUSING"),
@@ -165,8 +142,8 @@ def main():
         )
         w(f"INDEX = 100 X ({terms})")
         w("WEIGHTED INDEX OF FOUR SITE FACTORS ON A 1 KM GRID")
-        w(f"    1{height:15.2f}{width:10.2f}")
-        w(f"    2{0:15.2f}{0:10.2f}{height:10.2f}{width:10.2f}")
+        w("    1           9.30     12.10")
+        w("    2           0.00      0.00     46.50     60.50")
         w("    3             5.")
         w("    6")
         w("    8")
