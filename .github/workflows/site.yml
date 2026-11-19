@@ -33,7 +33,9 @@ jobs:
       - name: Browser smoke test
         run: |
           npm install --no-save --no-package-lock playwright@1.63.0
-          npx playwright install --with-deps chromium
+          # The runner image already has Chromium's system libraries; the
+          # smoke test is headless, so the headless shell is enough.
+          npx playwright install --only-shell chromium
           python3 -m http.server 8765 --bind 127.0.0.1 --directory target/site &
           sleep 1
           node scripts/smoke-test.mjs http://127.0.0.1:8765/
