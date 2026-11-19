@@ -5,8 +5,14 @@
 //! format is accepted as a fallback for hand-typed decks.
 
 /// Characters in 1-based inclusive columns `from..=to`. Short lines read as blank.
-pub fn cols(line: &str, from: usize, to: usize) -> String {
-    line.chars().skip(from - 1).take(to + 1 - from).collect()
+pub fn cols(line: &str, from: usize, to: usize) -> &str {
+    let offset = |chars: usize| {
+        line.char_indices()
+            .nth(chars)
+            .map_or(line.len(), |(i, _)| i)
+    };
+    let start = offset(from - 1);
+    &line[start..offset(to).max(start)]
 }
 
 /// The character in 1-based column `c` (blank if the card is shorter).
@@ -33,7 +39,7 @@ pub fn real_field(s: &str) -> Option<Option<f64>> {
 
 /// The `i`-th 10-column field from column 11 (`i = 0` is columns 11-20).
 pub fn field(line: &str, i: usize) -> Option<Option<f64>> {
-    real_field(&cols(line, 11 + 10 * i, 20 + 10 * i))
+    real_field(cols(line, 11 + 10 * i, 20 + 10 * i))
 }
 
 /// Integer in columns `from..=to`; blank is `Some(None)`.
@@ -74,6 +80,8 @@ mod tests {
     fn columns_are_one_based_and_padded() {
         assert_eq!(cols("abcdef", 2, 4), "bcd");
         assert_eq!(cols("ab", 4, 5), "");
+        assert_eq!(cols("aé€b", 2, 3), "é€");
+        assert_eq!(cols("aé€b", 4, 9), "b");
         assert_eq!(col("abc", 3), 'c');
         assert_eq!(col("abc", 9), ' ');
     }

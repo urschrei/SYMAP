@@ -144,7 +144,7 @@ fn header(card: &str) -> Option<Result<Kind, String>> {
 }
 
 fn is_terminator(card: &str) -> bool {
-    card::cols(card, 1, 5) == "99999" && card::is_blank(&card::cols(card, 6, 80))
+    card::cols(card, 1, 5) == "99999" && card::is_blank(card::cols(card, 6, 80))
 }
 
 fn is_deck_end(card: &str) -> bool {
@@ -229,12 +229,12 @@ fn read_conformolines(p: &Package) -> Result<Vec<Conformoline>, Error> {
     for (l, c) in p.data_cards() {
         // Fixed format: reference in 1-5, shape in 10.
         let (start, rest) = if let Some(shape) =
-            shape_of(card::col(c, 10)).filter(|_| card::is_blank(&card::cols(c, 6, 9)))
+            shape_of(card::col(c, 10)).filter(|_| card::is_blank(card::cols(c, 6, 9)))
         {
             let r = card::int_field(c, 1, 5)
                 .ok_or_else(|| Error::at(l, "zone reference must be a whole number"))?;
             (Some((r, shape)), c.to_string())
-        } else if card::is_blank(&card::cols(c, 1, 10)) {
+        } else if card::is_blank(card::cols(c, 1, 10)) {
             (None, c.to_string())
         } else {
             // Free format: [reference] A|L|P down across, or down across.
@@ -309,7 +309,7 @@ fn read_conformolines(p: &Package) -> Result<Vec<Conformoline>, Error> {
 fn more_vertices(p: &Package, i: &mut usize, first: Point) -> Result<Vec<Point>, Error> {
     let mut v = vec![first];
     while let Some(&(l, c)) = p.cards.get(*i) {
-        if card::is_blank(c) || !card::is_blank(&card::cols(c, 1, 10)) {
+        if card::is_blank(c) || !card::is_blank(card::cols(c, 1, 10)) {
             break;
         }
         v.push(p.pair(l, c)?);
@@ -333,18 +333,18 @@ fn read_legends(p: &Package) -> Result<Vec<Legend>, Error> {
             let f = |k| card::field(c, k).ok_or_else(|| Error::at(l, "unreadable displacement"));
             Ok((f(2)?.unwrap_or(0.0), f(3)?.unwrap_or(0.0)))
         };
-        let strikes = Strikes::new(&card::cols(c, 6, 9));
+        let strikes = Strikes::new(card::cols(c, 6, 9));
         match card::col(c, 10).to_ascii_uppercase() {
             // A text legend has no symbol in columns 6-9 and its length in
             // columns 2-5 (normally 4-5); column 1 holds '-' for vertical text.
             'P' => match card::int_field(c, 2, 5) {
-                None if card::is_blank(&card::cols(c, 6, 9)) => {
+                None if card::is_blank(card::cols(c, 6, 9)) => {
                     return Err(Error::at(
                         l,
                         "legend length in columns 2-5 must be a whole number",
                     ));
                 }
-                Some(Some(n)) if card::is_blank(&card::cols(c, 6, 9)) => {
+                Some(Some(n)) if card::is_blank(card::cols(c, 6, 9)) => {
                     if !(1..=50).contains(&n) {
                         return Err(Error::at(l, "legend length in columns 2-5 must be 1 to 50"));
                     }
@@ -435,7 +435,7 @@ fn read_values(p: &Package) -> Result<Vec<Option<f64>>, Error> {
             }
             match card::field(c, 0) {
                 Some(Some(v)) => Ok(Some(v)),
-                Some(None) if card::is_blank(&card::cols(c, 1, 10)) => Ok(None),
+                Some(None) if card::is_blank(card::cols(c, 1, 10)) => Ok(None),
                 _ => card::free_numbers(c, 1)
                     .map(|v| Some(v[0]))
                     .ok_or_else(|| Error::at(l, "expected a value in columns 11-20")),
