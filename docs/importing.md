@@ -18,6 +18,7 @@ cargo run -- wards.sym
 
 In the browser, the Import data button (or dropping a file on the editor)
 opens the same importer, with a choice of field, map type, width and title.
+[Mapping your own data](your-own-data.md) works through an example.
 
 ## Input
 

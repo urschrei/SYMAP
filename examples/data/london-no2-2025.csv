@@ -1,0 +1,72 @@
+site,code,type,longitude,latitude,no2
+Bexley - Belvedere,BX2,Suburban Background,0.15891,51.49061,15.5
+Bexley - Belvedere West,BQ7,Urban Background,0.13728,51.49465,14.3
+Borehamwood Meadow Park,BDMP,Urban Background,-0.27055,51.66123,12.4
+Brent - ARK Franklin Primary Academy,BT8,unknown unknown,-0.21772,51.5324,22.2
+Brent - Ikea,BT4,Urban Traffic,-0.25809,51.55248,33.9
+Brent - John Keble Primary School,BT6,Urban Traffic,-0.24779,51.5378,21.5
+Brent - Neasden Lane,BT5,Urban Industrial,-0.24877,51.55266,20.8
+Camden Kerbside,CA1,Urban Traffic,-0.17523,51.54423,28.6
+Croydon - Norbury,CR5,Urban Traffic,-0.12311,51.41135,25.1
+Dartford - St Clements 2,ZR4,Urban Traffic,0.27938,51.44882,22.4
+Ealing - Western Avenue,EI1,Urban Traffic,-0.2655,51.52361,28.3
+Elmbridge - Hampton Court Parade,EL3,unknown unknown,-0.34332,51.40192,19.3
+Elmbridge Weybridge High St 2,EL6,Urban Traffic,-0.4585,51.37433,20.6
+Enfield - Bowes Primary School,EN5,Urban Traffic,-0.12534,51.61386,25.4
+Enfield - Bush Hill Park,EN1,Suburban Background,-0.06618,51.64504,15.5
+Enfield - Derby Road,EN4,Urban Traffic,-0.05077,51.61486,23.5
+Enfield - Prince of Wales School,EN7,Urban Background,-0.02201,51.66864,15.7
+Gravesham A2 Roadside,ZG2,Urban Traffic,0.33719,51.4244,18.8
+Greenwich - A206 Burrage Grove,GN0,Urban Traffic,0.074,51.49053,22.2
+Greenwich - Blackheath,GR7,Urban Traffic,-0.01238,51.4725,26.6
+Greenwich - Falconwood,GB6,Urban Traffic,0.08561,51.4563,19.6
+Greenwich - Fiveways Sidcup Rd A20,GN4,Urban Traffic,0.06422,51.43466,21.4
+Greenwich - John Harrison Way,GN6,unknown unknown,0.01078,51.49377,20.0
+Greenwich - Plumstead High Street,GN3,Urban Traffic,0.09511,51.48696,22.1
+Greenwich - Trafalgar Road (Hoskins St),GN5,unknown unknown,0.00041,51.48391,26.7
+Greenwich - Westhorne Avenue,GR9,Urban Traffic,0.04072,51.45636,19.0
+Greenwich - Woolwich Flyover,GR8,Urban Traffic,0.0179,51.48688,27.7
+Haringey Roadside,HG1,Urban Traffic,-0.06822,51.5993,24.5
+Havering - Rainham,HV1,Urban Traffic,0.20546,51.52079,20.0
+Havering - Romford,HV3,Urban Traffic,0.17908,51.57298,23.4
+Heathrow Bath Road,LHRBR,Urban Traffic,-0.44209,51.48107,33.8
+Heathrow Green Gates,T55,Suburban Industrial,-0.48668,51.48148,19.6
+Heathrow LHR2,LHR2,Suburban Industrial,-0.44056,51.47917,29.4
+Heathrow Oaks Road,T54,Suburban Industrial,-0.47944,51.45944,20.4
+Hertsmere Borehamwood Roadside,HB009,Urban Background,-0.26192,51.6598,17.3
+Hillingdon Harmondsworth,HIL1,Urban Background,-0.48098,51.48799,17.3
+Hillingdon Hayes,HIL5,Urban Traffic,-0.41233,51.49817,32.5
+Hillingdon Oxford Avenue,HI3,Urban Background,-0.42376,51.48113,24.3
+Hillingdon South Ruislip,HI1,Urban Traffic,-0.40278,51.55226,20.3
+Hounslow Brentford,HS5,Urban Traffic,-0.31008,51.4894,26.2
+Hounslow Chiswick,HS4,Urban Background,-0.25725,51.49251,24.0
+Hounslow Feltham,HS9,Urban Background,-0.40873,51.44739,23.4
+Hounslow Gunnersbury,HS8,Urban Traffic,-0.28438,51.50068,29.9
+Hounslow Hatton Cross,HS7,Urban Background,-0.42752,51.4634,18.2
+Hounslow Heston,HS6,Urban Traffic,-0.36476,51.47913,23.4
+Islington - Arsenal,IS6,Urban Background,-0.10699,51.5579,15.9
+Islington - Holloway Road,IS2,Urban Traffic,-0.11615,51.55538,24.5
+Lambeth - Brixton Road,LB4,Urban Traffic,-0.11458,51.46411,47.7
+Lambeth - Streatham Green,LB6,Urban Background,-0.13187,51.42821,17.0
+London Bexley,BEX,Suburban Background,0.18481,51.46603,16.4
+London Bloomsbury,CLL2,Urban Background,-0.12589,51.52229,23.5
+London Haringey Priory Park South,HG4,Urban Background,-0.12525,51.58413,14.5
+London Harlington,HRL,Urban Industrial,-0.44161,51.48879,21.7
+London Hillingdon,HIL,Urban Background,-0.46086,51.49633,24.8
+London Marylebone Road,MY1,Urban Traffic,-0.15461,51.52253,30.6
+London N. Kensington,KC1,Urban Background,-0.21342,51.52105,16.2
+London Westminster,HORS,Urban Background,-0.13193,51.49467,19.7
+Merton - Morden Civic Centre 2,ME9,unknown unknown,-0.19589,51.40162,21.6
+Richmond Upon Thames - Barnes Wetlands,RI2,Suburban Background,-0.23043,51.47617,12.7
+Richmond Upon Thames - Castelnau,RI1,Urban Traffic,-0.23733,51.48019,18.4
+Slough Lakeside 2,SLH8,Urban Background,-0.50266,51.48776,17.5
+Southwark A2 Old Kent Road,SK5,Urban Traffic,-0.05955,51.4805,21.3
+Thurrock,THUR,Urban Background,0.31797,51.47707,18.3
+"Tonbridge and Malling, Borough Green Roadside",ZT8,Urban Traffic,0.30172,51.29253,19.4
+Wandsworth - Battersea,WAA,Urban Traffic,-0.14179,51.47944,22.2
+Wandsworth - Lavender Hill (Clapham Jct),WAC,Urban Traffic,-0.16671,51.46369,21.7
+Wandsworth - Putney,WA9,Urban Background,-0.21582,51.46503,17.9
+Wandsworth - Putney High Street,WA7,Urban Traffic,-0.21587,51.46343,35.6
+Wandsworth - Tooting High Street,WAB,Urban Traffic,-0.16652,51.42933,29.2
+Westminster - Elizabeth Bridge,WMD,unknown unknown,-0.14711,51.49225,25.8
+Westminster - Oxford Street,WM6,Urban Traffic,-0.15279,51.51393,27.8

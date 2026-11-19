@@ -346,3 +346,29 @@ fn every_example_deck_runs() {
     }
     assert!(n >= 12, "found {n} decks");
 }
+
+#[test]
+fn tutorial_deck_matches_its_csv() {
+    // docs/your-own-data.md: the CSV imports to the same data cards as the
+    // finished deck, which runs with four levels from 10 to 50.
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/data");
+    let csv = std::fs::read_to_string(format!("{dir}/london-no2-2025.csv")).unwrap();
+    let opts = symap::import::Options {
+        source: Some("london-no2-2025.csv".into()),
+        ..Default::default()
+    };
+    let imported = symap::import::import(&csv, &opts).unwrap().deck;
+    let finished = std::fs::read_to_string(format!("{dir}/london-no2-2025.sym")).unwrap();
+    let package = |d: &str, name: &str| -> String {
+        let start = d.find(name).unwrap();
+        let end = start + d[start..].find("99999").unwrap();
+        d[start..end].to_string()
+    };
+    for name in ["B-DATA POINTS", "E-VALUES"] {
+        assert_eq!(package(&imported, name), package(&finished, name));
+    }
+    let m = &run(&finished).unwrap().maps[0];
+    let text = m.to_text();
+    assert!(text.contains(" MINIMUM         10.00      20.00      30.00      40.00\n"));
+    assert!(text.contains("SCALE:"));
+}

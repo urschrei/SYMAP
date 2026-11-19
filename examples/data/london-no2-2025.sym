@@ -1,0 +1,276 @@
+# The finished deck from docs/your-own-data.md: examples/data/london-no2-2025.csv
+# imported with symap import, then given four levels (electives 3 to 5)
+# and a north arrow and scale (C-OTOLEGENDS).
+# Data: annual mean NO2 at 71 monitoring sites, Defra UK-AIR annual
+# summaries for 2025. (c) Crown copyright 2026 Defra via uk-air.defra.gov.uk,
+# licensed under the Open Government Licence v3.0.
+#
+# Made by symap import from london-no2-2025.csv: 71 points, mapping no2.
+# Longitude and latitude are projected with a transverse Mercator on WGS84,
+# centred on -0.0827, 51.4806, in kilometres.
+# Locations are measured down from 23.843 and across from -32.086, with a
+# margin of 2.919 around the points.
+#
+# Data points, in order:
+#    1 Bexley - Belvedere
+#    2 Bexley - Belvedere West
+#    3 Borehamwood Meadow Park
+#    4 Brent - ARK Franklin Primary Academy
+#    5 Brent - Ikea
+#    6 Brent - John Keble Primary School
+#    7 Brent - Neasden Lane
+#    8 Camden Kerbside
+#    9 Croydon - Norbury
+#   10 Dartford - St Clements 2
+#   11 Ealing - Western Avenue
+#   12 Elmbridge - Hampton Court Parade
+#   13 Elmbridge Weybridge High St 2
+#   14 Enfield - Bowes Primary School
+#   15 Enfield - Bush Hill Park
+#   16 Enfield - Derby Road
+#   17 Enfield - Prince of Wales School
+#   18 Gravesham A2 Roadside
+#   19 Greenwich - A206 Burrage Grove
+#   20 Greenwich - Blackheath
+#   21 Greenwich - Falconwood
+#   22 Greenwich - Fiveways Sidcup Rd A20
+#   23 Greenwich - John Harrison Way
+#   24 Greenwich - Plumstead High Street
+#   25 Greenwich - Trafalgar Road (Hoskins St)
+#   26 Greenwich - Westhorne Avenue
+#   27 Greenwich - Woolwich Flyover
+#   28 Haringey Roadside
+#   29 Havering - Rainham
+#   30 Havering - Romford
+#   31 Heathrow Bath Road
+#   32 Heathrow Green Gates
+#   33 Heathrow LHR2
+#   34 Heathrow Oaks Road
+#   35 Hertsmere Borehamwood Roadside
+#   36 Hillingdon Harmondsworth
+#   37 Hillingdon Hayes
+#   38 Hillingdon Oxford Avenue
+#   39 Hillingdon South Ruislip
+#   40 Hounslow Brentford
+#   41 Hounslow Chiswick
+#   42 Hounslow Feltham
+#   43 Hounslow Gunnersbury
+#   44 Hounslow Hatton Cross
+#   45 Hounslow Heston
+#   46 Islington - Arsenal
+#   47 Islington - Holloway Road
+#   48 Lambeth - Brixton Road
+#   49 Lambeth - Streatham Green
+#   50 London Bexley
+#   51 London Bloomsbury
+#   52 London Haringey Priory Park South
+#   53 London Harlington
+#   54 London Hillingdon
+#   55 London Marylebone Road
+#   56 London N. Kensington
+#   57 London Westminster
+#   58 Merton - Morden Civic Centre 2
+#   59 Richmond Upon Thames - Barnes Wetlands
+#   60 Richmond Upon Thames - Castelnau
+#   61 Slough Lakeside 2
+#   62 Southwark A2 Old Kent Road
+#   63 Thurrock
+#   64 Tonbridge and Malling, Borough Green Roadside
+#   65 Wandsworth - Battersea
+#   66 Wandsworth - Lavender Hill (Clapham Jct)
+#   67 Wandsworth - Putney
+#   68 Wandsworth - Putney High Street
+#   69 Wandsworth - Tooting High Street
+#   70 Westminster - Elizabeth Bridge
+#   71 Westminster - Oxford Street
+A-OUTLINE
+               1.168    36.239
+               2.465    17.878
+              23.001     1.168
+              36.295     4.315
+              45.945    60.131
+              30.543    62.963
+              24.306     61.67
+              12.581    51.709
+               1.168    36.239
+99999
+B-DATA POINTS
+                22.7     48.87
+              22.256    47.366
+               3.728     19.09
+               18.07     22.72
+               15.83    19.924
+              17.465    20.634
+              15.811     20.57
+              16.758     25.67
+              31.545    29.277
+              27.315     57.26
+              19.041    19.402
+              32.563    13.952
+              35.598     5.921
+               9.015    29.135
+               5.546    33.232
+               8.904      34.3
+               2.919    36.288
+              30.011    61.294
+              22.725    42.972
+              24.741    36.975
+              26.532    43.787
+              28.943    42.306
+              22.372    38.581
+              23.119     44.44
+               23.47    37.862
+              26.531    40.667
+              23.138    39.076
+              10.635    33.092
+              19.331     52.09
+              13.531    50.238
+              23.728     7.122
+              23.666     4.025
+               23.94     7.227
+              26.121     4.515
+               3.889    19.687
+              22.944     4.425
+              21.835     9.198
+              23.728     8.396
+               15.82     9.888
+              22.838    16.296
+              22.502    19.966
+              27.486     9.423
+              21.588    18.084
+              25.699     8.125
+              23.968    12.493
+              15.241    30.404
+              15.521    29.769
+              25.676    29.873
+              29.669    28.669
+              25.429    50.679
+              19.202    29.091
+              12.322     29.14
+              22.869      7.16
+              22.024     5.827
+              19.174    27.098
+              19.333    23.016
+              22.275     28.67
+              32.623    24.212
+              24.324    21.825
+              23.876    21.347
+              22.961     2.919
+              23.853    33.697
+              24.158    59.925
+              44.695    58.904
+              23.969    27.984
+               25.72     26.25
+              25.566    22.838
+              25.744    22.834
+              29.543    26.259
+              22.544    27.615
+              20.131    27.223
+99999
+C-OTOLEGENDS
+    1    P      39.0       4.0
+*
+    3    P      39.0       4.0       1.0      -1.0
+***
+    5    P      39.0       4.0       2.0      -2.0
+*****
+    1    P      39.0       4.0       3.0
+N
+     -   L      45.0      10.0
+                45.0      20.0
+     I   P      45.0      10.0
+     I   P      45.0      15.0
+     I   P      45.0      20.0
+    1    P      45.0      10.0      -1.0
+0
+    1    P      45.0      15.0      -1.0
+5
+    5    P      45.0      20.0      -1.0
+10 KM
+    6    P      45.0      10.0      -3.0
+SCALE:
+99999
+E-VALUES
+                15.5
+                14.3
+                12.4
+                22.2
+                33.9
+                21.5
+                20.8
+                28.6
+                25.1
+                22.4
+                28.3
+                19.3
+                20.6
+                25.4
+                15.5
+                23.5
+                15.7
+                18.8
+                22.2
+                26.6
+                19.6
+                21.4
+                20.0
+                22.1
+                26.7
+                19.0
+                27.7
+                24.5
+                20.0
+                23.4
+                33.8
+                19.6
+                29.4
+                20.4
+                17.3
+                17.3
+                32.5
+                24.3
+                20.3
+                26.2
+                24.0
+                23.4
+                29.9
+                18.2
+                23.4
+                15.9
+                24.5
+                47.7
+                17.0
+                16.4
+                23.5
+                14.5
+                21.7
+                24.8
+                30.6
+                16.2
+                19.7
+                21.6
+                12.7
+                18.4
+                17.5
+                21.3
+                18.3
+                19.4
+                22.2
+                21.7
+                17.9
+                35.6
+                29.2
+                25.8
+                27.8
+99999
+F-MAP
+LONDON - NITROGEN DIOXIDE, ANNUAL MEAN 2025
+MICROGRAMS PER CUBIC METRE AT 71 MONITORING SITES (DEFRA UK-AIR)
+CONTOUR MAP - SHEPARD INTERPOLATION
+    1           5.93       8.0
+    2            0.0       0.0    47.614    64.213
+    3             4.
+    4            10.
+    5            50.
+99999
+999999
