@@ -38,8 +38,8 @@ cargo run -- import stations.csv --value no2 > no2.sym
 The browser version has a card editor with field guides, the example decks
 and the same importer. It draws each overprint layer onto green-bar or white paper, upright
 or sideways, and can download the output as text, ASA or CSV, or each map
-as a 300 dpi PNG that prints at the original size. The PNG carries the deck
-that made it (this can be turned off), and dropping it on the editor
+as a 300 dpi PNG that prints at the original size. The PNG contains the deck
+that made it as an iTXt chunk (this can be turned off), and dropping it on the editor
 restores the deck.
 
 ## What it covers
@@ -78,8 +78,8 @@ character. Agreement ranges from 94% (Example 1-5, a contour map) to 99.5%
 
 The manual's decks are transcribed card for card and checked against the
 scans. `hills`, `districts`, `barrier` and `furniture` use made-up data. The
-London and Dublin decks use published open data; each deck's header names
-its sources, licences and simplifications.
+London and Dublin decks use published open data; deck headers list
+sources, licences and simplifications.
 
 ## Documentation
 
