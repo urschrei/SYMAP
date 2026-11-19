@@ -27,13 +27,18 @@ impl Strikes {
 
     /// One character standing in for the overprinted stack in plain text.
     pub fn plain(&self) -> char {
-        let s: String = self.0.iter().filter(|&&c| c != ' ').collect();
-        match s.as_str() {
-            "" => ' ',
-            "O-" => 'Θ',
-            "OX" => '⊗',
-            "OXAV" => '█',
-            _ => s.chars().next().unwrap(),
+        let mut struck = [' '; 4];
+        let mut n = 0;
+        for &c in self.0.iter().filter(|&&c| c != ' ') {
+            struck[n] = c;
+            n += 1;
+        }
+        match struck[..n] {
+            [] => ' ',
+            ['O', '-'] => 'Θ',
+            ['O', 'X'] => '⊗',
+            ['O', 'X', 'A', 'V'] => '█',
+            [first, ..] => first,
         }
     }
 }
