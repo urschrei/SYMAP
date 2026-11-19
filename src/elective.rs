@@ -310,8 +310,13 @@ pub fn resolve_repeat(previous: &[Entry], current: Vec<Entry>) -> Vec<Entry> {
         .into_iter()
         .filter(|e| e.elective != Elective::Repeat)
     {
-        match out.iter_mut().find(|x| x.number == e.number) {
-            Some(x) => *x = e,
+        // The previous map may give a number more than once: all of them
+        // go, and the replacement takes the place of the first.
+        match out.iter().position(|x| x.number == e.number) {
+            Some(k) => {
+                out.retain(|x| x.number != e.number);
+                out.insert(k, e);
+            }
             None => out.push(e),
         }
     }
@@ -420,5 +425,13 @@ mod tests {
                 Elective::NoContourLines
             ]
         );
+        // A number given twice on the previous map is replaced, not kept.
+        let one = parse(&[(1, "    3       6."), (2, "    3       5.")]).unwrap();
+        let two = parse(&[(3, "   12"), (4, "    3       4.")]).unwrap();
+        let r: Vec<_> = resolve_repeat(&one, two)
+            .into_iter()
+            .map(|e| e.elective)
+            .collect();
+        assert_eq!(r, vec![Elective::Levels(4)]);
     }
 }
