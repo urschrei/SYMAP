@@ -1,4 +1,5 @@
-use std::io::Read;
+use std::io::{ErrorKind, Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 const USAGE: &str = "usage: symap [--asa | --values] [DECK | -]\n\
@@ -21,13 +22,27 @@ const USAGE: &str = "usage: symap [--asa | --values] [DECK | -]\n\
     --title TEXT    first title card (the file's name)\n\
     --no-outline    map the whole rectangle, not just around the points";
 
-fn read_input(path: Option<&str>) -> std::io::Result<String> {
-    match path {
-        None | Some("-") => {
+/// The file at `path`, or standard input if it is `None` or `-`.
+fn read_input(path: Option<&Path>) -> std::io::Result<String> {
+    match path.filter(|p| *p != Path::new("-")) {
+        None => {
             let mut s = String::new();
             std::io::stdin().read_to_string(&mut s).map(|_| s)
         }
         Some(p) => std::fs::read_to_string(p),
+    }
+}
+
+/// Write `text` to standard output. A closed pipe (as from `head`) is not
+/// a failure.
+fn emit(text: &str) -> ExitCode {
+    match std::io::stdout().lock().write_all(text.as_bytes()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) if e.kind() == ErrorKind::BrokenPipe => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("symap: {e}");
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -36,7 +51,7 @@ fn read_input(path: Option<&str>) -> std::io::Result<String> {
 fn import_args(
     mut p: lexopt::Parser,
     opts: &mut symap::import::Options,
-) -> Result<(Option<String>, Option<String>), lexopt::Error> {
+) -> Result<(Option<PathBuf>, Option<PathBuf>), lexopt::Error> {
     use lexopt::prelude::*;
     use symap::MapKind;
     use symap::import::LineUse;
@@ -47,7 +62,7 @@ fn import_args(
             Long("title") => opts.title = Some(p.value()?.string()?),
             Long("width") => opts.width = p.value()?.parse()?,
             Long("object") => opts.object = Some(p.value()?.string()?),
-            Long("lines-from") => lines_from = Some(p.value()?.string()?),
+            Long("lines-from") => lines_from = Some(PathBuf::from(p.value()?)),
             Long("line-symbol") => opts.line_symbol = p.value()?.string()?,
             Long("lines") => {
                 let v = p.value()?.string()?;
@@ -57,7 +72,7 @@ fn import_args(
             Long("proximal") => opts.map = Some(MapKind::Proximal),
             Long("conformant") => opts.map = Some(MapKind::Conformant),
             Long("no-outline") => opts.outline = false,
-            Value(v) if path.is_none() => path = Some(v.string()?),
+            Value(v) if path.is_none() => path = Some(PathBuf::from(v)),
             _ => return Err(arg.unexpected()),
         }
     }
@@ -73,15 +88,18 @@ fn import(args: lexopt::Parser) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    opts.source = path.clone().filter(|p| p != "-");
+    opts.source = path
+        .as_deref()
+        .filter(|p| *p != Path::new("-"))
+        .map(|p| p.to_string_lossy().into_owned());
     if let Some(f) = &lines_from {
         match std::fs::read_to_string(f) {
             Ok(t) => {
                 opts.lines_text = Some(t);
-                opts.lines_source = Some(f.clone());
+                opts.lines_source = Some(f.to_string_lossy().into_owned());
             }
             Err(e) => {
-                eprintln!("symap import: {f}: {e}");
+                eprintln!("symap import: {}: {e}", f.display());
                 return ExitCode::FAILURE;
             }
         }
@@ -106,8 +124,7 @@ fn import(args: lexopt::Parser) -> ExitCode {
                 imp.unit,
                 imp.fields.join(", ")
             );
-            print!("{}", imp.deck);
-            ExitCode::SUCCESS
+            emit(&imp.deck)
         }
         Err(e) => {
             eprintln!("symap import: {e}");
@@ -128,7 +145,7 @@ enum Output {
 }
 
 /// The options for printing a deck: the output and the deck's path.
-fn run_args(mut p: lexopt::Parser) -> Result<(Output, Option<String>), lexopt::Error> {
+fn run_args(mut p: lexopt::Parser) -> Result<(Output, Option<PathBuf>), lexopt::Error> {
     use lexopt::prelude::*;
     let (mut output, mut path) = (Output::Text, None);
     while let Some(arg) = p.next()? {
@@ -136,7 +153,7 @@ fn run_args(mut p: lexopt::Parser) -> Result<(Output, Option<String>), lexopt::E
             Long("asa") => Output::Asa,
             Long("values") => Output::Values,
             Value(v) if path.is_none() => {
-                path = Some(v.string()?);
+                path = Some(PathBuf::from(v));
                 continue;
             }
             _ => return Err(arg.unexpected()),
@@ -184,30 +201,22 @@ fn main() -> ExitCode {
             for w in run.maps.iter().flat_map(|m| &m.warnings) {
                 eprintln!("warning: {w}");
             }
-            match output {
+            let text = match output {
                 Output::Values => {
                     let csv: Vec<String> = run.maps.iter().filter_map(|m| m.values_csv()).collect();
                     if csv.is_empty() {
                         eprintln!("symap: no map in this deck uses elective 21 (store values)");
                         return ExitCode::FAILURE;
                     }
-                    print!("{}", csv.join("\n"));
+                    csv.join("\n")
                 }
-                Output::Asa => {
-                    for m in &run.maps {
-                        print!("{}", m.to_asa());
-                    }
-                }
+                Output::Asa => run.maps.iter().map(|m| m.to_asa()).collect(),
                 Output::Text => {
-                    for (i, m) in run.maps.iter().enumerate() {
-                        if i > 0 {
-                            println!("\x0c");
-                        }
-                        print!("{}", m.to_text());
-                    }
+                    let pages: Vec<String> = run.maps.iter().map(|m| m.to_text()).collect();
+                    pages.join("\x0c\n")
                 }
-            }
-            ExitCode::SUCCESS
+            };
+            emit(&text)
         }
         Err(e) => {
             eprintln!("symap: {e}");
