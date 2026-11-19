@@ -139,13 +139,7 @@ impl Topology {
     pub fn ring(&self, refs: &[i64]) -> Vec<P> {
         let mut out: Vec<P> = Vec::new();
         for &a in refs {
-            let arc = &self.arcs[arc_index(a)];
-            let pts: Box<dyn Iterator<Item = &P>> = if a < 0 {
-                Box::new(arc.iter().rev())
-            } else {
-                Box::new(arc.iter())
-            };
-            for &p in pts {
+            for p in arc_points(&self.arcs, a) {
                 if out.last().is_none_or(|&q| key(q) != key(p)) {
                     out.push(p);
                 }
@@ -162,6 +156,14 @@ impl Topology {
 
 pub fn arc_index(a: i64) -> usize {
     if a < 0 { !a as usize } else { a as usize }
+}
+
+/// The points of arc reference `a`: arc `a`, or arc `!a` reversed when `a`
+/// is negative.
+pub fn arc_points(arcs: &[Vec<P>], a: i64) -> impl Iterator<Item = P> + '_ {
+    let arc = &arcs[arc_index(a)];
+    let n = arc.len();
+    (0..n).map(move |k| if a < 0 { arc[n - 1 - k] } else { arc[k] })
 }
 
 fn dist2(a: P, b: P) -> f64 {
