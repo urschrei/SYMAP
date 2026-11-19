@@ -304,49 +304,52 @@ fn resolve_values(
         .collect()
 }
 
-/// Character positions along a polyline, in grid coordinates.
+/// Character positions along a polyline, in grid coordinates, in no
+/// particular order.
 fn trace(frame: &Frame, vertices: &[Point]) -> Vec<(usize, usize)> {
     let g: Vec<(f64, f64)> = vertices.iter().map(|p| frame.grid(*p)).collect();
-    let mut out: Vec<(usize, usize)> = Vec::new();
-    let mut push = |r: f64, c: f64| {
-        if let Some(cell) = frame.cell_at(r, c) {
-            if !out.contains(&cell) {
-                out.push(cell);
-            }
-        }
-    };
-    for &(r, c) in &g {
-        push(r, c);
-    }
-    for w in g.windows(2) {
-        for (r, c) in raster(w[0], w[1]) {
-            push(r, c);
-        }
-    }
+    let along = g.windows(2).flat_map(|w| raster(frame, w[0], w[1]));
+    let mut out: Vec<(usize, usize)> = g
+        .iter()
+        .copied()
+        .chain(along)
+        .filter_map(|(r, c)| frame.cell_at(r, c))
+        .collect();
+    out.sort_unstable();
+    out.dedup();
     out
 }
 
 /// The characters a segment passes through, as SYMAP draws lines: the
 /// nearest character on each printed line crossed (on each column, for a
-/// shallow segment). Grid coordinates; results may lie off the map.
-fn raster((r0, c0): (f64, f64), (r1, c1): (f64, f64)) -> Vec<(f64, f64)> {
+/// shallow segment). Grid coordinates. Only lines (or columns) from the top
+/// (or left) border to the bottom (or right) border are given; the other
+/// coordinate may lie off the map.
+fn raster(
+    frame: &Frame,
+    (r0, c0): (f64, f64),
+    (r1, c1): (f64, f64),
+) -> impl Iterator<Item = (f64, f64)> {
     let steep = (r1 - r0).abs() > (c1 - c0).abs();
-    let (a0, a1) = if steep { (r0, r1) } else { (c0, c1) };
-    let (lo, hi) = (a0.min(a1).ceil() as i64, a0.max(a1).floor() as i64);
-    (lo..=hi)
-        .map(|a| {
-            let t = if a1 != a0 {
-                (a as f64 - a0) / (a1 - a0)
-            } else {
-                0.0
-            };
-            if steep {
-                (a as f64, ((c0 + t * (c1 - c0)) + 0.5).floor())
-            } else {
-                (((r0 + t * (r1 - r0)) + 0.5).floor(), a as f64)
-            }
-        })
-        .collect()
+    let (a0, a1, n) = if steep {
+        (r0, r1, frame.rows)
+    } else {
+        (c0, c1, frame.cols)
+    };
+    // Clamp before the conversion: a zoomed map can put a segment's ends
+    // far outside the frame.
+    let lo = a0.min(a1).ceil().max(0.0);
+    let hi = a0.max(a1).floor().min(n as f64);
+    let steps = lo as usize..(hi + 1.0).max(lo) as usize;
+    steps.map(move |a| {
+        let a = a as f64;
+        let t = if a1 != a0 { (a - a0) / (a1 - a0) } else { 0.0 };
+        if steep {
+            (a, ((c0 + t * (c1 - c0)) + 0.5).floor())
+        } else {
+            (((r0 + t * (r1 - r0)) + 0.5).floor(), a)
+        }
+    })
 }
 
 /// Draw one map.
@@ -704,7 +707,7 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
                     frame.grid(z.vertices[(k + 1) % n]),
                 );
                 let steep = (p1.0 - p0.0).abs() > (p1.1 - p0.1).abs();
-                for (r, c) in raster(p0, p1) {
+                for (r, c) in raster(&frame, p0, p1) {
                     let (r, c) = (r as i64, c as i64);
                     let (x, y) = if steep {
                         (zone(r, c - 1), zone(r, c + 1))
@@ -921,4 +924,23 @@ pub fn draw(spec: &MapSpec) -> Result<PrintedMap, Error> {
         tabular: o.tabular,
         search_radius,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raster_stops_at_the_frame() {
+        let extent = Extent {
+            min: Point::new(0.0, 0.0),
+            max: Point::new(10.0, 10.0),
+        };
+        let (frame, _) = Frame::fit(extent, &Layout::default()).unwrap();
+        let steps = raster(&frame, (-1e12, 5.0), (1e12, 6.0)).count();
+        assert_eq!(steps, frame.rows + 1);
+        assert_eq!(raster(&frame, (-9.0, 5.0), (-2.0, 6.0)).count(), 0);
+        let far = [Point::new(-1e9, 5.0), Point::new(1e9, 5.0)];
+        assert_eq!(trace(&frame, &far).len(), frame.rows - 1);
+    }
 }
