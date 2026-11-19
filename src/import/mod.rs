@@ -257,7 +257,11 @@ fn hull(points: &[P]) -> Vec<P> {
         .map(|c| c.x_y())
         .collect();
     h.pop();
-    if let Some(i) = (0..h.len()).min_by(|&i, &j| h[i].partial_cmp(&h[j]).unwrap()) {
+    let least = (0..h.len()).min_by(|&i, &j| {
+        let ((ix, iy), (jx, jy)) = (h[i], h[j]);
+        ix.total_cmp(&jx).then(iy.total_cmp(&jy))
+    });
+    if let Some(i) = least {
         h.rotate_left(i);
     }
     h

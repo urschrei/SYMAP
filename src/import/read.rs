@@ -125,7 +125,11 @@ fn read_csv(text: &str) -> Result<Source, Error> {
     };
     let mut skipped = 0;
     for (_, row) in &t.rows {
-        let coord = |i: usize| row.get(i).and_then(|s| s.trim().parse::<f64>().ok());
+        let coord = |i: usize| {
+            row.get(i)
+                .and_then(|s| s.trim().parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+        };
         let (Some(x), Some(y)) = (coord(ix), coord(iy)) else {
             skipped += 1;
             continue;
@@ -448,6 +452,13 @@ mod tests {
                 .message
                 .contains("objects: zones")
         );
+    }
+
+    #[test]
+    fn csv_rows_with_non_finite_coordinates_are_left_out() {
+        let s = read("x,y,v\nNaN,0,5\n1,inf,2\n2,0,3\n", None).unwrap();
+        assert_eq!(s.features.len(), 1);
+        assert_eq!(s.warnings, ["2 rows without coordinates were left out"]);
     }
 
     #[test]
