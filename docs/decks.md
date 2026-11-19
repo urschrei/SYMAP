@@ -68,6 +68,12 @@ Laboratory's report maps: white lettering cut through a dark area legend
 (line legends with a blank symbol), and an inset cleared with a blank area
 legend and ruled with line legends.
 
+The manual's Example 1-16 spaces a stacked arrow and scale vertically: the
+arrow, `N` directly beneath it, a blank line, `SCALE:`, a blank line, then
+the numbers on the line directly above the bar. The example decks follow
+that spacing; where the arrow sits beside the scale, as in `furniture.sym`,
+only the label, blank line, numbers and bar are stacked.
+
 ## The printed page
 
 Each map's output starts with the map scale and a table of its data points
