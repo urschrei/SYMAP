@@ -41,11 +41,16 @@ impl Strikes {
             ['O', 'X'] => '⊗',
             ['O', 'X', 'A', 'V'] => '█',
             // Otherwise the darkest strike, so that a stack never prints
-            // lighter than its heaviest character (the first wins ties).
-            [first, ref rest @ ..] => rest
-                .iter()
-                .fold(first, |a, &c| if ink(c) > ink(a) { c } else { a }),
+            // lighter than its heaviest character.
+            _ => self.darkest(),
         }
+    }
+
+    /// The strike that inks the most (the first wins ties), or a blank.
+    pub fn darkest(&self) -> char {
+        self.0
+            .iter()
+            .fold(' ', |a, &c| if ink(c) > ink(a) { c } else { a })
     }
 
     /// The fraction of the print position the stack inks, from 0 (blank)
