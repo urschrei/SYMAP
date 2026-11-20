@@ -398,6 +398,12 @@ impl PrintedMap {
             .collect()
     }
 
+    /// Text for a colour terminal: overprinted stacks print on paper
+    /// shaded to their ink (see `term`).
+    pub fn to_ansi(&self, palette: crate::Palette) -> String {
+        crate::term::ansi(&self.page(), palette)
+    }
+
     /// Fortran carriage control: column 1 is `1` (new page), ` ` (next line)
     /// or `+` (overprint the line above).
     pub fn to_asa(&self) -> String {

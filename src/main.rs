@@ -2,11 +2,15 @@ use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: symap [--asa | --values] [DECK | -]\n\
+const USAGE: &str = "usage: symap [--asa | --values] [--color WHEN] [DECK | -]\n\
     \x20      symap import [OPTIONS] [FILE | -]\n\n\
     Reads a SYMAP deck (from stdin if DECK is omitted or '-') and prints its maps.\n\
     --asa     emit Fortran carriage control with overprint lines instead of plain text\n\
-    --values  print the computed values of maps with elective 21, as CSV\n\n\
+    --values  print the computed values of maps with elective 21, as CSV\n\
+    --color WHEN  shade overprinted symbols' paper by their ink: auto (the\n\
+    \x20             default: on a terminal, unless NO_COLOR is set), always\n\
+    \x20             or never. COLORTERM=truecolor gives 24-bit greys,\n\
+    \x20             otherwise the 256-colour palette's\n\n\
     import reads points (CSV, GeoJSON, TopoJSON) or polygons (GeoJSON, TopoJSON)\n\
     and prints a deck that maps them.\n\
     --value FIELD   the column or property to map (the first numeric one\n\
@@ -144,14 +148,58 @@ enum Output {
     Values,
 }
 
-/// The options for printing a deck: the output and the deck's path.
-fn run_args(mut p: lexopt::Parser) -> Result<(Output, Option<PathBuf>), lexopt::Error> {
+/// When to print in colour (`--color`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Color {
+    Auto,
+    Always,
+    Never,
+}
+
+/// The palette for plain-text output, if any: `--color`, then whether
+/// standard output is a terminal, `NO_COLOR` (https://no-color.org),
+/// `TERM=dumb` and `COLORTERM`.
+fn palette(color: Color) -> Option<symap::Palette> {
+    use std::io::IsTerminal;
+    let var = |k| std::env::var_os(k).filter(|v| !v.is_empty());
+    let on = match color {
+        Color::Never => false,
+        Color::Always => true,
+        Color::Auto => {
+            std::io::stdout().is_terminal()
+                && var("NO_COLOR").is_none()
+                && var("TERM").is_none_or(|t| t != "dumb")
+        }
+    };
+    let truecolor = var("COLORTERM").is_some_and(|v| v == "truecolor" || v == "24bit");
+    on.then_some(if truecolor {
+        symap::Palette::TrueColor
+    } else {
+        symap::Palette::Ansi256
+    })
+}
+
+/// The options for printing a deck: the output, colour and the deck's path.
+fn run_args(mut p: lexopt::Parser) -> Result<(Output, Color, Option<PathBuf>), lexopt::Error> {
     use lexopt::prelude::*;
-    let (mut output, mut path) = (Output::Text, None);
+    let (mut output, mut color, mut path) = (Output::Text, Color::Auto, None);
     while let Some(arg) = p.next()? {
         let mode = match arg {
             Long("asa") => Output::Asa,
             Long("values") => Output::Values,
+            Long("color") | Long("colour") => {
+                color = match p.value()?.string()?.as_str() {
+                    "auto" => Color::Auto,
+                    "always" => Color::Always,
+                    "never" => Color::Never,
+                    v => {
+                        return Err(
+                            format!("--color: expected auto, always or never, not '{v}'").into(),
+                        );
+                    }
+                };
+                continue;
+            }
             Value(v) if path.is_none() => {
                 path = Some(PathBuf::from(v));
                 continue;
@@ -163,7 +211,7 @@ fn run_args(mut p: lexopt::Parser) -> Result<(Output, Option<PathBuf>), lexopt::
         }
         output = mode;
     }
-    Ok((output, path))
+    Ok((output, color, path))
 }
 
 fn main() -> ExitCode {
@@ -176,7 +224,7 @@ fn main() -> ExitCode {
         args.remove(0);
         return import(lexopt::Parser::from_args(args));
     }
-    let (output, path) = match run_args(lexopt::Parser::from_args(args)) {
+    let (output, color, path) = match run_args(lexopt::Parser::from_args(args)) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("symap: {e}\n\n{USAGE}");
@@ -212,7 +260,15 @@ fn main() -> ExitCode {
                 }
                 Output::Asa => run.maps.iter().map(|m| m.to_asa()).collect(),
                 Output::Text => {
-                    let pages: Vec<String> = run.maps.iter().map(|m| m.to_text()).collect();
+                    let palette = palette(color);
+                    let pages: Vec<String> = run
+                        .maps
+                        .iter()
+                        .map(|m| match palette {
+                            Some(p) => m.to_ansi(p),
+                            None => m.to_text(),
+                        })
+                        .collect();
                     pages.join("\x0c\n")
                 }
             };

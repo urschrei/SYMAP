@@ -22,7 +22,12 @@ cargo run -- --asa examples/decks/hills.sym
 
 Plain output prints one character per position, with single characters
 standing in for overprints (`Θ` for `O`+`-`, `⊗` for `O`+`X`, `█` for
-`O`+`X`+`A`+`V`). `--asa` writes Fortran carriage control instead: a line
+`O`+`X`+`A`+`V`, and otherwise the stack's darkest character). On a
+terminal the map prints on a sheet of paper whose cells are shaded grey to
+make up each overprint's ink, so the tones read as they do on the printout.
+`--color never` (or `NO_COLOR`) turns that off and `--color always` forces it,
+say for `less -R`; it uses 24-bit greys when `COLORTERM` is `truecolor`,
+otherwise the 256-colour palette's. `--asa` writes Fortran carriage control instead: a line
 starting with `+` overprints the line above, which is how the line printer
 struck darker tones. `--values` writes the values computed for maps that use
 elective 21, as CSV.
