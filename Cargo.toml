@@ -6,6 +6,8 @@ edition = "2024"
 rust-version = "1.85"
 license = "BlueOak-1.0.0"
 publish = false
+# README images are for GitHub, not the package.
+exclude = ["docs/img/"]
 
 [dependencies]
 geo = { version = "0.32.0", default-features = false }
