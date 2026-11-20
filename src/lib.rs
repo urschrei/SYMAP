@@ -29,6 +29,7 @@ mod json;
 mod map;
 mod page;
 mod symbols;
+mod term;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
@@ -40,6 +41,7 @@ pub use geom::Point;
 pub use map::{Frequency, PrintedMap, TableRow};
 pub use page::Line;
 pub use symbols::{Strikes, Symbolism};
+pub use term::Palette;
 
 /// The result of running a deck.
 #[derive(Debug, Clone, PartialEq)]

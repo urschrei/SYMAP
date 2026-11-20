@@ -216,7 +216,8 @@ prints at the original size, or as a line printer file (ASA) or plain text.
 The PNG keeps the overprinted tones. The ASA file keeps the overprint lines,
 so a line printer, or a program that reads Fortran carriage control, strikes
 the same tones; plain text has the single stand-in characters instead.
-From the command line, `--asa` writes the line printer file. The PNG
+From the command line, `--asa` writes the line printer file, and a terminal
+shows the overprinted tones as shaded cells. The PNG
 includes the deck unless you turn that off in the Export menu.
 
 ## Recipes

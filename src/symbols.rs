@@ -40,8 +40,40 @@ impl Strikes {
             ['O', '-'] => 'Θ',
             ['O', 'X'] => '⊗',
             ['O', 'X', 'A', 'V'] => '█',
-            [first, ..] => first,
+            // Otherwise the darkest strike, so that a stack never prints
+            // lighter than its heaviest character (the first wins ties).
+            [first, ref rest @ ..] => rest
+                .iter()
+                .fold(first, |a, &c| if ink(c) > ink(a) { c } else { a }),
         }
+    }
+
+    /// The fraction of the print position the stack inks, from 0 (blank)
+    /// to 1: each strike covers its own share of whatever paper the
+    /// strikes before it left bare.
+    pub fn coverage(&self) -> f64 {
+        1.0 - self.0.iter().map(|&c| 1.0 - ink(c)).product::<f64>()
+    }
+}
+
+/// The share of a print position one strike of `c` inks, as the browser
+/// renderer prints it. Ordered so that the ten standard symbols (Table 3-2)
+/// darken in turn: on the manual's printouts '=' is a little lighter than
+/// '+', and 'O' a little darker than 'X'.
+pub fn ink(c: char) -> f64 {
+    match c {
+        ' ' => 0.0,
+        '.' | ',' => 0.06,
+        '\'' | '`' | ':' => 0.08,
+        '-' | '_' => 0.12,
+        '/' | '\\' | '|' | '(' | ')' | '<' | '>' | ';' | '!' => 0.15,
+        '=' => 0.20,
+        '+' | '*' => 0.23,
+        'X' => 0.30,
+        'O' | 'Q' => 0.34,
+        'M' | 'W' | '#' | '@' | '&' | '$' => 0.36,
+        c if c.is_alphanumeric() => 0.28,
+        _ => 0.20,
     }
 }
 
@@ -163,6 +195,25 @@ mod tests {
             .iter()
             .map(|s| s.plain())
             .collect()
+    }
+
+    #[test]
+    fn standard_symbols_darken_in_turn() {
+        let ink: Vec<f64> = STANDARD_TEN
+            .iter()
+            .map(|s| Strikes::new(s).coverage())
+            .collect();
+        assert!(ink.windows(2).all(|w| w[0] < w[1]), "{ink:?}");
+        assert_eq!(Strikes::BLANK.coverage(), 0.0);
+    }
+
+    #[test]
+    fn unnamed_stacks_print_their_darkest_strike() {
+        assert_eq!(Strikes::new("-X").plain(), 'X');
+        assert_eq!(Strikes::new("X-").plain(), 'X');
+        assert_eq!(Strikes::new(".=").plain(), '=');
+        assert_eq!(Strikes::new(" ='").plain(), '=');
+        assert_eq!(Strikes::new("HHH/").plain(), 'H');
     }
 
     #[test]
