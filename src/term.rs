@@ -55,10 +55,13 @@ fn sgr(out: &mut String, palette: Palette, layer: u8, rgb: [u8; 3]) {
 /// The character to print for a stack, and how dark its paper is.
 fn cell(s: &Strikes) -> (char, f64) {
     let c = s.coverage();
-    let glyph = s.plain();
+    let glyph = match s.plain() {
+        // A solid block outweighs the printed stack: its darkest strike on
+        // grey paper keeps the step from the level below it in proportion.
+        '█' => s.darkest(),
+        g => g,
+    };
     let g = match glyph {
-        // Solid: no glyph, all paper.
-        '█' => return (' ', c),
         'Θ' | '⊗' => ink('O'),
         _ => ink(glyph),
     };
@@ -111,12 +114,12 @@ mod tests {
     fn overprints_shade_the_paper() {
         // A single strike prints as itself on clean paper.
         assert_eq!(cell(&Strikes::new("X")), ('X', 0.0));
-        let (g, d) = cell(&Strikes::new("OXAV"));
-        assert_eq!(g, ' ');
-        assert!((d - Strikes::new("OXAV").coverage()).abs() < 1e-12);
+        // Paper darkens through the overprinted levels.
         let (g, d) = cell(&Strikes::new("O-"));
         assert_eq!(g, 'Θ');
-        assert!(d > 0.0 && d < cell(&Strikes::new("OX")).1);
+        let (ox, oxav) = (cell(&Strikes::new("OX")), cell(&Strikes::new("OXAV")));
+        assert_eq!(oxav.0, 'O');
+        assert!(0.0 < d && d < ox.1 && ox.1 < oxav.1 && oxav.1 < 1.0);
     }
 
     #[test]
