@@ -6,6 +6,12 @@ Computer Graphics and Spatial Analysis by Howard Fisher and Betty Benson. It
 reads SYMAP card decks and prints maps made of overprinted characters,
 following the 1971 program manual.
 
+![A SYMAP contour map of annual mean nitrogen dioxide in London, 2025, printed in overprinted line-printer characters](docs/img/london-no2.png)
+
+*`examples/decks/london-no2.sym`: annual mean NO₂ at 71 London monitoring
+sites, 2025 (Defra UK-AIR, OGL v3.0), as exported from the browser version.
+The image contains its deck: drop it on the editor to load it.*
+
 The core is written in Rust. It runs from the command
 line, or compiled to WebAssembly in the browser at
 <https://urschrei.github.io/SYMAP/>.
