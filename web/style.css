@@ -71,6 +71,7 @@ body {
   margin: 0; font: 600 28px/1 var(--mono); letter-spacing: 0.35em;
 }
 .brand p { margin: 6px 0 0; color: var(--muted); max-width: 60ch; }
+.brand p.credit { font-size: 12px; margin-top: 2px; }
 .brand p.intro { color: var(--ink); font-size: 14px; max-width: 92ch; margin-top: 10px; }
 .masthead nav { display: flex; gap: 16px; }
 .masthead a { color: var(--accent); text-decoration: none; }
