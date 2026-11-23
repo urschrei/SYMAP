@@ -87,11 +87,12 @@ character. Agreement ranges from 94% (Example 1-5, a contour map) to 99.5%
 | `london-zones.sym` | Fare zone of the nearest of 574 London rail stations |
 | `london-suitability.sym` | Two weighted suitability indexes on a 1 km grid of London, after Steinitz's Delmarva study |
 | `london-attractiveness.sym` | A regression of house prices on site factors, printed on the same grid, after Steinitz's Boston attractiveness map |
+| `honey-hill.sym` | Summer and winter plan zones for a reservoir park in Swanzey, New Hampshire, on a 100 m character grid, after the Harvard study of the Corps of Engineers' Honey Hill reservoir |
 | `dublin-density.sym` | Population density of Dublin City's electoral divisions, Census 2022, with the Liffey |
 
 The manual's decks are transcribed card for card and checked against the
 scans. `hills`, `districts`, `barrier` and `furniture` use made-up data. The
-London and Dublin decks use published open data; deck headers list
+London, Dublin and Honey Hill decks use published open data; deck headers list
 sources, licences and simplifications.
 
 ## Documentation

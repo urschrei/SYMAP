@@ -43,5 +43,19 @@ right 2023. `scripts/london_msoa_prices.py` builds it and
 `scripts/london_regression_deck.py` fits the regression and writes
 `decks/london-attractiveness.sym`.
 
+`honey-hill-cells.csv` holds site factors for each printed character of the
+Honey Hill deck: a 72 by 72 grid of 100 m by 125 m cells in Swanzey, New
+Hampshire (UTM zone 18N), giving elevation, slope, aspect, local relief,
+the share in the modelled summer and flood pools, NLCD 2021 forest, open,
+wetland and developed shares, distances to a road and to the summer shore,
+the share of conservation land and whether a stream crosses it.
+`honey-hill-lines.json` holds the dam, main roads and rivers drawn over the
+maps. Sources: USGS 3DEP 1/3 arc-second elevation and NLCD 2021 land cover
+(both public domain); OpenStreetMap, © OpenStreetMap contributors, licensed
+under the [ODbL](https://opendatacommons.org/licenses/odbl/); NH GRANIT
+conservation lands. `scripts/honey_hill_cells.py` builds both files and
+`scripts/honey_hill_deck.py` zones the cells and writes
+`decks/honey-hill.sym`, whose header describes the model.
+
 `london-no2-2025.sym` is the finished deck from
 [Mapping your own data](../../docs/your-own-data.md).
