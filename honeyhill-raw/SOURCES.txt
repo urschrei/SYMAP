@@ -1,0 +1,28 @@
+Honey Hill data fetch, 2026-11-23. Bbox lon -72.45..-72.15, lat 42.75..42.98.
+
+dem.tif
+  USGS 3DEP 1/3 arc-second, tile n43w073 ("current", last modified 2026-04-01).
+  https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/current/n43w073/USGS_13_n43w073.tif
+  Windowed read over /vsicurl/ (full tile not downloaded). EPSG:4269, float32 metres, 3240 x 2484, nodata -999999.
+  Licence: USGS public domain.
+
+landcover.tif
+  NLCD 2021 Land Cover (L48), MRLC GeoServer WCS 2.0.1, native grid (EPSG:5070, 30 m), 1000 x 1032, uint8 class codes with palette.
+  https://www.mrlc.gov/geoserver/mrlc_download/wcs?service=WCS&version=2.0.1&request=GetCoverage&coverageId=mrlc_download__NLCD_2021_Land_Cover_L48&subset=X(1890705,1920705)&subset=Y(2431005,2461965)&format=image/geotiff
+  Extent covers the bbox after projection to Albers (snapped to the NLCD grid).
+  Annual NLCD 2023 COG (https://s3-us-west-2.amazonaws.com/mrlc/Annual_NLCD_LndCov_2023_CU_C1V0.tif) returns a 42-byte stub, so it was not used.
+  Licence: USGS/MRLC public domain.
+
+osm.json
+  Overpass API (https://overpass-api.de/api/interpreter), query in overpass.ql, out geom. OSM base timestamp 2026-11-23T13:43:36Z.
+  Licence: ODbL, (c) OpenStreetMap contributors.
+
+granit_conservation.geojson
+  NH GRANIT Conservation/Public Lands, layer 0 (CL: Management Status), 295 features, EPSG:4326.
+  https://nhgeodata.unh.edu/hosting/rest/services/Hosted/EC_Conservation/FeatureServer/0/query?where=1%3D1&geometry=-72.45,42.75,-72.15,42.98&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=*&outSR=4326&f=geojson
+  Service copyright text: "GRANIT". Metadata: https://ftp.granit.unh.edu/GRANIT_Data/Vector_Data/Environment_and_Conservation/d-conservation/consnh_Lite.html
+
+pdfs/
+  usace_nh.pdf  https://webarchive.library.unt.edu/web/20130214083702id_/http://www.nae.usace.army.mil/News/Reports/nh.pdf
+  TP-55.pdf     https://www.hec.usace.army.mil/publications/TechnicalPapers/TP-55.pdf
+  TP-115.pdf    https://www.hec.usace.army.mil/publications/TechnicalPapers/TP-115.pdf
