@@ -2,7 +2,8 @@
 """Write examples/decks/la-carbon-monoxide.sym from EPA AirData monitor
 summaries, after Dangermond's Los Angeles County maps (Harvard, 1969).
 
-Inputs: examples/data/la-co-sites-2013-2024.csv, examples/data/la-county.geojson.
+Inputs: examples/data/la-co-sites-2013-2024.csv, examples/data/la-county.geojson
+and examples/data/la-neighbour-lines.geojson.
 """
 
 import csv
@@ -14,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SITES = ROOT / "examples/data/la-co-sites-2013-2024.csv"
 COUNTY = ROOT / "examples/data/la-county.geojson"
+NEIGHBOURS = ROOT / "examples/data/la-neighbour-lines.geojson"
 OUT = ROOT / "examples/decks/la-carbon-monoxide.sym"
 
 # Adjoining-county stations, as Dangermond used 8 to the east and west.
@@ -49,13 +51,22 @@ WEST = [PASS, (34.318, -118.620), (34.340, -118.740), (34.370, -118.880), (34.40
 EAST = [PASS, (34.300, -118.400), (34.265, -118.280), (34.215, -118.170),
         (34.195, -118.040), (34.180, -117.900), (34.185, -117.760), (34.210, -117.540)]
 
-# Projection: equirectangular about the county's centre, in km. Over 1.3
+# Projection: equirectangular about the county's centre, in km. Over 1.7
 # degrees of longitude the error is well under a character.
 LAT0, LON0 = 34.25, -118.25
 KX = 111.32 * math.cos(math.radians(LAT0))
 KY = 110.57
-# Map frame in longitude and latitude: the county plus a margin.
-WLON, ELON, SLAT, NLAT = -118.98, -117.61, 33.68, 34.85
+# Map frame in longitude and latitude, measured off the scan of Figure I-1:
+# Kern County to the north, the Pacific to the south, with room for the
+# north arrow, scale and lettered title below the coast.
+WLON, ELON, SLAT, NLAT = -119.065, -117.382, 33.392, 34.916
+# Printed width, as on the original: about 224 characters (22.4 inches),
+# printed in two panels. Characters are 0.1 inch wide and 0.125 inch tall.
+WIDTH_IN = 22.4
+
+# Furniture positions are taken from the scan (400 dpi, Figure I-1a), in
+# its pixels, where the map border runs from (50, 65) to (1805, 2110).
+SCAN_FRAME = (50, 65, 1805, 2110)
 
 
 def xy(lat, lon):
@@ -64,12 +75,23 @@ def xy(lat, lon):
 
 TOP = xy(NLAT, 0)[1]
 LEFT = xy(0, WLON)[0]
+HEIGHT_KM = TOP - xy(SLAT, 0)[1]
+WIDTH_KM = xy(0, ELON)[0] - LEFT
+SCALE = WIDTH_IN / WIDTH_KM  # inches per km
+COL = 0.1 / SCALE  # one character across, in km
+ROW = 0.125 / SCALE  # one line down, in km
 
 
 def da(lat, lon):
     """Down and across, in km, from the frame's top left corner."""
     x, y = xy(lat, lon)
     return TOP - y, x - LEFT
+
+
+def scan(x, y):
+    """Down and across, in km, of a point on the scan."""
+    x0, y0, x1, y1 = SCAN_FRAME
+    return (y - y0) / (y1 - y0) * HEIGHT_KM, (x - x0) / (x1 - x0) * WIDTH_KM
 
 
 def card(d, a, extra=""):
@@ -89,8 +111,147 @@ def barrier(pts):
     return out
 
 
-def text(label, d, a, shift=0.0):
-    return [f"{len(label):5d}    P{d:10.2f}{a:10.2f}{shift:10.1f}", label]
+def text(label, d, a):
+    """A text legend centred on (d, a)."""
+    return [f"{len(label):5d}    P{d:10.2f}{a:10.2f}", label]
+
+
+def line(symbol, pts):
+    out = [f"{'':5}{symbol:<4}L{pts[0][0]:10.2f}{pts[0][1]:10.2f}"]
+    return out + [card(d, a) for d, a in pts[1:]]
+
+
+def area(symbol, pts):
+    pts = list(pts) + [pts[0]]
+    out = [f"{'':5}{symbol:<4}A{pts[0][0]:10.2f}{pts[0][1]:10.2f}"]
+    return out + [card(d, a) for d, a in pts[1:]]
+
+
+def spaced(label):
+    return " ".join(label)
+
+
+def underlined(label, d, a):
+    """Spaced capitals with a rule beneath, as the original's county names."""
+    t = spaced(label)
+    half = len(t) / 2 * COL
+    return text(t, d, a) + line("-", [(d + ROW, a - half), (d + ROW, a + half)])
+
+
+def knockout(label, d, a):
+    """Black text on a strip cleared from the map, centred on (d, a)."""
+    half = (len(label) / 2 + 1) * COL
+    strip = [(d - 0.5 * ROW, a - half), (d - 0.5 * ROW, a + half),
+             (d + 0.5 * ROW, a + half), (d + 0.5 * ROW, a - half)]
+    return area("", strip) + text(label, d, a)
+
+
+# Block capitals 6 characters wide and 5 lines tall, drawn as line legends:
+# continuous strokes of overprinted O and X, as on the original's title.
+LETTERS = {
+    "L": [[(0, 0), (0, 4)], [(0, 4), (5, 4)]],
+    "O": [[(0, 0), (5, 0)], [(0, 4), (5, 4)], [(0, 0), (0, 4)], [(5, 0), (5, 4)]],
+    "S": [[(0, 0), (5, 0)], [(0, 2), (5, 2)], [(0, 4), (5, 4)], [(0, 0), (0, 2)], [(5, 2), (5, 4)]],
+    "A": [[(0, 0), (5, 0)], [(0, 2), (5, 2)], [(0, 0), (0, 4)], [(5, 0), (5, 4)]],
+    "N": [[(0, 0), (0, 4)], [(5, 0), (5, 4)], [(1, 1), (4, 3)]],
+    "G": [[(0, 0), (5, 0)], [(3, 2), (5, 2)], [(0, 4), (5, 4)], [(0, 0), (0, 4)], [(5, 2), (5, 4)]],
+    "E": [[(0, 0), (5, 0)], [(0, 2), (4, 2)], [(0, 4), (5, 4)], [(0, 0), (0, 4)]],
+    "C": [[(0, 0), (5, 0)], [(0, 4), (5, 4)], [(0, 0), (0, 4)]],
+    "U": [[(0, 4), (5, 4)], [(0, 0), (0, 4)], [(5, 0), (5, 4)]],
+    "T": [[(0, 0), (5, 0)], [(3, 0), (3, 4)]],
+    "Y": [[(0, 0), (2, 2)], [(5, 0), (3, 2)], [(3, 2), (3, 4)]],
+}
+
+
+def lettering(word, d, a, pitch=8):
+    """Block capitals with their top left corner at (d, a)."""
+    out = []
+    for k, ch in enumerate(word):
+        for (c0, r0), (c1, r1) in LETTERS.get(ch, []):
+            sym = "OX"  # dense continuous strokes, as on the original
+            pts = [(d + r * ROW, a + (k * pitch + c) * COL) for c, r in ((c0, r0), (c1, r1))]
+            out += line(sym, pts)
+    return out
+
+
+def north_arrow(d, a):
+    """A solid triangle 8 lines tall with its apex at (d, a), and NORTH."""
+    tri = [(d, a), (d + 7 * ROW, a + 7.5 * COL), (d + 7 * ROW, a - 7.5 * COL)]
+    return area("OXAV", tri) + text(spaced("NORTH"), d + 10 * ROW, a)
+
+
+def scale_bar(d, a, segments=4, miles=5):
+    """Segments of five statute miles, alternately on two lines, with ticks
+    and figures, as on the original."""
+    km = miles * 1.609344
+    out = []
+    for k in range(segments + 1):
+        x = a + k * km
+        out += line("I", [(d - ROW, x), (d + ROW, x)])
+        out += text(str(k * miles), d - 2 * ROW, x)
+        if k < segments:
+            dd = d if k % 2 == 0 else d + ROW
+            out += line("-", [(dd, x + COL), (dd, x + km - COL)])
+    out += text(spaced("SCALE IN STATUTE MILES"), d + 3 * ROW, a + segments * km / 2)
+    return out
+
+
+def neighbour_lines():
+    out = []
+    for f in json.load(NEIGHBOURS.open())["features"]:
+        for part in f["geometry"]["coordinates"]:
+            out += line(".", [da(lat, lon) for lon, lat in part])
+    return out
+
+
+def short_name(name):
+    n = name.upper().split("(")[0].split(" #")[0].strip()
+    return {"LOS ANGELES-NORTH MAIN STREET": "LOS ANGELES", "LAX HASTINGS": "LAX",
+            "LANCASTER-DIVISION STREET": "LANCASTER"}.get(n, n)
+
+
+def furniture(county):
+    o = neighbour_lines()
+    # County names and the national forest, spaced and placed as on the scan.
+    for label, x, y in [("KERN COUNTY", 788, 127), ("VENTURA COUNTY", 278, 843),
+                        ("ORANGE COUNTY", 1453, 1616)]:
+        o += underlined(label, *scan(x, y))
+    for x, y in [(595, 390), (1368, 870)]:
+        o += knockout(spaced("ANGELES NATIONAL FOREST"), *scan(x, y))
+    # Coastal places, in the sea.
+    for label, x, y in [("SANTA MONICA", 575, 1296), ("MANHATTAN BEACH", 640, 1422),
+                        ("REDONDO BEACH", 680, 1531), ("SAN PEDRO BAY", 1013, 1651)]:
+        o += text(label, *scan(x, y))
+    # Each station in the county named on a cleared strip just to its right,
+    # leaving its level number visible.
+    for r in county:
+        n = short_name(r["local_site_name"])
+        d, a = da(float(r["latitude"]), float(r["longitude"]))
+        o += knockout(n, d, a + (len(n) / 2 + 2) * COL)
+    o += north_arrow(*scan(355, 1610))
+    o += scale_bar(*scan(210, 1872))
+    d, a = scan(140, 2040)
+    o += lettering("LOS ANGELES COUNTY", d, a)
+    d, a = scan(1460, 2035)
+    for k, t in enumerate(CREDITS):
+        o += text(t, d + (k + k // 2) * ROW, a)
+    return o
+
+
+CREDITS = [
+    "REBUILT IN A SYMAP EMULATOR, 2026, AFTER",
+    "P. J. DANGERMOND, HARVARD LCGSA, 1969",
+    "CARBON MONOXIDE: US EPA AIRDATA 2013-2024",
+    "BOUNDARIES: US CENSUS BUREAU, CB 2023",
+]
+
+
+def station_list(rows):
+    """Two columns of names, as in the original's legend."""
+    names = [r["local_site_name"].upper() for r in rows]
+    half = (len(names) + 1) // 2
+    return [f"     {a:<34}{b}".rstrip() for a, b in
+            zip(names[:half], names[half:] + [""])]
 
 
 def main():
@@ -99,15 +260,13 @@ def main():
              and (r["county"] == "Los Angeles" or r["site_id"] in ADJOINING)]
     sites.sort(key=lambda r: (r["county"] != "Los Angeles", r["site_id"]))
     county = [r for r in sites if r["county"] == "Los Angeles"]
+    outside = [r for r in sites if r["county"] != "Los Angeles"]
     ring = json.load(COUNTY.open())["features"][0]["geometry"]["coordinates"][0]
-
-    height, width = da(SLAT, ELON)
-    inches = 7.0
-    h_in = inches * height / width
+    h_in = WIDTH_IN * HEIGHT_KM / WIDTH_KM
 
     o = []
     w = o.append
-    w(HEADER.format(n=len(sites), nc=len(county), na=len(sites) - len(county),
+    w(HEADER.format(n=len(sites), nc=len(county), na=len(outside),
                     stations="\n".join(
                         f"#   {r['site_id']}  {r['local_site_name']:<32}{r['county']:<16}"
                         f"{r['years']:>3} yrs  {float(r['max8h']):4.1f}" for r in sites)))
@@ -122,38 +281,36 @@ def main():
     o += barrier(WEST) + barrier(EAST)
     w("99999")
     w("C-OTOLEGENDS")
-    for label, lat, lon in [
-        ("KERN COUNTY", 34.835, -118.40),
-        ("VENTURA", 34.62, -118.85),
-        ("COUNTY", 34.60, -118.85),
-        ("SAN BERNARDINO", 34.70, -117.88),
-        ("COUNTY", 34.68, -117.88),
-        ("ORANGE COUNTY", 33.76, -117.86),
-        ("PACIFIC OCEAN", 33.80, -118.70),
-        ("DESERT", 34.62, -118.30),
-        ("SAN GABRIEL MOUNTAINS", 34.31, -118.11),
-        ("NEWHALL PASS", 34.335, -118.62),
-    ]:
-        o += text(label, *da(lat, lon))
+    o += furniture(county)
     w("99999")
     w("E-VALUES")
     o += [f"{'':10}{float(r['max8h']):10.1f}" for r in sites]
     o += [f"{'':10}{0.0:10.1f}" for _ in PEAKS]
     w("99999")
-    w("F-MAP")
-    w("LOS ANGELES COUNTY - MAXIMUM CARBON MONOXIDE CONCENTRATION")
-    w("HIGHEST 8-HOUR MEAN, PPM, 2013-2024 (AFTER DANGERMOND, HARVARD, 1969)")
-    w("A. BARRIERS AND MOUNTAIN BACKGROUND POINTS")
-    w(f"    1{'':6}{h_in:10.2f}{inches:10.2f}")
-    w(f"    2{'':6}{0:10.2f}{0:10.2f}{height:10.2f}{width:10.2f}")
-    w("    3            10.")
-    w("    4           0.00")
-    w("    5           5.00")
-    w("   10")
-    w(f"{len(sites)} MONITORS ({len(county)} IN THE COUNTY), 9 MOUNTAIN PEAKS AT 0.0 PPM,")
-    w("TWO PERMEABLE BARRIERS OPEN AT NEWHALL PASS.  LEVELS EVERY 0.5 PPM.")
-    w("9999")
-    w("99999")
+
+    def fmap(sub, first):
+        w("F-MAP")
+        w("MAXIMUM CARBON MONOXIDE CONCENTRATION MEASURED IN P.P.M.")
+        w("HIGHEST 8-HOUR MEAN, 2013-2024 (AFTER DANGERMOND, HARVARD, 1969)")
+        w(sub)
+        if first:
+            w(f"    1{'':6}{h_in:10.2f}{WIDTH_IN:10.2f}")
+            w(f"    2{'':6}{0:10.2f}{0:10.2f}{HEIGHT_KM:10.2f}{WIDTH_KM:10.2f}")
+            w("    3            10.")
+            w("    4           0.00")
+            w("    5           5.00")
+            w("    8")
+        else:
+            w("   12")
+        w("   10")
+        w("THE FOLLOWING IS A LIST OF STATIONS USED WITHIN THE COUNTY")
+        o.extend(station_list(county))
+        w("THE FOLLOWING IS A LIST OF STATIONS OUTSIDE LOS ANGELES COUNTY")
+        o.extend(station_list(outside))
+        w("9999")
+        w("99999")
+
+    fmap("A. BARRIERS AND MOUNTAIN BACKGROUND POINTS", True)
     # Map b: the measured data points only, with no barriers.
     w("B-DATA POINTS")
     o += [card(*da(float(r["latitude"]), float(r["longitude"]))) for r in sites]
@@ -163,20 +320,12 @@ def main():
     w("E-VALUES")
     o += [f"{'':10}{float(r['max8h']):10.1f}" for r in sites]
     w("99999")
-    w("F-MAP")
-    w("LOS ANGELES COUNTY - MAXIMUM CARBON MONOXIDE CONCENTRATION")
-    w("HIGHEST 8-HOUR MEAN, PPM, 2013-2024 (AFTER DANGERMOND, HARVARD, 1969)")
-    w("B. MEASURED DATA POINTS ONLY")
-    w("   12")
-    w("   10")
-    w(f"{len(sites)} MONITORS ({len(county)} IN THE COUNTY), NO BACKGROUND POINTS,")
-    w("NO BARRIERS.  LEVELS EVERY 0.5 PPM.")
-    w("9999")
-    w("99999")
+    fmap("B. MEASURED DATA POINTS ONLY", False)
     w("999999")
     OUT.write_text("\n".join(o) + "\n")
     print(f"{OUT.relative_to(ROOT)}: {len(sites)} stations, {len(PEAKS)} peaks, "
-          f"frame {height:.1f} x {width:.1f} km", file=sys.stderr)
+          f"frame {HEIGHT_KM:.1f} x {WIDTH_KM:.1f} km, {h_in:.2f} x {WIDTH_IN} in",
+          file=sys.stderr)
 
 
 HEADER = """\
@@ -215,7 +364,7 @@ HEADER = """\
 # the original are not legible, so they are placed on the San Gabriel and
 # Santa Susana mountains from USGS summits. Barrier strength is twice the
 # distance from Newhall Pass along the barrier, Report I's rule of thumb.
-# Coordinates are km, down and across from 34.85 N, 118.98 W, on an
+# Coordinates are km, down and across from 34.916 N, 119.065 W, on an
 # equirectangular projection about 34.25 N, 118.25 W.
 #
 # References:

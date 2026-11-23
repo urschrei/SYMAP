@@ -64,4 +64,7 @@ work, in the public domain.
 Catalina and San Clemente islands, in longitude and latitude (NAD83),
 simplified to within about 200 m. Source: US Census Bureau cartographic
 boundary file `cb_2023_us_county_500k`, public domain.
-`scripts/la_co_deck.py` turns both into `decks/la-carbon-monoxide.sym`.
+`la-neighbour-lines.geojson` holds the boundaries of Ventura, Kern, San
+Bernardino, Riverside and Orange counties near Los Angeles County, minus
+the edges they share with it, as lines from the same Census Bureau file.
+`scripts/la_co_deck.py` turns these into `decks/la-carbon-monoxide.sym`.
