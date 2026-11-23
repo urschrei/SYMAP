@@ -17,7 +17,10 @@
 # zone's data point is its area centroid, or the middle of its widest
 # span when the centroid falls outside it. 250,632 dwellings in all.
 # Coordinates are Irish Transverse Mercator kilometres: down from
-# northing 742 km, across from easting 706.9 km; 0.6 inch per km.
+# northing 742 km, across from easting 706.9 km; the map prints the
+# window from 3.5 to 10.5 km down and 3.0 to 13.8 km across at 1.2 inch
+# per km, twice the scale of dublin-density.sym, so that small EDs keep
+# more than their one-character boundary.
 # Zones and data points are in ED_ID_STR order; values follow them.
 A-OUTLINE
                 4.94      4.11
@@ -2482,45 +2485,45 @@ C-OTOLEGENDS
                 7.68     16.72
     6    P      7.25      3.20
 LIFFEY
-   10    P      7.60     16.90
+   10    P      6.60     12.80
 DUBLIN BAY
    12    P      6.10      3.70
 PHOENIX PARK
-         A     10.30     13.00
-               10.30     18.40
-               12.80     18.40
-               12.80     13.00
-               10.30     13.00
-     -   L     10.30     13.00
-               10.30     18.40
-     -   L     12.80     13.00
-               12.80     18.40
-     I   L     10.30     13.00
-               12.80     13.00
-     I   L     10.30     18.40
-               12.80     18.40
-     *   P     10.30     13.00      2.00      4.00
-     *   P     10.30     13.00      3.00      3.00
-     *   P     10.30     13.00      3.00      4.00
-     *   P     10.30     13.00      3.00      5.00
-     *   P     10.30     13.00      4.00      2.00
-     *   P     10.30     13.00      4.00      3.00
-     *   P     10.30     13.00      4.00      4.00
-     *   P     10.30     13.00      4.00      5.00
-     *   P     10.30     13.00      4.00      6.00
-     N   P     10.30     13.00      5.00      4.00
-     =   L     12.38     14.50
-               12.38     16.50
-    5    P     12.38     14.50     -3.00      0.00
+         A      9.04     10.38
+               10.29     10.38
+               10.29     13.55
+                9.04     13.55
+                9.04     10.38
+     -   L      9.04     10.38
+                9.04     13.55
+     -   L     10.29     10.38
+               10.29     13.55
+     I   L      9.04     10.38
+               10.29     10.38
+     I   L      9.04     13.55
+               10.29     13.55
+     *   P      9.04     10.38      2.00      4.00
+     *   P      9.04     10.38      3.00      3.00
+     *   P      9.04     10.38      3.00      4.00
+     *   P      9.04     10.38      3.00      5.00
+     *   P      9.04     10.38      4.00      2.00
+     *   P      9.04     10.38      4.00      3.00
+     *   P      9.04     10.38      4.00      4.00
+     *   P      9.04     10.38      4.00      5.00
+     *   P      9.04     10.38      4.00      6.00
+     N   P      9.04     10.38      5.00      4.00
+     =   L     10.08     11.05
+               10.08     13.05
+    5    P     10.08     11.05     -3.00      0.00
 SCALE
-     I   P     12.38     14.50
-    1    P     12.38     14.50     -1.00      0.00
+     I   P     10.08     11.05
+    1    P     10.08     11.05     -1.00      0.00
 0
-     I   P     12.38     15.50
-    1    P     12.38     15.50     -1.00      0.00
+     I   P     10.08     12.05
+    1    P     10.08     12.05     -1.00      0.00
 1
-     I   P     12.38     16.50
-    4    P     12.38     16.50     -1.00      0.00
+     I   P     10.08     13.05
+    4    P     10.08     13.05     -1.00      0.00
 2 KM
 99999
 E-VALUES
@@ -2688,11 +2691,11 @@ E-VALUES
               7094.3
 99999
 F-MAP
-DUBLIN CITY - HOUSING DENSITY, CENSUS 2022
+CENTRAL DUBLIN - HOUSING DENSITY, CENSUS 2022
 PERMANENT DWELLINGS PER SQUARE KILOMETRE
-CONFORMANT MAP OF 162 ELECTORAL DIVISIONS
-    1           8.10     11.50
-    2           0.00      0.00     13.50     19.20
+CONFORMANT MAP OF DUBLIN CITY'S ELECTORAL DIVISIONS
+    1           8.40     12.96
+    2           3.50      3.00     10.50     13.80
     3             6.
     4           0.00
     5       10000.00
@@ -2704,11 +2707,11 @@ SQUARE KILOMETRE. ~ IS THE RIVER LIFFEY.
 9999
 99999
 F-MAP
-DUBLIN CITY - HOUSING DENSITY, CENSUS 2022
+CENTRAL DUBLIN - HOUSING DENSITY, CENSUS 2022
 PERMANENT DWELLINGS PER SQUARE KILOMETRE
 CONTOUR MAP FORCED FROM THE SAME ZONES (ELECTIVE 27)
-    1           8.10     11.50
-    2           0.00      0.00     13.50     19.20
+    1           8.40     12.96
+    2           3.50      3.00     10.50     13.80
     3             6.
     4           0.00
     5       10000.00

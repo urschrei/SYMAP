@@ -13,7 +13,7 @@ const EXAMPLES = [
   { group: 'Open data: London and Dublin', file: 'london-house-prices.sym', name: 'Central London house prices: the Thames as a barrier' },
   { group: 'Open data: London and Dublin', file: 'london-zones.sym', name: 'London fare zones: nearest station (proximal)' },
   { group: 'Open data: London and Dublin', file: 'dublin-density.sym', name: 'Dublin City: population density, Census 2022' },
-  { group: 'Open data: London and Dublin', file: 'dublin-housing.sym', name: 'Dublin City: housing density, conformant and forced contour' },
+  { group: 'Open data: London and Dublin', file: 'dublin-housing.sym', name: 'Central Dublin: housing density, conformant and forced contour' },
   { group: 'Open data: London and Dublin', file: 'london-suitability.sym', name: 'London: where to build, two weighted indexes (after Delmarva)' },
   { group: 'Open data: London and Dublin', file: 'london-attractiveness.sym', name: 'London: attractiveness for housing, a regression map (after Steinitz, Boston)' },
 ];

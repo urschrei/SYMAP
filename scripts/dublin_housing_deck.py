@@ -5,6 +5,7 @@ City's 162 electoral divisions, and as a contour map forced from the same
 zones with elective 27, each zone's value placed at its centre. Zone
 outlines, the Liffey and the map furniture are taken from dublin-density.sym;
 the city outline for the contour map is the edges the zones do not share.
+Both maps print central Dublin at twice the scale of dublin-density.sym.
 
     python3 scripts/dublin_housing_deck.py
 """
@@ -20,6 +21,51 @@ OUT = ROOT / "examples/decks/dublin-housing.sym"
 
 INTERVALS = [1000, 1000, 1000, 1000, 2000, 4000]  # 0-1k-2k-3k-4k-6k-10k
 VMAX = 10000.0
+
+# The window printed: central Dublin, kilometres down and across in the
+# coordinates of dublin-density.sym, at twice its scale (1.2 inch per km),
+# so a median ED (0.57 km2) spans about 60 characters rather than 16.
+# Zones and data points outside the window still shape the contours.
+DOWN, ACROSS = (3.5, 10.5), (3.0, 13.8)
+SCALE = 1.2
+# The north arrow and scale inset: 12 lines by 38 columns, two lines and
+# three columns in from the window's south-east corner, which is mostly
+# Sandymount Strand and the bay.
+INSET_H, INSET_W = 12 / 8 / SCALE, 38 / 10 / SCALE
+INSET = (DOWN[1] - INSET_H - 2 / 8 / SCALE, ACROSS[1] - INSET_W - 3 / 10 / SCALE)
+
+
+def legends(cards):
+    """The Liffey and its labels from dublin-density.sym, with DUBLIN BAY
+    moved into the window and a new north arrow and scale inset."""
+    out = []
+    for c in cards:
+        if c[10:20].strip() == "10.30" and c[9] == "A":
+            break  # the old inset starts here
+        out.append(c)
+    k = out.index("DUBLIN BAY")
+    out[k - 1] = f"{10:5d}    P{6.60:10.2f}{12.80:10.2f}"
+    d0, a0 = INSET
+    d1, a1 = d0 + INSET_H, a0 + INSET_W
+    f = lambda d, a: f"{d:10.2f}{a:10.2f}"
+    out.append("         A" + f(d0, a0))
+    out += [" " * 10 + f(*p) for p in [(d1, a0), (d1, a1), (d0, a1), (d0, a0)]]
+    # Rules: dashes along the top and bottom, I down the sides.
+    out += [f"     -   L{f(d0, a0)}", " " * 10 + f(d0, a1)]
+    out += [f"     -   L{f(d1, a0)}", " " * 10 + f(d1, a1)]
+    out += [f"     I   L{f(d0, a0)}", " " * 10 + f(d1, a0)]
+    out += [f"     I   L{f(d0, a1)}", " " * 10 + f(d1, a1)]
+    for r, c in [(2, 4), (3, 3), (3, 4), (3, 5), (4, 2), (4, 3), (4, 4), (4, 5), (4, 6)]:
+        out.append(f"     *   P{f(d0, a0)}{r:10.2f}{c:10.2f}")
+    out.append(f"     N   P{f(d0, a0)}{5.0:10.2f}{4.0:10.2f}")
+    bar = d0 + 10 / 8 / SCALE  # the bar on the inset's eleventh line
+    b0 = a0 + 8 / 10 / SCALE
+    out += [f"     =   L{f(bar, b0)}", " " * 10 + f(bar, b0 + 2)]
+    out += [f"    5    P{f(bar, b0)}{-3.0:10.2f}{0.0:10.2f}", "SCALE"]
+    for km, label in [(0, "0"), (1, "1"), (2, "2 KM")]:
+        out.append(f"     I   P{f(bar, b0 + km)}")
+        out += [f"{len(label):5d}    P{f(bar, b0 + km)}{-1.0:10.2f}{0.0:10.2f}", label]
+    return out
 
 
 def packages(path):
@@ -144,7 +190,7 @@ def main():
         w(f"{i:5d}     {d:10.2f}{a:10.2f}")
     w("99999")
     w("C-OTOLEGENDS")
-    out.extend(deck["C-OTOLEGENDS"])
+    out.extend(legends(deck["C-OTOLEGENDS"]))
     w("99999")
     w("E-VALUES")
     for v in values:
@@ -154,15 +200,16 @@ def main():
     for title3, extra in (
         # 25: no data points on the conformant map. 8: no white lines
         # between contour levels, so the tones run continuously.
-        ("CONFORMANT MAP OF 162 ELECTORAL DIVISIONS", ["   25"]),
+        ("CONFORMANT MAP OF DUBLIN CITY'S ELECTORAL DIVISIONS", ["   25"]),
         ("CONTOUR MAP FORCED FROM THE SAME ZONES (ELECTIVE 27)", ["    8", "   27"]),
     ):
         w("F-MAP")
-        w("DUBLIN CITY - HOUSING DENSITY, CENSUS 2022")
+        w("CENTRAL DUBLIN - HOUSING DENSITY, CENSUS 2022")
         w("PERMANENT DWELLINGS PER SQUARE KILOMETRE")
         w(title3)
-        w("    1           8.10     11.50")
-        w("    2           0.00      0.00     13.50     19.20")
+        size = ((DOWN[1] - DOWN[0]) * SCALE, (ACROSS[1] - ACROSS[0]) * SCALE)
+        w("    1     " + "".join(f"{v:10.2f}" for v in size))
+        w("    2     " + "".join(f"{v:10.2f}" for v in (DOWN[0], ACROSS[0], DOWN[1], ACROSS[1])))
         w("    3             6.")
         w("    4           0.00")
         w(f"    5    {VMAX:11.2f}")
@@ -198,7 +245,10 @@ HEADER = """
 # zone's data point is its area centroid, or the middle of its widest
 # span when the centroid falls outside it. {total} dwellings in all.
 # Coordinates are Irish Transverse Mercator kilometres: down from
-# northing 742 km, across from easting 706.9 km; 0.6 inch per km.
+# northing 742 km, across from easting 706.9 km; the map prints the
+# window from 3.5 to 10.5 km down and 3.0 to 13.8 km across at 1.2 inch
+# per km, twice the scale of dublin-density.sym, so that small EDs keep
+# more than their one-character boundary.
 # Zones and data points are in ED_ID_STR order; values follow them.
 """
 
