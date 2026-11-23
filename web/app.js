@@ -199,15 +199,36 @@ function pages(map) {
   return out;
 }
 
-// `density` is canvas pixels per layout unit; by default, the zoom times
-// the screen's pixel ratio.
+// The largest canvas, in pixels, that every browser draws: Safari on iOS and
+// iPadOS refuses bigger ones and runs out of memory well before its total
+// limit, so a large map (the Los Angeles decks print 224 columns in panels)
+// could crash the tab.
+const MAX_CANVAS_AREA = 16777216;
+
+// Canvas pixels per layout unit for a sheet `w` by `h` units shown `scale`
+// times its layout size: the screen's pixel ratio, but no finer than the
+// sheet is shown when it is fitted to the pane, and within the area limit.
+function sheetDensity(w, h, scale) {
+  let px = scale * (window.devicePixelRatio || 1);
+  if (state.zoom === 'fit' && sheets.clientWidth) {
+    const shown = Math.min(w * scale, sheets.clientWidth);
+    px = Math.min(px, (shown * (window.devicePixelRatio || 1)) / w);
+  }
+  return Math.min(px, Math.sqrt(MAX_CANVAS_AREA / (w * h)));
+}
+
+// Every sheet of a map is as wide as its widest line, like the paper.
+function sheetCols(map) {
+  return Math.max(...map.lines.map((l) => Math.max(l.plain.length, ...l.strikes.map((s) => s.length))), 80);
+}
+
+// `density` is canvas pixels per layout unit; by default, see sheetDensity.
 function drawSheet(map, lines, density) {
-  // Every sheet of a map is as wide as its widest line, like the paper.
-  const width = Math.max(...map.lines.map((l) => Math.max(l.plain.length, ...l.strikes.map((s) => s.length))), 80);
+  const width = sheetCols(map);
   const cols = width + 2 * MARGIN_COLS;
   const rows = lines.length + 2 * TOP_LINES;
   const scale = state.zoom === 'fit' ? 1.5 : Number(state.zoom);
-  const px = density ?? scale * (window.devicePixelRatio || 1);
+  const px = density ?? sheetDensity(cols * CELL_W, rows * CELL_H, scale);
   const canvas = document.createElement('canvas');
   canvas.width = Math.ceil(cols * CELL_W * px);
   canvas.height = Math.ceil(rows * CELL_H * px);
@@ -306,6 +327,7 @@ function turned(canvas, turn, cssHeight) {
   ctx.translate(out.width / 2, out.height / 2);
   ctx.rotate((turn * Math.PI) / 2);
   ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+  release(canvas);
   return out;
 }
 
@@ -322,8 +344,16 @@ function sheetList(r) {
   });
 }
 
+// Free a canvas's pixels now: Safari keeps them until the canvas is
+// collected, and a few large sheets left over can exhaust its memory.
+function release(canvas) {
+  canvas.width = 0;
+  canvas.height = 0;
+}
+
 function render(opts = {}) {
   const r = state.result;
+  sheets.querySelectorAll('canvas').forEach(release);
   sheets.replaceChildren();
   $('sheet-nav').replaceChildren();
   sheets.classList.toggle('fit', state.zoom === 'fit');
@@ -381,6 +411,7 @@ function openSheet(m, lines, label) {
   const canvas = drawSheet(m, lines);
   state.zoom = saved;
   $('sheet-view-title').textContent = `${label}: ${m.titles.filter(Boolean).join(' / ')}`;
+  $('sheet-view-body').querySelectorAll('canvas').forEach(release);
   $('sheet-view-body').replaceChildren(canvas);
   $('sheet-view').showModal();
 }
@@ -525,22 +556,37 @@ function annotate(png, dpi, texts) {
   return new Blob(parts, { type: 'image/png' });
 }
 
+// The largest canvas an export may use: desktop browsers draw far larger
+// canvases than Safari on iOS and iPadOS (which reports itself as a Mac with
+// a touch screen).
+function exportArea() {
+  const apple = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  return apple ? MAX_CANVAS_AREA : 16 * MAX_CANVAS_AREA;
+}
+
 // Each map's sheet (the page that holds the map) at print resolution.
 async function exportPng() {
   const r = state.result;
   if (!r?.ok) return;
-  const density = PRINT_DPI / (10 * CELL_W);
   const maps = r.maps;
   for (const [i, m] of maps.entries()) {
-    const canvas = drawSheet(m, pages(m).at(-1), density);
+    // A sheet too large for one canvas at 300 dpi is saved at the highest
+    // resolution that fits, and says so in its pHYs chunk.
+    const lines = pages(m).at(-1);
+    const width = sheetCols(m);
+    const w = (width + 2 * MARGIN_COLS) * CELL_W, h = (lines.length + 2 * TOP_LINES) * CELL_H;
+    const density = Math.min(PRINT_DPI / (10 * CELL_W), Math.sqrt(exportArea() / (w * h)));
+    const dpi = Math.floor(density * 10 * CELL_W);
+    const canvas = drawSheet(m, lines, dpi / (10 * CELL_W));
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    release(canvas);
     const png = new Uint8Array(await blob.arrayBuffer());
     const texts = [
       ['Title', m.titles.filter(Boolean).join(' / ')],
       ['Software', 'SYMAP, https://urschrei.github.io/SYMAP/'],
     ];
     if ($('png-deck').checked) texts.push([DECK_KEYWORD, deck.value]);
-    const titled = annotate(png, PRINT_DPI, texts);
+    const titled = annotate(png, dpi, texts);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(titled);
     a.download = maps.length > 1 ? `symap-${i + 1}.png` : 'symap.png';
