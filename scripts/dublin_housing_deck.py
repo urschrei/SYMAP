@@ -152,8 +152,10 @@ def main():
     w("99999")
     levels = "LEVELS: 0-1,000-2,000-3,000-4,000-6,000-10,000 DWELLINGS PER"
     for title3, extra in (
-        ("CONFORMANT MAP OF 162 ELECTORAL DIVISIONS", []),
-        ("CONTOUR MAP FORCED FROM THE SAME ZONES (ELECTIVE 27)", ["   27"]),
+        # 25: no data points on the conformant map. 8: no white lines
+        # between contour levels, so the tones run continuously.
+        ("CONFORMANT MAP OF 162 ELECTORAL DIVISIONS", ["   25"]),
+        ("CONTOUR MAP FORCED FROM THE SAME ZONES (ELECTIVE 27)", ["    8", "   27"]),
     ):
         w("F-MAP")
         w("DUBLIN CITY - HOUSING DENSITY, CENSUS 2022")
