@@ -8,13 +8,14 @@ const EXAMPLES = [
   { group: 'Demonstrations', file: 'furniture.sym', name: 'Map furniture: lettering, north arrow, scale' },
   { group: 'Demonstrations', file: 'districts.sym', name: 'Six districts: conformant map' },
   { group: 'Demonstrations', file: 'barrier.sym', name: 'Two banks: a river as a barrier' },
-  { group: 'Open data: London and Dublin', file: 'london-boroughs.sym', name: 'London boroughs: population density, Census 2021' },
-  { group: 'Open data: London and Dublin', file: 'london-no2.sym', name: 'London: nitrogen dioxide, 2025 (contour)' },
-  { group: 'Open data: London and Dublin', file: 'london-house-prices.sym', name: 'Central London house prices: the Thames as a barrier' },
-  { group: 'Open data: London and Dublin', file: 'london-zones.sym', name: 'London fare zones: nearest station (proximal)' },
-  { group: 'Open data: London and Dublin', file: 'dublin-density.sym', name: 'Dublin City: population density, Census 2022' },
-  { group: 'Open data: London and Dublin', file: 'london-suitability.sym', name: 'London: where to build, two weighted indexes (after Delmarva)' },
-  { group: 'Open data: London and Dublin', file: 'london-attractiveness.sym', name: 'London: attractiveness for housing, a regression map (after Steinitz, Boston)' },
+  { group: 'Open data', file: 'london-boroughs.sym', name: 'London boroughs: population density, Census 2021' },
+  { group: 'Open data', file: 'london-no2.sym', name: 'London: nitrogen dioxide, 2025 (contour)' },
+  { group: 'Open data', file: 'london-house-prices.sym', name: 'Central London house prices: the Thames as a barrier' },
+  { group: 'Open data', file: 'london-zones.sym', name: 'London fare zones: nearest station (proximal)' },
+  { group: 'Open data', file: 'dublin-density.sym', name: 'Dublin City: population density, Census 2022' },
+  { group: 'Open data', file: 'london-suitability.sym', name: 'London: where to build, two weighted indexes (after Delmarva)' },
+  { group: 'Open data', file: 'honey-hill.sym', name: 'Honey Hill, New Hampshire: summer and winter park plans (after Harvard, 1971)' },
+  { group: 'Open data', file: 'london-attractiveness.sym', name: 'London: attractiveness for housing, a regression map (after Steinitz, Boston)' },
 ];
 
 const STORE_KEY = 'symap.deck';
