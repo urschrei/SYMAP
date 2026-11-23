@@ -49,8 +49,7 @@ cargo run -- import stations.csv --value no2 > no2.sym
 The browser version has a card editor with field guides, the example decks
 and the same importer. It draws each overprint layer onto green-bar or white paper, upright
 or sideways, and can download the output as text, ASA or CSV, or each map
-as a 300 dpi PNG that prints at the original size (on iPhone and iPad, a very large
-map is saved at a lower resolution that Safari can draw). The PNG contains the deck
+as a 300 dpi PNG that prints at the original size. The PNG contains the deck
 that made it as an iTXt chunk (this can be turned off), and dropping it on the editor
 restores the deck.
 

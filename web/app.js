@@ -223,19 +223,22 @@ function sheetCols(map) {
 }
 
 // `density` is canvas pixels per layout unit; by default, see sheetDensity.
-function drawSheet(map, lines, density) {
+// `clip`, in canvas pixels of the upright sheet, draws only that part of it
+// ({ x, y, w, h }), for an export too large for one canvas.
+function drawSheet(map, lines, density, clip) {
   const width = sheetCols(map);
   const cols = width + 2 * MARGIN_COLS;
   const rows = lines.length + 2 * TOP_LINES;
   const scale = state.zoom === 'fit' ? 1.5 : Number(state.zoom);
   const px = density ?? sheetDensity(cols * CELL_W, rows * CELL_H, scale);
   const canvas = document.createElement('canvas');
-  canvas.width = Math.ceil(cols * CELL_W * px);
-  canvas.height = Math.ceil(rows * CELL_H * px);
+  canvas.width = clip ? clip.w : Math.ceil(cols * CELL_W * px);
+  canvas.height = clip ? clip.h : Math.ceil(rows * CELL_H * px);
   canvas.style.width = `${(cols * CELL_W * scale).toFixed(1)}px`;
   canvas.setAttribute('role', 'img');
   canvas.setAttribute('aria-label', `${map.kind} map: ${map.titles.filter(Boolean).join(' / ') || 'untitled'}`);
   const ctx = canvas.getContext('2d');
+  if (clip) ctx.translate(-clip.x, -clip.y);
   ctx.scale(px, px);
 
   // Continuous-feed paper: green bars every half inch (4 lines at 8 lpi),
@@ -282,6 +285,7 @@ function drawSheet(map, lines, density) {
   ctx.scale(type.widen, 1);
   lines.forEach((line, i) => {
     const y = (i + TOP_LINES + 0.55) * CELL_H;
+    if (clip && ((y + CELL_H) * px < clip.y || (y - CELL_H) * px > clip.y + clip.h)) return;
     const layers = state.overprint ? line.strikes : [line.plain];
     const struck = new Uint8Array(Math.max(...layers.map((s) => s.length), 0));
     layers.forEach((s, k) => {
@@ -556,37 +560,71 @@ function annotate(png, dpi, texts) {
   return new Blob(parts, { type: 'image/png' });
 }
 
-// The largest canvas an export may use: desktop browsers draw far larger
-// canvases than Safari on iOS and iPadOS (which reports itself as a Mac with
-// a touch screen).
-function exportArea() {
-  const apple = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-  return apple ? MAX_CANVAS_AREA : 16 * MAX_CANVAS_AREA;
+// A sheet larger than one canvas allows, as a PNG of the whole sheet: drawn
+// in bands of rows, each band's pixels compressed as it is drawn, so no
+// device needs the whole image in a canvas or in memory at once.
+async function bandedPng(m, lines, density) {
+  const W = Math.ceil((sheetCols(m) + 2 * MARGIN_COLS) * CELL_W * density);
+  const H = Math.ceil((lines.length + 2 * TOP_LINES) * CELL_H * density);
+  // The image's size and its bands, turned as the sheet is.
+  const [outW, outH] = state.turn ? [H, W] : [W, H];
+  const band = Math.max(1, Math.floor(MAX_CANVAS_AREA / 4 / outW));
+  const zlib = new CompressionStream('deflate');
+  const writer = zlib.writable.getWriter();
+  const compressed = new Response(zlib.readable).arrayBuffer();
+  for (let r0 = 0; r0 < outH; r0 += band) {
+    const n = Math.min(band, outH - r0);
+    // Output rows r0..r0+n of a sheet turned left are the upright sheet's
+    // columns W-r0-n..W-r0; turned right, columns r0..r0+n.
+    const clip = state.turn === 0 ? { x: 0, y: r0, w: W, h: n }
+      : { x: state.turn < 0 ? W - r0 - n : r0, y: 0, w: n, h: H };
+    const canvas = drawSheet(m, lines, density, clip);
+    const rgba = canvas.getContext('2d').getImageData(0, 0, outW, n).data;
+    release(canvas);
+    // Each scanline: filter type 0, then RGB.
+    const rows = new Uint8Array(n * (1 + 3 * outW));
+    for (let y = 0, o = 0, k = 0; y < n; y++) {
+      rows[o++] = 0;
+      for (let x = 0; x < outW; x++, k += 4) {
+        rows[o++] = rgba[k]; rows[o++] = rgba[k + 1]; rows[o++] = rgba[k + 2];
+      }
+    }
+    await writer.write(rows);
+  }
+  await writer.close();
+  const ihdr = new Uint8Array(13);
+  new DataView(ihdr.buffer).setUint32(0, outW);
+  new DataView(ihdr.buffer).setUint32(4, outH);
+  ihdr.set([8, 2, 0, 0, 0], 8); // 8-bit RGB, deflate, no interlace
+  const parts = [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr),
+    chunk('IDAT', new Uint8Array(await compressed)), chunk('IEND', new Uint8Array(0))];
+  return new Uint8Array(await new Blob(parts).arrayBuffer());
 }
 
 // Each map's sheet (the page that holds the map) at print resolution.
 async function exportPng() {
   const r = state.result;
   if (!r?.ok) return;
+  const density = PRINT_DPI / (10 * CELL_W);
   const maps = r.maps;
   for (const [i, m] of maps.entries()) {
-    // A sheet too large for one canvas at 300 dpi is saved at the highest
-    // resolution that fits, and says so in its pHYs chunk.
     const lines = pages(m).at(-1);
-    const width = sheetCols(m);
-    const w = (width + 2 * MARGIN_COLS) * CELL_W, h = (lines.length + 2 * TOP_LINES) * CELL_H;
-    const density = Math.min(PRINT_DPI / (10 * CELL_W), Math.sqrt(exportArea() / (w * h)));
-    const dpi = Math.floor(density * 10 * CELL_W);
-    const canvas = drawSheet(m, lines, dpi / (10 * CELL_W));
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-    release(canvas);
-    const png = new Uint8Array(await blob.arrayBuffer());
+    const w = (sheetCols(m) + 2 * MARGIN_COLS) * CELL_W, h = (lines.length + 2 * TOP_LINES) * CELL_H;
+    let png;
+    if (w * h * density * density > MAX_CANVAS_AREA) {
+      png = await bandedPng(m, lines, density);
+    } else {
+      const canvas = drawSheet(m, lines, density);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      release(canvas);
+      png = new Uint8Array(await blob.arrayBuffer());
+    }
     const texts = [
       ['Title', m.titles.filter(Boolean).join(' / ')],
       ['Software', 'SYMAP, https://urschrei.github.io/SYMAP/'],
     ];
     if ($('png-deck').checked) texts.push([DECK_KEYWORD, deck.value]);
-    const titled = annotate(png, dpi, texts);
+    const titled = annotate(png, PRINT_DPI, texts);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(titled);
     a.download = maps.length > 1 ? `symap-${i + 1}.png` : 'symap.png';
