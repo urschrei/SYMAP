@@ -45,3 +45,15 @@ right 2023. `scripts/london_msoa_prices.py` builds it and
 
 `london-no2-2025.sym` is the finished deck from
 [Mapping your own data](../../docs/your-own-data.md).
+
+`dublin-ed-population.csv` holds the usually resident population (Census
+2022) and area (square kilometres, from the boundary) of the 322 CSO
+Electoral Divisions in County Dublin, with each division's zone reference
+in `decks/dublin-dots.sym`, its ED_ID_STR code, name and local authority.
+Source: Central Statistics Office (CSO) Census Hub, 'Census 2022 - Table
+1.2 - Population by sex and marital status by Electoral Divisions', with
+boundaries 'CSO Electoral Divisions 2022' from Tailte Éireann, licensed
+under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+`scripts/dublin_dots_deck.py` builds it, and the dot map
+`decks/dublin-dots.sym`, from the Census Hub and EPA river network
+downloads named in its docstring.

@@ -1,0 +1,323 @@
+ref,ed_id,name,local_authority,population,area_km2
+1,267001,Airport,Fingal,6152,8.698
+2,267002,Balbriggan Rural,Fingal,19347,25.77
+3,267003,Balbriggan Urban,Fingal,8102,2.201
+4,267004,Baldoyle,Fingal,8096,2.676
+5,267005,Balgriffin,Fingal,5544,10.374
+6,267006,Ballinascorney,South Dublin,874,24.128
+7,267007,Ballinteer-Woodpark,Dun Laoghaire-Rathdown,5323,0.951
+8,267008,Ballinteer-Broadford,Dun Laoghaire-Rathdown,2480,0.58
+9,267009,Ballinteer-Ludford,Dun Laoghaire-Rathdown,2110,0.461
+10,267010,Ballinteer-Marley,Dun Laoghaire-Rathdown,2222,1.326
+11,267011,Ballinteer-Meadowbroads,Dun Laoghaire-Rathdown,1696,0.343
+12,267012,Ballinteer-Meadowmount,Dun Laoghaire-Rathdown,1828,0.39
+13,267013,Ballyboden,South Dublin,5246,1.233
+14,267014,Ballyboghil,Fingal,1629,19.549
+15,267015,Ballybrack,Dun Laoghaire-Rathdown,2872,0.609
+16,267016,Balscadden,Fingal,743,15.968
+17,267017,Blackrock-Monkstown,Dun Laoghaire-Rathdown,3422,0.733
+18,267018,Blackrock-Seapoint,Dun Laoghaire-Rathdown,1519,0.365
+19,267019,Blackrock-Booterstown,Dun Laoghaire-Rathdown,3629,0.791
+20,267020,Blackrock-Carysfort,Dun Laoghaire-Rathdown,6232,1.306
+21,267021,Blackrock-Central,Dun Laoghaire-Rathdown,3774,1.026
+22,267022,Blackrock-Glenomena,Dun Laoghaire-Rathdown,2000,0.452
+23,267023,Blackrock-Newpark,Dun Laoghaire-Rathdown,2278,0.503
+24,267024,Blackrock-Stradbrook,Dun Laoghaire-Rathdown,2612,0.553
+25,267025,Blackrock-Templehill,Dun Laoghaire-Rathdown,2810,0.787
+26,267026,Blackrock-Williamstown,Dun Laoghaire-Rathdown,2876,1.069
+27,267027,Blanchardstown-Abbotstown,Fingal,6551,7.186
+28,267028,Blanchardstown-Blakestown,Fingal,43905,7.873
+29,267029,Blanchardstown-Coolmine,Fingal,11271,2.751
+30,267030,Blanchardstown-Corduff,Fingal,3689,1.449
+31,267031,Blanchardstown-Delwood,Fingal,5144,1.01
+32,267032,Blanchardstown-Mulhuddart,Fingal,4219,1.837
+33,267033,Blanchardstown-Roselawn,Fingal,1647,0.47
+34,267034,Blanchardstown-Tyrrelstown,Fingal,3343,3.927
+35,267035,Bohernabreena,South Dublin,5672,43.939
+36,267036,Cabinteely-Granitefield,Dun Laoghaire-Rathdown,2713,0.57
+37,267037,Cabinteely-Kilbogget,Dun Laoghaire-Rathdown,2683,1.061
+38,267038,Cabinteely-Loughlinstown,Dun Laoghaire-Rathdown,5362,6.318
+39,267039,Cabinteely-Pottery,Dun Laoghaire-Rathdown,5106,1.605
+40,267040,Castleknock-Knockmaroon,Fingal,20967,7.009
+41,267041,Castleknock-Park,Fingal,6355,2.436
+42,267042,Churchtown-Castle,Dun Laoghaire-Rathdown,1911,0.849
+43,267043,Churchtown-Landscape,Dun Laoghaire-Rathdown,1446,0.411
+44,267044,Churchtown-Nutgrove,Dun Laoghaire-Rathdown,3190,0.768
+45,267045,Churchtown-Orwell,Dun Laoghaire-Rathdown,1968,0.956
+46,267046,Churchtown-Woodlawn,Dun Laoghaire-Rathdown,1529,0.415
+47,267047,Clondalkin-Ballymount,South Dublin,2320,3.146
+48,267048,Clondalkin-Cappaghmore,South Dublin,2445,2.068
+49,267049,Clondalkin-Dunawley,South Dublin,11298,4.742
+50,267050,Clondalkin-Monastery,South Dublin,11357,3.948
+51,267051,Clondalkin-Moorfield,South Dublin,7024,2.237
+52,267052,Clondalkin-Rowlagh,South Dublin,4106,0.728
+53,267053,Clondalkin Village,South Dublin,9388,6.036
+54,267054,Clonmethan,Fingal,933,16.877
+55,267055,Clonskeagh-Milltown,Dun Laoghaire-Rathdown,2252,0.52
+56,267056,Clonskeagh-Belfield,Dun Laoghaire-Rathdown,3754,1.911
+57,267057,Clonskeagh-Farranboley,Dun Laoghaire-Rathdown,1751,0.364
+58,267058,Clonskeagh-Roebuck,Dun Laoghaire-Rathdown,3365,0.749
+59,267059,Clonskeagh-Windy Arbour,Dun Laoghaire-Rathdown,3020,0.713
+60,267060,Dalkey Hill,Dun Laoghaire-Rathdown,1536,1.213
+61,267061,Dalkey Upper,Dun Laoghaire-Rathdown,2144,0.584
+62,267062,Dalkey-Avondale,Dun Laoghaire-Rathdown,1439,0.523
+63,267063,Dalkey-Bullock,Dun Laoghaire-Rathdown,1802,0.571
+64,267064,Dalkey-Coliemore,Dun Laoghaire-Rathdown,1354,0.593
+65,267065,Donabate,Fingal,11783,24.416
+66,267066,Dubber,Fingal,8931,18.051
+67,267067,Dun Laoghaire-East Central,Dun Laoghaire-Rathdown,2604,0.453
+68,267068,Dun Laoghaire-Glasthule,Dun Laoghaire-Rathdown,2982,0.739
+69,267069,Dun Laoghaire-Glenageary,Dun Laoghaire-Rathdown,4516,0.591
+70,267070,Dun Laoghaire-Monkstown Farm,Dun Laoghaire-Rathdown,2321,0.341
+71,267071,Dun Laoghaire-Mount Town,Dun Laoghaire-Rathdown,1915,0.336
+72,267072,Dun Laoghaire Sallynoggin East,Dun Laoghaire-Rathdown,2941,0.739
+73,267073,Dun Laoghaire Sallynoggin South,Dun Laoghaire-Rathdown,1434,0.41
+74,267074,Dun Laoghaire-Sallynoggin West,Dun Laoghaire-Rathdown,4354,0.613
+75,267075,Dun Laoghaire-Salthill,Dun Laoghaire-Rathdown,1758,0.567
+76,267076,Dun Laoghaire-Sandycove,Dun Laoghaire-Rathdown,3688,0.974
+77,267077,Dun Laoghaire-West Central,Dun Laoghaire-Rathdown,2726,0.474
+78,267078,Dundrum-Balally,Dun Laoghaire-Rathdown,8844,2.51
+79,267079,Dundrum-Kilmacud,Dun Laoghaire-Rathdown,3495,0.918
+80,267080,Dundrum-Sandyford,Dun Laoghaire-Rathdown,7638,2.474
+81,267081,Dundrum-Sweetmount,Dun Laoghaire-Rathdown,2689,0.558
+82,267082,Dundrum-Taney,Dun Laoghaire-Rathdown,2748,0.572
+83,267083,Edmondstown,South Dublin,5685,4.264
+84,267084,Firhouse Village,South Dublin,12254,2.424
+85,267085,Firhouse-Ballycullen,South Dublin,10522,2.846
+86,267086,Firhouse-Knocklyon,South Dublin,3510,1.119
+87,267087,Foxrock-Beechpark,Dun Laoghaire-Rathdown,1758,0.538
+88,267088,Foxrock-Carrickmines,Dun Laoghaire-Rathdown,6324,2.829
+89,267089,Foxrock-Deansgrange,Dun Laoghaire-Rathdown,2523,1.01
+90,267090,Foxrock-Torquay,Dun Laoghaire-Rathdown,1558,0.962
+91,267091,Garristown,Fingal,1801,35.598
+92,267092,Glencullen,Dun Laoghaire-Rathdown,23596,33.871
+93,267093,Hollywood,Fingal,1476,30.052
+94,267094,Holmpatrick,Fingal,4147,26.421
+95,267095,Howth,Fingal,8399,10.954
+96,267096,Killiney North,Dun Laoghaire-Rathdown,3390,2.207
+97,267097,Killiney South,Dun Laoghaire-Rathdown,6386,1.571
+98,267098,Kilsallaghan,Fingal,2406,27.803
+99,267099,Kinsaley,Fingal,11470,11.256
+100,267100,Lucan-Esker,South Dublin,33849,6.444
+101,267101,Lucan Heights,South Dublin,5131,3.617
+102,267102,Lucan North,Fingal,1765,9.532
+103,267103,Lucan-St. Helens,South Dublin,16805,9.938
+104,267104,Lusk,Fingal,10774,42.782
+105,267105,Malahide East,Fingal,8406,3.263
+106,267106,Malahide West,Fingal,6014,2.579
+107,267107,Newcastle,South Dublin,5552,32.127
+108,267108,Palmerston Village,South Dublin,3689,1.168
+109,267109,Palmerston West,South Dublin,7323,3.915
+110,267110,Portmarnock North,Fingal,4048,1.043
+111,267111,Portmarnock South,Fingal,4729,5.392
+112,267112,Rathcoole,South Dublin,6590,15.468
+113,267113,Rathfarnham-Ballyroan,South Dublin,2743,0.686
+114,267114,Rathfarnham-Butterfield,South Dublin,3290,0.769
+115,267115,Rathfarnham-Hermitage,South Dublin,4378,0.783
+116,267116,Rathfarnham-St. Enda'S,South Dublin,3952,1.082
+117,267117,Rathfarnham Village,South Dublin,3145,0.781
+118,267118,Rush,Fingal,11116,6.771
+119,267119,Saggart,South Dublin,6248,13.478
+120,267120,Shankill-Rathmichael,Dun Laoghaire-Rathdown,5731,14.93
+121,267121,Shankill-Rathsallagh,Dun Laoghaire-Rathdown,3254,0.993
+122,267122,Shankill-Shanganagh,Dun Laoghaire-Rathdown,5522,2.977
+123,267123,Skerries,Fingal,8880,2.327
+124,267124,Stillorgan-Deerpark,Dun Laoghaire-Rathdown,3001,1.021
+125,267125,Stillorgan-Kilmacud,Dun Laoghaire-Rathdown,4249,0.918
+126,267126,Stillorgan-Leopardstown,Dun Laoghaire-Rathdown,2973,0.569
+127,267127,Stillorgan-Merville,Dun Laoghaire-Rathdown,3275,1.138
+128,267128,Stillorgan-Mount Merrion,Dun Laoghaire-Rathdown,2445,0.878
+129,267129,Stillorgan-Priory,Dun Laoghaire-Rathdown,2269,0.557
+130,267130,Sutton,Fingal,5789,1.441
+131,267131,Swords-Glasmore,Fingal,7674,4.505
+132,267132,Swords-Forrest,Fingal,15926,6.682
+133,267133,Swords-Lissenhall,Fingal,12065,18.776
+134,267134,Swords-Seatown,Fingal,7465,4.037
+135,267135,Swords Village,Fingal,2786,0.917
+136,267136,Tallaght-Avonbeg,South Dublin,1543,0.368
+137,267137,Tallaght-Belgard,South Dublin,1635,2.733
+138,267138,Tallaght-Fettercairn,South Dublin,11335,4.59
+139,267139,Tallaght-Glenview,South Dublin,2171,0.406
+140,267140,Tallaght-Jobstown,South Dublin,18125,2.729
+141,267141,Tallaght-Killinardan,South Dublin,3878,0.743
+142,267142,Tallaght-Kilnamanagh,South Dublin,4394,2.134
+143,267143,Tallaght-Kiltipper,South Dublin,9432,1.656
+144,267144,Tallaght-Kingswood,South Dublin,4291,1.696
+145,267145,Tallaght-Millbrook,South Dublin,3338,0.643
+146,267146,Tallaght-Oldbawn,South Dublin,4445,1.486
+147,267147,Tallaght-Springfield,South Dublin,11297,2.096
+148,267148,Tallaght-Tymon,South Dublin,5138,1.999
+149,267149,Templeogue-Cypress,South Dublin,2807,0.724
+150,267150,Templeogue-Kimmage Manor,South Dublin,4929,1.093
+151,267151,Templeogue-Limekiln,South Dublin,3821,1.077
+152,267152,Templeogue-Orwell,South Dublin,1991,0.471
+153,267153,Templeogue-Osprey,South Dublin,2258,1.412
+154,267154,Templeogue Village,South Dublin,2270,0.514
+155,267155,Terenure-Cherryfield,South Dublin,2229,0.454
+156,267156,Terenure-Greentrees,South Dublin,2948,0.663
+157,267157,Terenure-St. James,South Dublin,2404,0.648
+158,267158,The Ward,Fingal,13289,24.649
+159,267159,Tibradden,Dun Laoghaire-Rathdown,945,13.384
+160,267160,Turnapin,Fingal,1730,0.944
+161,268001,Arran Quay A,Dublin City,1784,0.153
+162,268002,Arran Quay B,Dublin City,5529,0.759
+163,268003,Arran Quay C,Dublin City,4646,0.383
+164,268004,Arran Quay D,Dublin City,3308,0.345
+165,268005,Arran Quay E,Dublin City,3377,0.264
+166,268006,Ashtown A,Dublin City,12094,1.996
+167,268007,Ashtown B,Dublin City,2843,0.595
+168,268008,Ayrfield,Dublin City,5863,0.894
+169,268009,Ballybough A,Dublin City,4004,0.349
+170,268010,Ballybough B,Dublin City,4184,0.354
+171,268011,Ballygall C,Dublin City,3646,0.992
+172,268012,Ballygall A,Dublin City,3602,0.484
+173,268013,Ballygall B,Dublin City,1930,0.556
+174,268014,Ballygall D,Dublin City,2526,0.433
+175,268015,Ballymun A,Dublin City,5735,0.946
+176,268016,Ballymun B,Dublin City,4273,0.663
+177,268017,Ballymun C,Dublin City,5729,0.773
+178,268018,Ballymun D,Dublin City,2551,0.472
+179,268019,Ballymun E,Dublin City,1674,0.354
+180,268020,Ballymun F,Dublin City,2359,0.436
+181,268021,Beaumont A,Dublin City,2668,0.513
+182,268022,Beaumont B,Dublin City,5103,0.85
+183,268023,Beaumont C,Dublin City,3382,0.595
+184,268024,Beaumont D,Dublin City,2085,0.467
+185,268025,Beaumont E,Dublin City,1941,0.315
+186,268026,Beaumont F,Dublin City,3893,0.543
+187,268027,Botanic A,Dublin City,3331,1.315
+188,268028,Botanic B,Dublin City,3606,0.494
+189,268029,Botanic C,Dublin City,2362,0.299
+190,268030,Cabra East A,Dublin City,5910,1.409
+191,268031,Cabra East B,Dublin City,3746,0.466
+192,268032,Cabra East C,Dublin City,4239,0.457
+193,268033,Cabra West A,Dublin City,1441,0.446
+194,268034,Cabra West B,Dublin City,2646,0.453
+195,268035,Cabra West C,Dublin City,2883,0.574
+196,268036,Cabra West D,Dublin City,2816,0.601
+197,268037,Chapelizod,Dublin City,3397,1.167
+198,268038,Cherry Orchard A,Dublin City,3465,0.982
+199,268039,Carna,Dublin City,2897,0.572
+200,268040,Cherry Orchard C,Dublin City,4815,1.419
+201,268041,Clontarf East A,Dublin City,3626,2.122
+202,268042,Clontarf East B,Dublin City,7204,3.481
+203,268043,Clontarf East C,Dublin City,3189,0.828
+204,268044,Clontarf East D,Dublin City,2859,0.627
+205,268045,Clontarf East E,Dublin City,1748,0.407
+206,268046,Clontarf West A,Dublin City,3758,0.702
+207,268047,Clontarf West B,Dublin City,2395,0.395
+208,268048,Clontarf West C,Dublin City,4130,1.051
+209,268049,Clontarf West D,Dublin City,2530,0.821
+210,268050,Clontarf West E,Dublin City,2483,0.325
+211,268051,Crumlin A,Dublin City,3657,0.543
+212,268052,Crumlin B,Dublin City,3019,0.748
+213,268053,Crumlin C,Dublin City,2364,0.498
+214,268054,Crumlin D,Dublin City,4190,0.586
+215,268055,Crumlin E,Dublin City,2916,0.377
+216,268056,Crumlin F,Dublin City,3141,0.4
+217,268057,Decies,Dublin City,2713,0.317
+218,268058,Drumcondra South A,Dublin City,5923,1.039
+219,268059,Drumcondra South B,Dublin City,1889,0.343
+220,268060,Drumcondra South C,Dublin City,3337,0.749
+221,268061,Drumfinn,Dublin City,3632,0.823
+222,268062,Edenmore,Dublin City,2831,0.583
+223,268063,Finglas North A,Dublin City,3205,0.726
+224,268064,Finglas North B,Dublin City,2922,0.649
+225,268065,Finglas North C,Dublin City,3678,1.113
+226,268066,Finglas South A,Dublin City,2909,0.585
+227,268067,Finglas South B,Dublin City,4457,0.999
+228,268068,Finglas South C,Dublin City,2566,0.367
+229,268069,Finglas South D,Dublin City,2543,0.443
+230,268070,Grace Park,Dublin City,6272,1.243
+231,268071,Grange A,Dublin City,12598,1.674
+232,268072,Grange B,Dublin City,7438,1.159
+233,268073,Grange C,Dublin City,3086,0.475
+234,268074,Grange D,Dublin City,3952,0.662
+235,268075,Grange E,Dublin City,2578,0.549
+236,268076,Harmonstown A,Dublin City,2848,0.611
+237,268077,Harmonstown B,Dublin City,2921,0.575
+238,268078,Inchicore A,Dublin City,2557,1.001
+239,268079,Inchicore B,Dublin City,2728,0.813
+240,268080,Inns Quay A,Dublin City,4033,0.317
+241,268081,Inns Quay B,Dublin City,4537,0.283
+242,268082,Inns Quay C,Dublin City,3087,0.285
+243,268083,Kilmainham A,Dublin City,2646,0.255
+244,268084,Kilmainham B,Dublin City,2638,0.813
+245,268085,Kilmainham C,Dublin City,4956,0.59
+246,268086,Kilmore C,Dublin City,1413,0.531
+247,268087,Kilmore D,Dublin City,2149,0.52
+248,268088,Kilmore A,Dublin City,3678,0.774
+249,268089,Kilmore B,Dublin City,2546,0.479
+250,268090,Kimmage A,Dublin City,1903,0.274
+251,268091,Kimmage B,Dublin City,3533,0.429
+252,268092,Kimmage C,Dublin City,3738,0.938
+253,268093,Kimmage D,Dublin City,2533,0.422
+254,268094,Kimmage E,Dublin City,3500,0.657
+255,268095,Kylemore,Dublin City,2557,0.576
+256,268096,Mansion House A,Dublin City,4298,0.669
+257,268097,Mansion House B,Dublin City,1021,0.647
+258,268098,Merchants Quay A,Dublin City,2749,0.178
+259,268099,Merchants Quay B,Dublin City,4343,0.241
+260,268100,Merchants Quay C,Dublin City,3814,0.331
+261,268101,Merchants Quay D,Dublin City,2575,0.221
+262,268102,Merchants Quay E,Dublin City,2651,0.227
+263,268103,Merchants Quay F,Dublin City,2328,0.298
+264,268104,Mountjoy A,Dublin City,7374,0.299
+265,268105,Mountjoy B,Dublin City,4537,0.224
+266,268106,North City,Dublin City,6749,0.563
+267,268107,North Dock A,Dublin City,1406,0.143
+268,268108,North Dock B,Dublin City,10173,3.465
+269,268109,North Dock C,Dublin City,4328,0.606
+270,268110,Pembroke East A,Dublin City,5017,2.143
+271,268111,Pembroke East B,Dublin City,3852,0.683
+272,268112,Pembroke East C,Dublin City,4179,0.877
+273,268113,Pembroke East D,Dublin City,5368,1.849
+274,268114,Pembroke East E,Dublin City,3924,1.195
+275,268115,Pembroke West A,Dublin City,5144,0.637
+276,268116,Pembroke West B,Dublin City,3214,0.743
+277,268117,Pembroke West C,Dublin City,4385,0.673
+278,268118,Phoenix Park,Dublin City,1465,7.374
+279,268119,Priorswood C,Dublin City,4883,0.889
+280,268120,Priorswood D,Dublin City,2653,0.786
+281,268121,Priorswood A,Dublin City,1574,1.736
+282,268122,Priorswood B,Dublin City,2794,0.461
+283,268123,Priorswood E,Dublin City,2771,0.408
+284,268124,Raheny-Foxfield,Dublin City,2553,0.585
+285,268125,Raheny-Greendale,Dublin City,2262,0.438
+286,268126,Raheny-St. Assam,Dublin City,3919,2.372
+287,268127,Rathfarnham,Dublin City,5768,1.233
+288,268128,Rathmines East A,Dublin City,4979,0.697
+289,268129,Rathmines East B,Dublin City,5705,1.257
+290,268130,Rathmines East C,Dublin City,3484,0.738
+291,268131,Rathmines East D,Dublin City,2755,0.36
+292,268132,Rathmines West A,Dublin City,6115,0.658
+293,268133,Rathmines West B,Dublin City,3818,0.336
+294,268134,Rathmines West C,Dublin City,2857,0.421
+295,268135,Rathmines West D,Dublin City,3222,0.373
+296,268136,Rathmines West E,Dublin City,3712,0.453
+297,268137,Rathmines West F,Dublin City,2943,0.434
+298,268138,Rotunda A,Dublin City,6528,0.249
+299,268139,Rotunda B,Dublin City,3589,0.208
+300,268140,Royal Exchange A,Dublin City,5063,0.443
+301,268141,Royal Exchange B,Dublin City,2213,0.221
+302,268142,Saint Kevin'S,Dublin City,5732,0.625
+303,268143,South Dock,Dublin City,8320,1.052
+304,268144,Terenure A,Dublin City,3982,0.541
+305,268145,Terenure B,Dublin City,3746,0.535
+306,268146,Terenure C,Dublin City,1881,0.707
+307,268147,Terenure D,Dublin City,782,0.462
+308,268148,Ushers A,Dublin City,5117,0.722
+309,268149,Ushers B,Dublin City,1903,0.27
+310,268150,Ushers C,Dublin City,4069,0.398
+311,268151,Ushers D,Dublin City,2390,0.148
+312,268152,Ushers E,Dublin City,1859,0.225
+313,268153,Ushers F,Dublin City,3461,0.453
+314,268154,Walkinstown A,Dublin City,2947,0.985
+315,268155,Walkinstown B,Dublin City,2014,0.344
+316,268156,Walkinstown C,Dublin City,2481,0.453
+317,268157,Whitehall A,Dublin City,3117,1.317
+318,268158,Whitehall B,Dublin City,4371,0.752
+319,268159,Whitehall C,Dublin City,2908,0.734
+320,268160,Whitehall D,Dublin City,3279,0.684
+321,268161,Wood Quay A,Dublin City,2871,0.175
+322,268162,Wood Quay B,Dublin City,3907,0.297
