@@ -43,5 +43,18 @@ right 2023. `scripts/london_msoa_prices.py` builds it and
 `scripts/london_regression_deck.py` fits the regression and writes
 `decks/london-attractiveness.sym`.
 
+`dublin-ed-dwellings.csv` holds, for each of the 162 CSO Electoral
+Divisions of Dublin City Council in ED_ID_STR order, its name, the number
+of permanent dwellings on Census night 2022, how many were occupied and how
+many were "other vacant", the number of private households, and the ED's
+area in square kilometres (from its AREA field). Sources: Census 2022
+Theme 6 Tables 1 and 8 by Electoral Division, CSO Census Hub
+(`CensusHub2022_T6_8_ED` and `CensusHub2022_T6_1_ED` on
+<https://services-eu1.arcgis.com/BuS9rtTsYEV5C0xh/arcgis/rest/services>).
+Source: CSO / Tailte Éireann, licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+`scripts/dublin_housing_deck.py` turns it into `decks/dublin-housing.sym`,
+taking zone outlines and the Liffey from `decks/dublin-density.sym`.
+
 `london-no2-2025.sym` is the finished deck from
 [Mapping your own data](../../docs/your-own-data.md).

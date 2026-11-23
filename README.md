@@ -88,6 +88,7 @@ character. Agreement ranges from 94% (Example 1-5, a contour map) to 99.5%
 | `london-suitability.sym` | Two weighted suitability indexes on a 1 km grid of London, after Steinitz's Delmarva study |
 | `london-attractiveness.sym` | A regression of house prices on site factors, printed on the same grid, after Steinitz's Boston attractiveness map |
 | `dublin-density.sym` | Population density of Dublin City's electoral divisions, Census 2022, with the Liffey |
+| `dublin-housing.sym` | Housing density of the same divisions in central Dublin at twice the scale, as a conformant map and as a contour map forced from the zones (elective 27) |
 
 The manual's decks are transcribed card for card and checked against the
 scans. `hills`, `districts`, `barrier` and `furniture` use made-up data. The
