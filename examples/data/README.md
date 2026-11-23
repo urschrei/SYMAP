@@ -45,3 +45,23 @@ right 2023. `scripts/london_msoa_prices.py` builds it and
 
 `london-no2-2025.sym` is the finished deck from
 [Mapping your own data](../../docs/your-own-data.md).
+
+`la-co-sites-2013-2024.csv` holds, for the 40 carbon monoxide monitors in
+Los Angeles, Orange, Riverside, San Bernardino, Kern and Santa Barbara
+counties with data in 2013-2024, the site's code, name, county, latitude
+and longitude, the number of years with data, the highest annual '1st Max
+Value' of the 8-hour running mean (ppm) over those years, its mean over
+those years, and the first and last year. Where a year has several rows for
+a site (instruments, or with and without exceptional events), the highest
+is taken. Ventura County had no carbon monoxide monitor in those years.
+Source: US EPA AirData annual summaries, `annual_conc_by_monitor_2013.zip`
+to `annual_conc_by_monitor_2024.zip`, parameter 42101, sample duration
+`8-HR RUN AVG END HOUR`,
+<https://aqs.epa.gov/aqsweb/airdata/download_files.html>. US Government
+work, in the public domain.
+
+`la-county.geojson` is Los Angeles County (GEOID 06037) without Santa
+Catalina and San Clemente islands, in longitude and latitude (NAD83),
+simplified to within about 200 m. Source: US Census Bureau cartographic
+boundary file `cb_2023_us_county_500k`, public domain.
+`scripts/la_co_deck.py` turns both into `decks/la-carbon-monoxide.sym`.

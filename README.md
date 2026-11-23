@@ -88,10 +88,11 @@ character. Agreement ranges from 94% (Example 1-5, a contour map) to 99.5%
 | `london-suitability.sym` | Two weighted suitability indexes on a 1 km grid of London, after Steinitz's Delmarva study |
 | `london-attractiveness.sym` | A regression of house prices on site factors, printed on the same grid, after Steinitz's Boston attractiveness map |
 | `dublin-density.sym` | Population density of Dublin City's electoral divisions, Census 2022, with the Liffey |
+| `la-carbon-monoxide.sym` | Maximum carbon monoxide at Los Angeles County monitors, 2013-2024, with mountain barriers and without, after Dangermond's 1969 Harvard Lab maps |
 
 The manual's decks are transcribed card for card and checked against the
 scans. `hills`, `districts`, `barrier` and `furniture` use made-up data. The
-London and Dublin decks use published open data; deck headers list
+London, Dublin and Los Angeles decks use published open data; deck headers list
 sources, licences and simplifications.
 
 ## Documentation
