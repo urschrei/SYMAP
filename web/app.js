@@ -15,6 +15,7 @@ const EXAMPLES = [
   { group: 'Open data: London and Dublin', file: 'dublin-density.sym', name: 'Dublin City: population density, Census 2022' },
   { group: 'Open data: London and Dublin', file: 'london-suitability.sym', name: 'London: where to build, two weighted indexes (after Delmarva)' },
   { group: 'Open data: London and Dublin', file: 'london-attractiveness.sym', name: 'London: attractiveness for housing, a regression map (after Steinitz, Boston)' },
+  { group: 'Harvard Lab maps rebuilt', file: 'la-carbon-monoxide.sym', name: 'Los Angeles County: carbon monoxide with and without mountain barriers (after Dangermond, 1969)' },
 ];
 
 const STORE_KEY = 'symap.deck';
