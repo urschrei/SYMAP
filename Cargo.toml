@@ -13,7 +13,7 @@ exclude = ["docs/img/"]
 geo = { version = "0.32.0", default-features = false }
 geojson = { version = "1.0.0", default-features = false }
 lexopt = "0.3.2"
-rstar = "0.12.2"
+rstar = "0.13.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
 
